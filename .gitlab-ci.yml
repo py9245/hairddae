@@ -15,6 +15,7 @@ cache:
     - FE/.npm/
 
 pages:
+  tags: ["docker"]
   stage: deploy
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'

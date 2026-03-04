@@ -1,7 +1,8 @@
 import './App.css'
+import env from './config/env'
 
 function App() {
-  const appName = import.meta.env.VITE_APP_NAME || 'S14P21M101 · FE'
+  const appName = env.appName
 
   return (
     <main className="page">

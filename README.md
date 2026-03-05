@@ -4,8 +4,8 @@
 > 각 이름을 클릭하면 Markdown 파일로 이동합니다.
 
 - 1주차
-  - [심미진](/report/mijin.develop/week1_report.md)
-  - [박유신](/report/py9245/week1_report.md)
-  - [신건하](/report/gunha0606/week1_report.md)
-  - [김영훈](/report/yhkor11/week1_report.md)
-  - [김두진](/report/enwls5626/week1_report.md)
+  - [14기_특화_M10x_심미진_Sub1_평가자료.md](/report/mijin.develop/week1_report.md)
+  - [14기_특화_M10x_박유신_Sub1_평가자료.md](/report/py9245/week1_report.md)
+  - [14기_특화_M10x_신건하_Sub1_평가자료.md](/report/gunha0606/week1_report.md)
+  - [14기_특화_M10x_김영훈_Sub1_평가자료.md](/report/yhkor11/week1_report.md)
+  - [14기_특화_M10x_김두진_Sub1_평가자료.md](/report/enwls5626/week1_report.md)

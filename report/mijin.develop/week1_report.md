@@ -23,3 +23,9 @@
   - [Figma](https://www.figma.com/design/FaBKGgR9z502vOePDcm2YS/-SSAFY--Project-%EB%94%94%EC%9E%90%EC%9D%B8-?node-id=225-7767&t=EmAlyWJkW2163La4-1)
 - FE 핵심 기능 관련 회의
   - [260305 FE 회의록](https://docs.google.com/document/d/1a3K-92RTHBj7xNwXe19q2t9L52_78cCIZ-7z_Z8boVM/edit?usp=sharing)
+
+## 260306
+- [WBS 작성](https://ssafy.atlassian.net/browse/S14P21M101-526?atlOrigin=eyJpIjoiY2UxMDBiZjMwZjA0NDE0MmEwZmYzYzI5MzkyZGFiYjEiLCJwIjoiaiJ9)
+  - [WBS_FE](https://docs.google.com/spreadsheets/d/1WAA5gMulpff16p2DhwcpTSODsdaBv4zBKz7Bpze5p4U/edit?usp=sharing)
+- [Hi-fi 완료](https://ssafy.atlassian.net/browse/S14P21M101-508?atlOrigin=eyJpIjoiZjMwNDA5MDRmMDUzNGFmMDk4Mjg4NTRkN2ViY2NiOTUiLCJwIjoiaiJ9)
+  - [Figma](https://www.figma.com/design/FaBKGgR9z502vOePDcm2YS/-SSAFY--Project-%EB%94%94%EC%9E%90%EC%9D%B8-?node-id=225-7767&t=EmAlyWJkW2163La4-1)

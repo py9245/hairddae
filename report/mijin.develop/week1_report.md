@@ -17,3 +17,9 @@
 
 - [Design System 확립](https://ssafy.atlassian.net/browse/S14P21M101-509?atlOrigin=eyJpIjoiYWFkY2UyMjNlZmFhNGEyODk1YjYwZTNiOTU5YTFjOTYiLCJwIjoiaiJ9)
   - [Figma](https://www.figma.com/design/FaBKGgR9z502vOePDcm2YS/-SSAFY--Project-%EB%94%94%EC%9E%90%EC%9D%B8-?node-id=225-7767&t=EmAlyWJkW2163La4-1)
+
+## 260305
+- [MVP Hi-fi 디자인](https://ssafy.atlassian.net/browse/S14P21M101-508?atlOrigin=eyJpIjoiMDExNDMzMWZjMjc1NDYxNzlhMTI4NGNkOTAxOWIyODQiLCJwIjoiaiJ9)
+  - [Figma](https://www.figma.com/design/FaBKGgR9z502vOePDcm2YS/-SSAFY--Project-%EB%94%94%EC%9E%90%EC%9D%B8-?node-id=225-7767&t=EmAlyWJkW2163La4-1)
+- FE 핵심 기능 관련 회의
+  - [260305 FE 회의록](https://docs.google.com/document/d/1a3K-92RTHBj7xNwXe19q2t9L52_78cCIZ-7z_Z8boVM/edit?usp=sharing)

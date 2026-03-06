@@ -14,3 +14,10 @@
 
 # 260305
 - [전 날 완료된 작업 결과에 대한 수정(Ubuntu22.04 버전으로 환경 세팅 변경 및 GPU 사용)](https://ssafy.atlassian.net/browse/S14P21M101-522?atlOrigin=eyJpIjoiZTIyYmViNmQxMGMzNDIyMzhiZWEwMGRmNmQxMTE5MTEiLCJwIjoiaiJ9)
+
+# 260306
+- [AI WBS 공동 작업 진행](https://ssafy.atlassian.net/browse/S14P21M101-531?atlOrigin=eyJpIjoiYTYwZmExZmEzMWE0NDZkZmI4MTVmZWI1NTg4NzJiMjMiLCJwIjoiaiJ9)
+  - [AI WBS 시트](https://docs.google.com/spreadsheets/d/1hCYpK-084TBJknPxNV9Kl9Vza4F7-KNWGetmDmb6-f4/edit?usp=sharing)
+
+
+- [AI 아키텍처 설계도 작성](https://docs.google.com/document/d/1VePSsIYwfBUFY41MyBSJ2eJCVyMcUzP6ctaZR8tVtN0/edit?usp=sharing)

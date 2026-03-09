@@ -44,8 +44,23 @@ pipeline {
       steps {
         sh '''
           set -eu
-          curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/api/health >/dev/null \
-            || curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/actuator/health >/dev/null
+          for i in $(seq 1 20); do
+            if curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/api/health >/dev/null 2>&1; then
+              echo "health check passed: /api/health"
+              exit 0
+            fi
+
+            if curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/actuator/health >/dev/null 2>&1; then
+              echo "health check passed: /actuator/health"
+              exit 0
+            fi
+
+            echo "health check retry $i/20"
+            sleep 3
+          done
+
+          echo "health check failed after retries"
+          exit 1
         '''
       }
     }

@@ -1,84 +1,77 @@
 pipeline {
   agent any
 
-  tools {
-    // Jenkins > Manage Jenkins > Global Tool Configuration > NodeJS installations
-    // Define a tool named 'node20' pointing to Node.js 20.x
-    nodejs 'node20'
-  }
-
   options {
-    disableConcurrentBuilds()
-    ansiColor('xterm')
     timestamps()
+    disableConcurrentBuilds()
   }
 
   environment {
-    FRONTEND_DIR = 'FE'
-    NPM_CONFIG_CACHE = "${WORKSPACE}/.npm"
-    // Jenkins credentials ID that stores the SSH private key for the target server
-    SSH_CRED_ID = 'hairddae-ssh'
-    // Deploy target (override in Jenkins job configuration)
-    DEPLOY_USER = 'ubuntu'
-    DEPLOY_HOST = '13.125.75.148'
-    DEPLOY_PATH = '/var/www/hairddae'
-    RELEASE_KEEP = '3' // 남길 릴리즈 개수
-  }
-
-  triggers {
-    // Optional: enable if you want automatic builds on SCM changes
-    // pollSCM('H/2 * * * *')
+    DEPLOY_DIR = '/home/ubuntu/S14P21M101/BE/nginx/html'
   }
 
   stages {
-    stage('Install') {
+    stage('Checkout') {
       steps {
-        dir(env.FRONTEND_DIR) {
-          sh 'npm ci --prefer-offline --cache ${NPM_CONFIG_CACHE}'
-        }
+        checkout scm
       }
     }
 
-    stage('Build') {
-      steps {
-        dir(env.FRONTEND_DIR) {
-          sh 'npm run build'
-        }
-      }
-    }
-
-    stage('Deploy') {
+    stage('Build FE') {
       when {
-        branch 'FE'
+        allOf {
+          branch 'FE'
+          changeset pattern: 'FE/**', comparator: 'ANT'
+        }
       }
       steps {
-        sshagent(credentials: [env.SSH_CRED_ID]) {
-          dir(env.FRONTEND_DIR) {
-            sh '''
-              set -e
-              RELEASE_TS=$(date +%Y%m%d%H%M%S)
-              RELEASE_DIR=${DEPLOY_PATH}/releases/${RELEASE_TS}
-
-              ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "mkdir -p ${DEPLOY_PATH}/releases"
-              rsync -avz --delete dist/ ${DEPLOY_USER}@${DEPLOY_HOST}:${RELEASE_DIR}/
-              ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "ln -sfn ${RELEASE_DIR} ${DEPLOY_PATH}/current"
-              ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "cd ${DEPLOY_PATH}/releases && ls -1tr | head -n -${RELEASE_KEEP:-3} | xargs -r rm -rf"
-              ssh -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} 'sudo systemctl reload nginx'
-            '''
-          }
+        dir('FE') {
+          sh '''
+            set -eu
+            corepack enable
+            corepack pnpm install --frozen-lockfile
+            corepack pnpm run build
+          '''
         }
+      }
+    }
+
+    stage('Deploy dist') {
+      when {
+        allOf {
+          branch 'FE'
+          changeset pattern: 'FE/**', comparator: 'ANT'
+        }
+      }
+      steps {
+        sh '''
+          set -eu
+          test -d "$DEPLOY_DIR"
+          rsync -av --delete --exclude='.gitkeep' "$WORKSPACE/FE/dist/" "$DEPLOY_DIR/"
+        '''
+      }
+    }
+
+    stage('Smoke Check') {
+      when {
+        allOf {
+          branch 'FE'
+          changeset pattern: 'FE/**', comparator: 'ANT'
+        }
+      }
+      steps {
+        sh '''
+          set -eu
+          curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/ >/dev/null
+          curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/api/health >/dev/null
+        '''
       }
     }
   }
 
   post {
-    success {
-      dir(env.FRONTEND_DIR) {
-        archiveArtifacts artifacts: 'dist/**', fingerprint: true
-      }
-    }
-    cleanup {
-      cleanWs()
+    always {
+      echo "FE pipeline finished: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
     }
   }
 }

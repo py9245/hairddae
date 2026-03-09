@@ -42,3 +42,7 @@ out/
 ### Certificates ###
 nginx/certs/**
 !nginx/certs/.gitkeep
+
+### Frontend Deploy Artifacts ###
+nginx/html/**
+!nginx/html/.gitkeep

@@ -1,0 +1,27 @@
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceTransactionManagerAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+  security:
+    user:
+      name: test-admin
+      password: test-admin-password
+
+management:
+  health:
+    redis:
+      enabled: false
+    db:
+      enabled: false
+
+app:
+  security:
+    jwt:
+      secret: hairddae-test-jwt-secret-key-for-local-tests-2026
+      access-token-expiry-minutes: 30
+      refresh-token-expiry-days: 7
+      issuer: hairddae-test

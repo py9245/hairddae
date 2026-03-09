@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/beapp}
+    username: ${SPRING_DATASOURCE_USERNAME:beapp}
+    password: ${SPRING_DATASOURCE_PASSWORD:beapp_pw}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:redis_pw}
+      timeout: ${REDIS_TIMEOUT:2000}
+
+logging:
+  level:
+    com.example.beapp: DEBUG
+    org.springframework.security: INFO

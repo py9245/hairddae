@@ -35,8 +35,6 @@ out/
 
 ### VS Code ###
 .vscode/
-<<<<<<< HEAD
-=======
 
 ### Local ###
 .venv/
@@ -48,4 +46,3 @@ nginx/certs/**
 ### Frontend Deploy Artifacts ###
 nginx/html/**
 !nginx/html/.gitkeep
->>>>>>> main

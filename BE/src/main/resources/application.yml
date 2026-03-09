@@ -1,32 +1,5 @@
 spring:
   application:
-<<<<<<< HEAD
-    name: backend
-
----
-spring:
-  config:
-    activate:
-      on-profile: docker
-  datasource:
-    url: jdbc:postgresql://postgres:5432/appdb
-    username: appuser
-    password: apppass
-  jpa:
-    hibernate:
-      ddl-auto: update
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-  rabbitmq:
-    host: rabbitmq
-    port: 5672
-    username: guest
-    password: guest
-
-server:
-  port: 8080
-=======
     name: be-app
   datasource:
     url: ${SPRING_DATASOURCE_URL}
@@ -73,4 +46,3 @@ management:
 logging:
   level:
     org.springframework.security: INFO
->>>>>>> main

@@ -21,6 +21,10 @@ import com.example.beapp.api.dto.accounts.SimpleResponse;
 import com.example.beapp.api.dto.accounts.TokenRefreshRequest;
 import com.example.beapp.api.dto.accounts.TokenRefreshResponse;
 
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 
 @RestController
@@ -34,6 +38,12 @@ public class AccountsController {
     }
 
     @PostMapping({"/signin", "/signin/"})
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "201",
+                    description = "Created",
+                    content = @Content(schema = @Schema(implementation = SignupResponse.class)))
+    })
     public ResponseEntity<SignupResponse> signup(@Valid @RequestBody SignupRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(SignupResponse.created(request.userID()));
     }

@@ -38,6 +38,8 @@ out/
 
 ### Local ###
 .venv/
+.env
+docker-compose.local.yml
 
 ### Certificates ###
 nginx/certs/**

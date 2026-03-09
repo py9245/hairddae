@@ -9,7 +9,6 @@ pipeline {
   environment {
     IMAGE_TAG = 'be-app:local'
     COMPOSE_FILE = '/home/ubuntu/S14P21M101/BE/docker-compose.yml'
-    BE_CHANGED = 'false'
   }
 
   stages {
@@ -19,38 +18,7 @@ pipeline {
       }
     }
 
-    stage('Detect BE Changes') {
-      steps {
-        script {
-          def changed = sh(
-            returnStatus: true,
-            script: '''
-              set -eu
-              BEFORE="${gitlabBefore:-}"
-              AFTER="${gitlabAfter:-}"
-
-              if [ -n "$BEFORE" ] && [ -n "$AFTER" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
-                git diff --name-only "$BEFORE" "$AFTER" | grep -q '^BE/'
-                exit $?
-              fi
-
-              git log -1 --name-only --pretty='' | grep -q '^BE/'
-            '''
-          ) == 0
-
-          env.BE_CHANGED = changed ? 'true' : 'false'
-          if (!changed) {
-            currentBuild.description = 'Skipped: no changes under BE/'
-            echo 'No BE/ changes in this push.'
-          }
-        }
-      }
-    }
-
     stage('Build App Image') {
-      when {
-        expression { env.BE_CHANGED == 'true' }
-      }
       steps {
         sh '''
           set -eu
@@ -60,9 +28,6 @@ pipeline {
     }
 
     stage('Deploy With Compose') {
-      when {
-        expression { env.BE_CHANGED == 'true' }
-      }
       steps {
         sh '''
           set -eu
@@ -76,9 +41,6 @@ pipeline {
     }
 
     stage('Health Check') {
-      when {
-        expression { env.BE_CHANGED == 'true' }
-      }
       steps {
         sh '''
           set -eu

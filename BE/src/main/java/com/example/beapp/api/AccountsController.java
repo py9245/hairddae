@@ -24,7 +24,7 @@ import com.example.beapp.api.dto.accounts.TokenRefreshResponse;
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping({"/api/accounts", "/accounts"})
+@RequestMapping("/api/accounts")
 @Validated
 public class AccountsController {
 

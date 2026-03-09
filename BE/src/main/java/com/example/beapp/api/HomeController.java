@@ -24,7 +24,7 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
 @RestController
-@RequestMapping({"/api/home", "/home"})
+@RequestMapping("/api/home")
 @Validated
 public class HomeController {
 

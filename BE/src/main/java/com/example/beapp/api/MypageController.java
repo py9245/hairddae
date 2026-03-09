@@ -21,7 +21,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 
 @RestController
-@RequestMapping({"/api/mypage", "/mypage"})
+@RequestMapping("/api/mypage")
 @Validated
 public class MypageController {
 

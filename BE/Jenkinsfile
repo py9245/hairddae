@@ -1,0 +1,97 @@
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+  }
+
+  environment {
+    IMAGE_TAG = 'be-app:local'
+    COMPOSE_FILE = '/home/ubuntu/S14P21M101/BE/docker-compose.yml'
+    BE_CHANGED = 'false'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Detect BE Changes') {
+      steps {
+        script {
+          def changed = sh(
+            returnStatus: true,
+            script: '''
+              set -eu
+              BEFORE="${gitlabBefore:-}"
+              AFTER="${gitlabAfter:-}"
+
+              if [ -n "$BEFORE" ] && [ -n "$AFTER" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+                git diff --name-only "$BEFORE" "$AFTER" | grep -q '^BE/'
+                exit $?
+              fi
+
+              git log -1 --name-only --pretty='' | grep -q '^BE/'
+            '''
+          ) == 0
+
+          env.BE_CHANGED = changed ? 'true' : 'false'
+          if (!changed) {
+            currentBuild.description = 'Skipped: no changes under BE/'
+            echo 'No BE/ changes in this push.'
+          }
+        }
+      }
+    }
+
+    stage('Build App Image') {
+      when {
+        expression { env.BE_CHANGED == 'true' }
+      }
+      steps {
+        sh '''
+          set -eu
+          docker build -t "$IMAGE_TAG" -f "$WORKSPACE/BE/Dockerfile" "$WORKSPACE/BE"
+        '''
+      }
+    }
+
+    stage('Deploy With Compose') {
+      when {
+        expression { env.BE_CHANGED == 'true' }
+      }
+      steps {
+        sh '''
+          set -eu
+          test -f "$COMPOSE_FILE"
+
+          docker compose -f "$COMPOSE_FILE" up -d postgres redis
+          docker compose -f "$COMPOSE_FILE" up -d --no-deps --no-build app
+          docker compose -f "$COMPOSE_FILE" up -d --no-deps --no-build nginx
+        '''
+      }
+    }
+
+    stage('Health Check') {
+      when {
+        expression { env.BE_CHANGED == 'true' }
+      }
+      steps {
+        sh '''
+          set -eu
+          curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/api/health >/dev/null \
+            || curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/actuator/health >/dev/null
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      echo "BE pipeline finished: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+    }
+  }
+}

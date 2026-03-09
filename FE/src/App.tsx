@@ -1,12 +1,10 @@
-import './App.css'
+﻿import { Button } from '@/components/ui/button'
 
 function App() {
-
   return (
-    <>
-      <div>
-      </div>
-    </>
+    <main className="flex min-h-screen items-center justify-center p-6">
+      <Button>shadcn-ui ready</Button>
+    </main>
   )
 }
 

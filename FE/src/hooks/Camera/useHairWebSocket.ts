@@ -118,30 +118,29 @@ export function useHairWebSocket({
   //   }
   // }, []
 
+  const sendFrame = useCallback(async (payload: HairFramePayload) => {
+    try {
+      const res = await fetch('http://localhost:8000/frame', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
 
-const sendFrame = useCallback(async (payload: HairFramePayload) => {
-  try {
-    const res = await fetch('http://localhost:8000/frame', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    })
+      if (!res.ok) {
+        console.error('frame 전송 실패:', res.status, res.statusText)
+        return false
+      }
 
-    if (!res.ok) {
-      console.error('frame 전송 실패:', res.status, res.statusText)
+      const data = await res.json()
+      console.log('frame 응답:', data)
+      return true
+    } catch (err) {
+      console.error('frame 전송 실패:', err)
       return false
     }
-
-    const data = await res.json()
-    console.log('frame 응답:', data)
-    return true
-  } catch (err) {
-    console.error('frame 전송 실패:', err)
-    return false
-  }
-}, [])
+  }, [])
 
   return {
     isConnected,

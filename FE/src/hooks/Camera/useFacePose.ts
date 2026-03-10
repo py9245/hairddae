@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
-import { getHeadPoseFromMatrix } from '@/lib/Camera/pose'
 import type { DetectForVideoResult } from '@/hooks/Camera/useFaceLandmarkersLoop'
+import { getHeadPoseFromMatrix } from '@/lib/Camera/pose'
 
 type PoseLike = {
   pitch?: number

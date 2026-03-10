@@ -1,19 +1,19 @@
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 import { useEffect, useRef, useState } from 'react'
-import { isFaceInsideGuide } from '@/lib/Camera/guide'
-import { classifyPose } from '@/lib/Camera/pose'
-import type { FaceFrame, PoseStatus } from '@/lib/Camera/types'
-import { updateFrameRef } from '@/lib/Camera/frame'
+import {
+  type LandmarkerLike,
+  useFaceLandmarksLoop,
+} from '@/hooks/Camera/useFaceLandmarkersLoop'
+import { useFacePose } from '@/hooks/Camera/useFacePose'
 import {
   drawLandmarksCover,
   drawRedPointsCover,
   syncCanvasSize,
 } from '@/lib/Camera/drawLandmarks'
-import {
-  useFaceLandmarksLoop,
-  type LandmarkerLike,
-} from '@/hooks/Camera/useFaceLandmarkersLoop'
-import { useFacePose } from '@/hooks/Camera/useFacePose'
+import { updateFrameRef } from '@/lib/Camera/frame'
+import { isFaceInsideGuide } from '@/lib/Camera/guide'
+import { classifyPose } from '@/lib/Camera/pose'
+import type { FaceFrame, PoseStatus } from '@/lib/Camera/types'
 
 export function useFaceTrackingLoop({
   videoRef,
@@ -35,8 +35,9 @@ export function useFaceTrackingLoop({
 
   const [status, setStatus] = useState<PoseStatus>('none')
   const [inGuide, setInGuide] = useState(false)
-  const [landmarksState, setLandmarksState] =
-    useState<NormalizedLandmark[] | null>(null)
+  const [landmarksState, setLandmarksState] = useState<
+    NormalizedLandmark[] | null
+  >(null)
 
   const { result, landmarks } = useFaceLandmarksLoop({
     videoRef,

@@ -12,6 +12,7 @@ import { PageShell } from '@/components/page-shell'
 import { RouteCard } from '@/components/route-card'
 import { Button } from '@/components/ui/button'
 import { type AuthStore, auth } from '@/lib/auth'
+import Camera from './app/Camera'
 
 type RouterContext = {
   auth: AuthStore
@@ -51,7 +52,7 @@ const signupRoute = createRoute({
 })
 
 const mainRoute = createProtectedRoute('main', MainPage)
-const cameraRoute = createProtectedRoute('camera', CameraPage)
+const cameraRoute = createProtectedRoute('camera', Camera)
 const myPageRoute = createProtectedRoute('mypage', MyPage)
 
 const routeTree = rootRoute.addChildren([
@@ -311,44 +312,6 @@ function MainPage() {
           title="Quick actions"
           body="Camera / My Page로 이동하는 액션 모듈"
         />
-      </div>
-    </PageShell>
-  )
-}
-
-function CameraPage() {
-  return (
-    <PageShell
-      accent="#f97316"
-      badge="Camera"
-      title="카메라 페이지"
-      description="핵심 기능이 들어갈 독립 라우트입니다. 실제 비디오 프리뷰와 촬영 플로우는 이 영역에 연결하면 됩니다."
-      action={
-        <Button
-          variant="outline"
-          className="rounded-full border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-          onClick={() => void router.navigate({ to: '/main' })}
-        >
-          메인으로
-        </Button>
-      }
-    >
-      <div className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
-        <section className="flex min-h-80 items-center justify-center rounded-[1.75rem] border border-dashed border-white/30 bg-black/25 p-6">
-          <div className="text-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.35em] text-orange-200">
-              Preview
-            </p>
-            <p className="mt-4 text-lg font-medium">카메라 프리뷰 영역</p>
-          </div>
-        </section>
-        <section className="space-y-4">
-          <GlassPanel title="Capture" body="촬영 버튼, 타이머, 권한 상태" />
-          <GlassPanel
-            title="Analysis"
-            body="촬영 후 후처리 또는 AI 분석 결과 카드"
-          />
-        </section>
       </div>
     </PageShell>
   )

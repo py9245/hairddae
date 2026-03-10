@@ -61,11 +61,13 @@ function buildFramePayload(
   videoEl: HTMLVideoElement | null,
   poseNorm: PoseNorm | null,
   landmarks: PoseNorm[] | null,
-): (HairFramePayload & {
-  frame_id: number
-  camera: { w: number; h: number }
-  angle_hash: number
-}) | null {
+):
+  | (HairFramePayload & {
+      frame_id: number
+      camera: { w: number; h: number }
+      angle_hash: number
+    })
+  | null {
   if (!poseNorm || !landmarks || landmarks.length === 0 || !landmarks[10]) {
     return null
   }
@@ -181,18 +183,18 @@ export default function FaceLandmarksView({
   }, [resultJson])
 
   const foreheadPx = useMemo(() => {
-  const wrap = wrapRef.current
-  const forehead = landmarks?.[10]
+    const wrap = wrapRef.current
+    const forehead = landmarks?.[10]
 
-  if (!wrap || !forehead) return null
+    if (!wrap || !forehead) return null
 
-  const rect = wrap.getBoundingClientRect()
+    const rect = wrap.getBoundingClientRect()
 
-  return {
-    x: (1 - forehead.x) * rect.width,
-    y: forehead.y * rect.height,
-  }
-}, [landmarks])
+    return {
+      x: (1 - forehead.x) * rect.width,
+      y: forehead.y * rect.height,
+    }
+  }, [landmarks])
 
   return (
     <div className="grid h-screen w-screen place-items-center overflow-hidden">
@@ -213,23 +215,25 @@ export default function FaceLandmarksView({
           className="pointer-events-none absolute inset-0 hidden h-full w-full -scale-x-100"
         />
 
-        {selectedHair && selectedHair.img && foreheadPx && (() => {
-        const flippedAnchorX = selectedHair.size.w - selectedHair.anchor.x
+        {selectedHair?.img &&
+          foreheadPx &&
+          (() => {
+            const flippedAnchorX = selectedHair.size.w - selectedHair.anchor.x
 
-        return (
-          <img
-            src={selectedHair.img}
-            alt={selectedHair.label}
-            className="pointer-events-none absolute z-10"
-            style={{
-              width: `${selectedHair.size.w}px`,
-              height: `${selectedHair.size.h}px`,
-              left: `${foreheadPx.x - flippedAnchorX - selectedHair.offsetPx.x}px`,
-              top: `${foreheadPx.y - selectedHair.anchor.y + selectedHair.offsetPx.y}px`,
-            }}
-          />
-        )
-      })()}
+            return (
+              <img
+                src={selectedHair.img}
+                alt={selectedHair.label}
+                className="pointer-events-none absolute z-10"
+                style={{
+                  width: `${selectedHair.size.w}px`,
+                  height: `${selectedHair.size.h}px`,
+                  left: `${foreheadPx.x - flippedAnchorX - selectedHair.offsetPx.x}px`,
+                  top: `${foreheadPx.y - selectedHair.anchor.y + selectedHair.offsetPx.y}px`,
+                }}
+              />
+            )
+          })()}
 
         {resultPng && (
           <img

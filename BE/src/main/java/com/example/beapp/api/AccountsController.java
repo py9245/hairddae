@@ -1,8 +1,5 @@
 package com.example.beapp.api;
 
-import java.time.Instant;
-import java.util.UUID;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -20,46 +17,53 @@ import com.example.beapp.api.dto.accounts.SignupResponse;
 import com.example.beapp.api.dto.accounts.SimpleResponse;
 import com.example.beapp.api.dto.accounts.TokenRefreshRequest;
 import com.example.beapp.api.dto.accounts.TokenRefreshResponse;
+import com.example.beapp.service.AccountsService;
 
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping({"/api/accounts", "/accounts"})
+@RequestMapping("/api/accounts")
 @Validated
 public class AccountsController {
 
+    private final AccountsService accountsService;
+
+    public AccountsController(AccountsService accountsService) {
+        this.accountsService = accountsService;
+    }
+
     @PostMapping({"/login", "/login/"})
     public ResponseEntity<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
-        return ResponseEntity.ok(LoginResponse.ok(request.userID(), issueAccessToken(), issueRefreshToken()));
+        return ResponseEntity.ok(accountsService.login(request));
     }
 
     @PostMapping({"/signin", "/signin/"})
+    @ApiResponses({
+            @ApiResponse(
+                    responseCode = "201",
+                    description = "Created",
+                    content = @Content(schema = @Schema(implementation = SignupResponse.class)))
+    })
     public ResponseEntity<SignupResponse> signup(@Valid @RequestBody SignupRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(SignupResponse.created(request.userID()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(accountsService.signup(request));
     }
 
     @PostMapping({"/logout", "/logout/"})
     public ResponseEntity<SimpleResponse> logout(@Valid @RequestBody LogoutRequest request) {
-        return ResponseEntity.ok(SimpleResponse.ok("로그아웃 완료"));
+        return ResponseEntity.ok(accountsService.logout(request));
     }
 
     @PostMapping({"/signout", "/signout/"})
     public ResponseEntity<SimpleResponse> signout(@Valid @RequestBody SignoutRequest request) {
-        return ResponseEntity.ok(SimpleResponse.ok("회원탈퇴 완료"));
+        return ResponseEntity.ok(accountsService.signout(request));
     }
 
     @PostMapping({"/refreshToken", "/refreshToken/"})
     public ResponseEntity<TokenRefreshResponse> refresh(@Valid @RequestBody TokenRefreshRequest request) {
-        String newAccess = issueAccessToken();
-        String newRefresh = request.rotate() != null && request.rotate() ? issueRefreshToken() : request.refreshToken();
-        return ResponseEntity.ok(TokenRefreshResponse.ok(newAccess, newRefresh));
-    }
-
-    private String issueAccessToken() {
-        return "access-" + UUID.randomUUID() + "-" + Instant.now().toEpochMilli();
-    }
-
-    private String issueRefreshToken() {
-        return "refresh-" + UUID.randomUUID() + "-" + Instant.now().toEpochMilli();
+        return ResponseEntity.ok(accountsService.refresh(request));
     }
 }

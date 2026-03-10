@@ -30,7 +30,7 @@ class ApiSecurityIntegrationTest {
 
     @Test
     void protectedEndpointRequiresJwt() throws Exception {
-        mockMvc.perform(get("/api/mypage/user"))
+        mockMvc.perform(get("/api/me"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(401));
     }
@@ -52,10 +52,12 @@ class ApiSecurityIntegrationTest {
         JsonNode loginBody = objectMapper.readTree(loginResult.getResponse().getContentAsString());
         String accessToken = loginBody.get("accessToken").asText();
 
-        mockMvc.perform(get("/api/mypage/user")
+        mockMvc.perform(get("/api/me")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userID").value("TestUser01"));
+                .andExpect(jsonPath("$.userID").value("TestUser01"))
+                .andExpect(jsonPath("$.age").value(25))
+                .andExpect(jsonPath("$.gender").value("M"));
     }
 
     @Test
@@ -87,7 +89,7 @@ class ApiSecurityIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("로그아웃 완료"));
 
-        mockMvc.perform(get("/api/mypage/user")
+        mockMvc.perform(get("/api/me")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(401));

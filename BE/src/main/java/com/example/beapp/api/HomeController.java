@@ -4,6 +4,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.beapp.api.dto.home.CustomRankResponse;
 import com.example.beapp.api.dto.home.HairApplyRequest;
 import com.example.beapp.api.dto.home.HairApplyResponse;
+import com.example.beapp.api.dto.home.HairApplyStatusResponse;
 import com.example.beapp.api.dto.home.NormalRankResponse;
 import com.example.beapp.service.HomeService;
 
@@ -58,5 +60,12 @@ public class HomeController {
             @RequestHeader(name = "Authorization", required = false) String authorization,
             @Valid @RequestBody HairApplyRequest request) {
         return ResponseEntity.ok(homeService.startHairApply(request, authorization));
+    }
+
+    @GetMapping("/hairapplystatus/{applySessionId}")
+    public ResponseEntity<HairApplyStatusResponse> hairApplyStatus(
+            Authentication authentication,
+            @PathVariable String applySessionId) {
+        return ResponseEntity.ok(homeService.getHairApplyStatus(authentication.getName(), applySessionId));
     }
 }

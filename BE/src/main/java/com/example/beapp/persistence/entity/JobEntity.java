@@ -93,6 +93,10 @@ public class JobEntity extends BaseTimeEntity {
         return requestPayload;
     }
 
+    public void setRequestPayload(Map<String, Object> requestPayload) {
+        this.requestPayload = requestPayload;
+    }
+
     public Map<String, Object> getResultPayload() {
         return resultPayload;
     }

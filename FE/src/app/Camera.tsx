@@ -13,10 +13,7 @@ export default function Camera() {
     [],
   )
 
-  const wasmPath = useMemo(
-    () => `${import.meta.env.BASE_URL}mediapipe`,
-    [],
-  )
+  const wasmPath = useMemo(() => `${import.meta.env.BASE_URL}mediapipe`, [])
 
   const cam = useUserMedia({ videoRef })
 

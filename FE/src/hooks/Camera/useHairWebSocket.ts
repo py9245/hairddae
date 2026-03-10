@@ -59,13 +59,13 @@ export function useHairWebSocket({
 
   useEffect(() => {
     if (!enabled) return
-
+    console.log('WS_URL:', import.meta.env.VITE_WS_URL)
     if (!WS_URL) {
       setError('VITE_WS_URL이 설정되지 않았습니다.')
       return
     }
 
-    const ws = new WebSocket(WS_URL)
+    const ws = new WebSocket(`${WS_URL}api/home/hairapply/`)
     wsRef.current = ws
 
     ws.onopen = () => {

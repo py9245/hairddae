@@ -51,7 +51,11 @@ public class AccountsService {
 
     public SignupResponse signup(SignupRequest request) {
         if (userAccountRepository.existsByUserId(request.userID())) {
-            throw new ApiException(ErrorCode.DUPLICATE_USER);
+            throw new ApiException(ErrorCode.DUPLICATE_USER, "이미 사용 중인 아이디입니다.");
+        }
+
+        if (!request.password().equals(request.passwordConfirm())) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "비밀번호 확인이 일치하지 않습니다.");
         }
 
         userAccountRepository.save(new UserAccount(

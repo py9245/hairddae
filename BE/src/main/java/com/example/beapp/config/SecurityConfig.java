@@ -73,6 +73,8 @@ public class SecurityConfig {
                                 "/api/home/hairapplystart",
                                 "/api/home/hairapplystart/").permitAll()
                         .requestMatchers(
+                                "/api/me",
+                                "/api/me/",
                                 "/api/home/customrank",
                                 "/api/home/customrank/",
                                 "/api/home/nomalrank",

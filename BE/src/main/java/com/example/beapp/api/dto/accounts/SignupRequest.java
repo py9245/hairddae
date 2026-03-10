@@ -18,6 +18,10 @@ public record SignupRequest(
                 message = "영문/숫자/특수문자 각 1개 이상 포함")
         String password,
 
+        @NotBlank
+        @Size(min = 8, max = 16)
+        String passwordConfirm,
+
         @Min(1) @Max(119)
         Integer age,
 

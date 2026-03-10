@@ -101,6 +101,7 @@ class ApiSecurityIntegrationTest {
                                 {
                                   "userID": "bad",
                                   "password": "short",
+                                  "passwordConfirm": "short",
                                   "age": 150,
                                   "gender": "X"
                                 }
@@ -109,5 +110,41 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.errors").isArray())
                 .andExpect(jsonPath("$.errors[0].field").exists());
+    }
+
+    @Test
+    void signupRejectsPasswordConfirmationMismatch() throws Exception {
+        mockMvc.perform(post("/api/accounts/signin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "userID": "NewUser01",
+                                  "password": "P@ssw0rd1",
+                                  "passwordConfirm": "P@ssw0rd2",
+                                  "age": 27,
+                                  "gender": "F"
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.message").value("비밀번호 확인이 일치하지 않습니다."));
+    }
+
+    @Test
+    void signupReturnsDuplicateIdMessageWithoutSeparateCheckApi() throws Exception {
+        mockMvc.perform(post("/api/accounts/signin")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "userID": "TestUser01",
+                                  "password": "P@ssw0rd1",
+                                  "passwordConfirm": "P@ssw0rd1",
+                                  "age": 25,
+                                  "gender": "M"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("이미 사용 중인 아이디입니다."));
     }
 }

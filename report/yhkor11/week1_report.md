@@ -15,6 +15,10 @@
 - [260305_모자이크 된 원본 데이터에 랜드마크 적용](https://ssafy.atlassian.net/browse/S14P21M101-525)
     - [260305_회의록 작성](https://docs.google.com/document/d/1RDvnLXpA79PWKaoAmXLyxPa9YtcZ7pYEEnLGhmB7oko/edit?usp=sharing)
 
+## 260306
+- [AI - 사용자 얼굴 사이즈와 헤어 사이즈 맞추기 위한 최적의 방법 조사](https://ssafy.atlassian.net/browse/S14P21M101-520)
+- [AI - WBS 기획](https://ssafy.atlassian.net/browse/S14P21M101-530)
+
 ## 260309
 - [AI - 기준에 따른 데이터 선정](https://ssafy.atlassian.net/browse/S14P21M101-571?atlOrigin=eyJpIjoiNGY2MDFiMzA4YzNmNDg0MjkxYjVkYzM5ZmZmMzYxMDkiLCJwIjoiaiJ9)
 - [AI - 원본 데이터 증강, 학습셋 구축](https://ssafy.atlassian.net/browse/S14P21M101-572?atlOrigin=eyJpIjoiZTk0OGJkMjJjNzQyNGQ0ZGE5MmIyNTY3MmRhYWZlNGEiLCJwIjoiaiJ9)

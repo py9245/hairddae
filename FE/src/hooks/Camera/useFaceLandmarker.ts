@@ -3,14 +3,14 @@ import { useEffect, useRef, useState } from 'react'
 
 type Args = {
   enabled?: boolean
-  wasmBaseUrl?: string
+  wasmBaseUrl: string
   modelAssetPath: string
   numFaces?: number
 }
 
 export function useFaceLandmarker({
   enabled = true,
-  wasmBaseUrl = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm',
+  wasmBaseUrl,
   modelAssetPath,
   numFaces = 1,
 }: Args) {
@@ -42,8 +42,10 @@ export function useFaceLandmarker({
 
         landmarkerRef.current = landmarker
         setReady(true)
+        setError(null)
       } catch (e) {
         setError(e)
+        console.error('FaceLandmarker init failed:', e)
       }
     }
 

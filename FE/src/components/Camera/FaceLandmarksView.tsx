@@ -127,7 +127,6 @@ export default function FaceLandmarksView({
     error: wsError,
     sendFrame,
   } = useHairWebSocket({
-    url: 'ws://localhost:8000/ws',
     enabled: true,
   })
 

@@ -13,12 +13,13 @@ export default function Camera() {
     [],
   )
 
+  const wasmPath = useMemo(() => `${import.meta.env.BASE_URL}mediapipe`, [])
+
   const cam = useUserMedia({ videoRef })
 
   const mp = useFaceLandmarker({
     modelAssetPath: modelPath,
-    wasmBaseUrl:
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm',
+    wasmBaseUrl: wasmPath,
   })
 
   const { poseNorm, landmarks } = useFaceTrackingLoop({

@@ -28,9 +28,26 @@ pipeline {
         dir('FE') {
           sh '''
             set -eu
-            corepack enable
-            corepack pnpm install --frozen-lockfile
-            corepack pnpm run build
+
+            run_pnpm() {
+              if command -v corepack >/dev/null 2>&1; then
+                corepack pnpm "$@"
+              elif command -v pnpm >/dev/null 2>&1; then
+                pnpm "$@"
+              elif command -v npx >/dev/null 2>&1; then
+                npx -y pnpm@10 "$@"
+              else
+                echo "ERROR: corepack/pnpm/npx not found." >&2
+                exit 1
+              fi
+            }
+
+            if command -v corepack >/dev/null 2>&1; then
+              corepack enable
+            fi
+
+            run_pnpm install --frozen-lockfile
+            run_pnpm run build
           '''
         }
       }

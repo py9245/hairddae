@@ -38,6 +38,9 @@ out/
 
 ### Local ###
 .venv/
+docker-compose.local.yml
+WBS_템플릿_BE_v2.xlsx
+WBS_템플릿_INFRA_v2.xlsx
 
 ### Certificates ###
 nginx/certs/**

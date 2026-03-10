@@ -36,3 +36,37 @@
 
 - [[W2][BE] ERD 제작](https://ssafy.atlassian.net/browse/S14P21M101-618?atlOrigin=eyJpIjoiZTdlNDAxMDkwM2QyNDMzMTljMmNjOWFiOTc4ZmFkMDciLCJwIjoiaiJ9)
   - [산출물 - 3/9 [W2][BE] ERD](https://drive.google.com/file/d/1d5I9XN2TWAyUqhlKc8U3I3fTwtMoUCJB/view?usp=sharing)
+
+## 260310
+- [[W2][BE] DB 연결 + Flyway 초기 마이그레이션 (S14P21M101-552)](https://ssafy.atlassian.net/browse/S14P21M101-552)
+  - [레포트 - 3/10 [W2][BE] DB 연결 + Flyway 초기 마이그레이션](./0310+S14P21M101-552.md)
+
+- [[W2][BE] 엔티티 설계(User/Hair/Like/History/Job/Ad) (S14P21M101-553)](https://ssafy.atlassian.net/browse/S14P21M101-553)
+  - [레포트 - 3/10 [W2][BE] 엔티티 설계(User/Hair/Like/History/Job/Ad)](./0310+S14P21M101-553.md)
+
+- [[W2][BE] Spring Security 기본 설정 + CORS (S14P21M101-555)](https://ssafy.atlassian.net/browse/S14P21M101-555)
+  - [레포트 - 3/10 [W2][BE] Spring Security 기본 설정 + CORS](./0310+S14P21M101-555.md)
+
+- [[W2][BE] JWT 발급/검증(Filter) 구현 (S14P21M101-556)](https://ssafy.atlassian.net/browse/S14P21M101-556)
+  - [레포트 - 3/10 [W2][BE] JWT 발급/검증(Filter) 구현](./0310+S14P21M101-556.md)
+
+- [[W2][BE] RefreshToken 저장/검증 구현 (S14P21M101-557)](https://ssafy.atlassian.net/browse/S14P21M101-557)
+  - [레포트 - 3/10 [W2][BE] RefreshToken 저장/검증 구현](./0310+S14P21M101-557.md)
+
+- [[W2][BE] 회원가입 API 구현 (S14P21M101-558)](https://ssafy.atlassian.net/browse/S14P21M101-558)
+  - [레포트 - 3/10 [W2][BE] 회원가입 API 구현](./0310+S14P21M101-558.md)
+
+- [[W2][BE] 로그인 API 구현 (S14P21M101-559)](https://ssafy.atlassian.net/browse/S14P21M101-559)
+  - [레포트 - 3/10 [W2][BE] 로그인 API 구현](./0310+S14P21M101-559.md)
+
+- [[W2][BE] 토큰 재발급 API 구현 (S14P21M101-560)](https://ssafy.atlassian.net/browse/S14P21M101-560)
+  - [레포트 - 3/10 [W2][BE] 토큰 재발급 API 구현](./0310+S14P21M101-560.md)
+
+- [[W2][BE] 로그아웃 API 구현 (S14P21M101-561)](https://ssafy.atlassian.net/browse/S14P21M101-561)
+  - [레포트 - 3/10 [W2][BE] 로그아웃 API 구현](./0310+S14P21M101-561.md)
+
+- [[W2][BE] 내 정보 조회 API(GET /me) (S14P21M101-562)](https://ssafy.atlassian.net/browse/S14P21M101-562)
+  - [레포트 - 3/10 [W2][BE] 내 정보 조회 API(GET /me)](./0310+S14P21M101-562.md)
+
+- [[W2][BE][AI] BE-AI 연동 PoC(작업ID/상태) (S14P21M101-538)](https://ssafy.atlassian.net/browse/S14P21M101-538)
+  - [레포트 - 3/10 [W2][BE][AI] BE-AI 연동 PoC(작업ID/상태)](./0310+S14P21M101-538.md)

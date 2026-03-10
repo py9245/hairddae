@@ -131,6 +131,7 @@ export default function FaceLandmarksView({
     const payload = buildFramePayload(userId, poseNorm, landmarks)
     if (!payload) return
 
+    // console.log('forehead:', JSON.stringify(payload.forehead, null, 2))
     sendFrame(payload)
   }, [poseNorm, landmarks, sendFrame])
 

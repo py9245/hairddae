@@ -47,13 +47,11 @@ function App() {
         {loading ? 'Checking...' : 'Check /api/health'}
       </Button>
 
-      {error && (
-        <p className="text-sm text-red-600">Failed: {error}</p>
-      )}
+      {error && <p className="text-sm text-red-600">Failed: {error}</p>}
 
       {health && (
         <pre className="w-full overflow-auto rounded-md border p-3 text-sm">
-{JSON.stringify(health, null, 2)}
+          {JSON.stringify(health, null, 2)}
         </pre>
       )}
     </main>

@@ -38,8 +38,11 @@ out/
 
 ### Local ###
 .venv/
+
 .env
 docker-compose.local.yml
+WBS_템플릿_BE_v2.xlsx
+WBS_템플릿_INFRA_v2.xlsx
 
 ### Certificates ###
 nginx/certs/**
@@ -48,7 +51,3 @@ nginx/certs/**
 ### Frontend Deploy Artifacts ###
 nginx/html/**
 !nginx/html/.gitkeep
-
-
-WBS_템플릿_BE_v2.xlsx
-WBS_템플릿_INFRA_v2.xlsx

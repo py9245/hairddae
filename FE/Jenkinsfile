@@ -19,9 +19,9 @@ pipeline {
 
     stage('Build FE') {
       when {
-        allOf {
-          branch 'FE'
-          changeset pattern: 'FE/**', comparator: 'ANT'
+        expression {
+          def b = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+          return b == 'FE' || b == 'origin/FE' || b.endsWith('/FE')
         }
       }
       steps {
@@ -38,9 +38,9 @@ pipeline {
 
     stage('Deploy dist') {
       when {
-        allOf {
-          branch 'FE'
-          changeset pattern: 'FE/**', comparator: 'ANT'
+        expression {
+          def b = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+          return b == 'FE' || b == 'origin/FE' || b.endsWith('/FE')
         }
       }
       steps {
@@ -54,9 +54,9 @@ pipeline {
 
     stage('Smoke Check') {
       when {
-        allOf {
-          branch 'FE'
-          changeset pattern: 'FE/**', comparator: 'ANT'
+        expression {
+          def b = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+          return b == 'FE' || b == 'origin/FE' || b.endsWith('/FE')
         }
       }
       steps {

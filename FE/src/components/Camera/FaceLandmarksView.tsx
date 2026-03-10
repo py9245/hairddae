@@ -43,17 +43,44 @@ const HAIR_ITEMS: HairItem[] = [
   },
 ]
 
+function normalizeAngle360(v: number) {
+  const rounded = Math.round(v)
+  return ((rounded % 360) + 360) % 360
+}
+
+function makeAngleHash(poseNorm: PoseNorm) {
+  const x = normalizeAngle360(poseNorm.x)
+  const y = normalizeAngle360(poseNorm.y)
+  const z = normalizeAngle360(poseNorm.z)
+  return x * 360 ** 2 + y * 360 + z
+}
+
 function buildFramePayload(
   userId: string,
+  frameId: number,
+  videoEl: HTMLVideoElement | null,
   poseNorm: PoseNorm | null,
   landmarks: PoseNorm[] | null,
-): HairFramePayload | null {
+): (HairFramePayload & {
+  frame_id: number
+  camera: { w: number; h: number }
+  angle_hash: number
+}) | null {
   if (!poseNorm || !landmarks || landmarks.length === 0 || !landmarks[10]) {
     return null
   }
 
+  const w = videoEl?.videoWidth ?? 0
+  const h = videoEl?.videoHeight ?? 0
+
   return {
     user_id: userId,
+    frame_id: frameId,
+    camera: {
+      w,
+      h,
+    },
+    angle_hash: makeAngleHash(poseNorm),
     angle: {
       pitch: poseNorm.x,
       yaw: poseNorm.y,
@@ -84,6 +111,7 @@ export default function FaceLandmarksView({
   landmarks: PoseNorm[] | null
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null)
+  const frameIdRef = useRef(0)
   const userId = 'user-123'
 
   const [appliedHairId, setAppliedHairId] = useState(0)
@@ -128,12 +156,20 @@ export default function FaceLandmarksView({
   }, [pendingHairId])
 
   useEffect(() => {
-    const payload = buildFramePayload(userId, poseNorm, landmarks)
-    if (!payload) return
+    frameIdRef.current += 1
 
-    // console.log('forehead:', JSON.stringify(payload.forehead, null, 2))
+    const payload = buildFramePayload(
+      userId,
+      frameIdRef.current,
+      videoRef.current,
+      poseNorm,
+      landmarks,
+    )
+
+    if (!payload) return
+    // console.log('ws payload:\n', JSON.stringify(payload, null, 2))
     sendFrame(payload)
-  }, [poseNorm, landmarks, sendFrame])
+  }, [poseNorm, landmarks, sendFrame, videoRef])
 
   useEffect(() => {
     if (resultJson) {

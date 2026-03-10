@@ -8,6 +8,12 @@ type Point3D = {
 
 export type HairFramePayload = {
   user_id: string
+  frame_id: number
+  camera: {
+    w: number
+    h: number
+  }
+  angle_hash: number
   angle: {
     pitch: number
     yaw: number
@@ -99,18 +105,43 @@ export function useHairWebSocket({
     }
   }, [url, enabled])
 
-  const sendFrame = useCallback((payload: HairFramePayload) => {
-    const ws = wsRef.current
-    if (!ws || ws.readyState !== WebSocket.OPEN) return false
+  // const sendFrame = useCallback((payload: HairFramePayload) => {
+  //   const ws = wsRef.current
+  //   if (!ws || ws.readyState !== WebSocket.OPEN) return false
 
-    try {
-      ws.send(JSON.stringify(payload))
-      return true
-    } catch (err) {
-      console.error('frame 전송 실패:', err)
+  //   try {
+  //     ws.send(JSON.stringify(payload))
+  //     return true
+  //   } catch (err) {
+  //     console.error('frame 전송 실패:', err)
+  //     return false
+  //   }
+  // }, []
+
+
+const sendFrame = useCallback(async (payload: HairFramePayload) => {
+  try {
+    const res = await fetch('http://localhost:8000/frame', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!res.ok) {
+      console.error('frame 전송 실패:', res.status, res.statusText)
       return false
     }
-  }, [])
+
+    const data = await res.json()
+    console.log('frame 응답:', data)
+    return true
+  } catch (err) {
+    console.error('frame 전송 실패:', err)
+    return false
+  }
+}, [])
 
   return {
     isConnected,

@@ -32,9 +32,9 @@ pipeline {
       steps {
         sh '''
           set -eu
-          install -d "$DEPLOY_ROOT/nginx"
-          cp "$WORKSPACE/BE/docker-compose.yml" "$COMPOSE_FILE"
-          cp "$WORKSPACE/BE/nginx/default.conf" "$DEPLOY_ROOT/nginx/default.conf"
+          test -d "$DEPLOY_ROOT/nginx"
+          cp -f "$WORKSPACE/BE/docker-compose.yml" "$COMPOSE_FILE"
+          cp -f "$WORKSPACE/BE/nginx/default.conf" "$DEPLOY_ROOT/nginx/default.conf"
         '''
       }
     }

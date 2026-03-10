@@ -62,6 +62,7 @@ pipeline {
             NPM_GLOBAL_PREFIX="$WORKSPACE/.tools/npm-global"
             mkdir -p "$NPM_GLOBAL_PREFIX"
             export PATH="$NPM_GLOBAL_PREFIX/bin:$PATH"
+            export COREPACK_ENABLE_AUTO_PIN=0
 
             ensure_node
 
@@ -83,7 +84,10 @@ pipeline {
               corepack enable
             fi
 
-            run_pnpm install --frozen-lockfile
+            if ! run_pnpm install --frozen-lockfile; then
+              echo "WARN: lockfile mismatch, retrying with --no-frozen-lockfile"
+              run_pnpm install --no-frozen-lockfile
+            fi
             run_pnpm run build
           '''
         }

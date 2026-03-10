@@ -72,4 +72,4 @@
   - [레포트 - 3/10 [W2][BE][AI] BE-AI 연동 PoC(작업ID/상태)](https://drive.google.com/file/d/15DVGPBhecbln_Fj81ZHFC_bYU7jjScpd/view?usp=sharing)
 
 - [[W2][BE] 웹소켓 기초셋팅 BE (S14P21M101-623)](https://ssafy.atlassian.net/browse/S14P21M101-623?atlOrigin=eyJpIjoiMTk2MjQwYmQwYTk0NDNhOGE4MDgzZjBkMmFmYzhiNDkiLCJwIjoiaiJ9)
-  - [레포트 - 3/10 [W2][BE] 웹소켓 기초셋팅 BE](./0310+S14P21M101-538.md)
+  - [레포트 - 3/10 [W2][BE] 웹소켓 기초셋팅 BE](https://drive.google.com/file/d/18RsSK6jBcaYx9aCLEyGXuExhIuXUqck4/view?usp=sharing)

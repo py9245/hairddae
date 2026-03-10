@@ -6,6 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
+    "includes": ["src/**", "vite.config.ts", "!src/stories", "!.storybook"],
     "ignoreUnknown": false
   },
   "formatter": {

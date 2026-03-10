@@ -75,6 +75,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/me",
                                 "/api/me/",
+                                "/api/home/hairapplystatus/**",
                                 "/api/home/customrank",
                                 "/api/home/customrank/",
                                 "/api/home/nomalrank",

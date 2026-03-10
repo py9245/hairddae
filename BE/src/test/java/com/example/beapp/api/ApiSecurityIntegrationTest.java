@@ -203,4 +203,44 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.code").value(409))
                 .andExpect(jsonPath("$.message").value("이미 사용 중인 아이디입니다."));
     }
+
+    @Test
+    void hairApplyStartCreatesTrackableJob() throws Exception {
+        MvcResult loginResult = mockMvc.perform(post("/api/accounts/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "userID": "TestUser01",
+                                  "password": "P@ssw0rd1"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode loginBody = objectMapper.readTree(loginResult.getResponse().getContentAsString());
+        String accessToken = loginBody.get("accessToken").asText();
+
+        MvcResult applyStartResult = mockMvc.perform(post("/api/home/hairapplystart")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "accessToken": "%s",
+                                  "hairID": 1
+                                }
+                                """.formatted(accessToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andReturn();
+
+        JsonNode applyStartBody = objectMapper.readTree(applyStartResult.getResponse().getContentAsString());
+        String applySessionId = applyStartBody.get("applySessionId").asText();
+
+        mockMvc.perform(get("/api/home/hairapplystatus/{applySessionId}", applySessionId)
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.applySessionId").value(applySessionId))
+                .andExpect(jsonPath("$.jobType").value("HAIR_APPLY"))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.hairID").value(1));
+    }
 }

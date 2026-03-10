@@ -105,7 +105,7 @@ pipeline {
         sh '''
           set -eu
           test -d "$DEPLOY_DIR"
-          rsync -av --delete --exclude='.gitkeep' "$WORKSPACE/FE/dist/" "$DEPLOY_DIR/"
+          rsync -rv --delete --exclude='.gitkeep' "$WORKSPACE/FE/dist/" "$DEPLOY_DIR/"
         '''
       }
     }

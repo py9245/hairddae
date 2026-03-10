@@ -94,6 +94,60 @@ class ApiSecurityIntegrationTest {
     }
 
     @Test
+    void refreshRotationInvalidatesPreviousRefreshToken() throws Exception {
+        MvcResult loginResult = mockMvc.perform(post("/api/accounts/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "userID": "TestUser01",
+                                  "password": "P@ssw0rd1"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode loginBody = objectMapper.readTree(loginResult.getResponse().getContentAsString());
+        String refreshToken = loginBody.get("refreshToken").asText();
+
+        MvcResult refreshResult = mockMvc.perform(post("/api/accounts/refreshToken")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "refreshToken": "%s",
+                                  "rotate": true
+                                }
+                                """.formatted(refreshToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andReturn();
+
+        JsonNode refreshBody = objectMapper.readTree(refreshResult.getResponse().getContentAsString());
+        String rotatedRefreshToken = refreshBody.get("refreshToken").asText();
+
+        mockMvc.perform(post("/api/accounts/refreshToken")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "refreshToken": "%s",
+                                  "rotate": true
+                                }
+                                """.formatted(refreshToken)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
+
+        mockMvc.perform(post("/api/accounts/refreshToken")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "refreshToken": "%s",
+                                  "rotate": false
+                                }
+                                """.formatted(rotatedRefreshToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+    }
+
+    @Test
     void signupValidationReturnsCommonErrorShape() throws Exception {
         mockMvc.perform(post("/api/accounts/signin")
                         .contentType(MediaType.APPLICATION_JSON)

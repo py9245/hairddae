@@ -8,6 +8,7 @@ pipeline {
 
   environment {
     IMAGE_TAG = 'be-app:local'
+    DEPLOY_ROOT = '/home/ubuntu/S14P21M101/BE'
     COMPOSE_FILE = '/home/ubuntu/S14P21M101/BE/docker-compose.yml'
   }
 
@@ -27,6 +28,17 @@ pipeline {
       }
     }
 
+    stage('Sync Deploy Files') {
+      steps {
+        sh '''
+          set -eu
+          install -d "$DEPLOY_ROOT/nginx"
+          cp "$WORKSPACE/BE/docker-compose.yml" "$COMPOSE_FILE"
+          cp "$WORKSPACE/BE/nginx/default.conf" "$DEPLOY_ROOT/nginx/default.conf"
+        '''
+      }
+    }
+
     stage('Deploy With Compose') {
       steps {
         sh '''
@@ -35,7 +47,7 @@ pipeline {
 
           docker compose -f "$COMPOSE_FILE" up -d postgres redis
           docker compose -f "$COMPOSE_FILE" up -d --no-deps --no-build app
-          docker compose -f "$COMPOSE_FILE" up -d --no-deps --no-build nginx
+          docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate nginx
         '''
       }
     }
@@ -46,13 +58,45 @@ pipeline {
           set -eu
           for i in $(seq 1 20); do
             if curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/api/health >/dev/null 2>&1; then
-              echo "health check passed: /api/health"
-              exit 0
+              WEBSOCKET_HEADERS="$(curl -sS --http1.1 -o /dev/null -D - \
+                --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
+                -H 'Connection: Upgrade' \
+                -H 'Upgrade: websocket' \
+                -H 'Sec-WebSocket-Version: 13' \
+                -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+                -H 'Origin: https://j14m101.p.ssafy.io' \
+                https://j14m101.p.ssafy.io/home/hairapply/ | tr -d '\r')"
+
+              CAMERA_HEADERS="$(curl -fsSI \
+                --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
+                https://j14m101.p.ssafy.io/camera | tr -d '\r')"
+
+              if printf '%s\n' "$WEBSOCKET_HEADERS" | grep -q '^HTTP/1.1 101' \
+                && printf '%s\n' "$CAMERA_HEADERS" | grep -Fq "connect-src 'self' https: wss:"; then
+                echo "health check passed: api, websocket, csp"
+                exit 0
+              fi
             fi
 
             if curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/actuator/health >/dev/null 2>&1; then
-              echo "health check passed: /actuator/health"
-              exit 0
+              WEBSOCKET_HEADERS="$(curl -sS --http1.1 -o /dev/null -D - \
+                --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
+                -H 'Connection: Upgrade' \
+                -H 'Upgrade: websocket' \
+                -H 'Sec-WebSocket-Version: 13' \
+                -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+                -H 'Origin: https://j14m101.p.ssafy.io' \
+                https://j14m101.p.ssafy.io/home/hairapply/ | tr -d '\r')"
+
+              CAMERA_HEADERS="$(curl -fsSI \
+                --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
+                https://j14m101.p.ssafy.io/camera | tr -d '\r')"
+
+              if printf '%s\n' "$WEBSOCKET_HEADERS" | grep -q '^HTTP/1.1 101' \
+                && printf '%s\n' "$CAMERA_HEADERS" | grep -Fq "connect-src 'self' https: wss:"; then
+                echo "health check passed: actuator, websocket, csp"
+                exit 0
+              fi
             fi
 
             echo "health check retry $i/20"

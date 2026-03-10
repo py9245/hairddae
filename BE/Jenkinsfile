@@ -56,45 +56,44 @@ pipeline {
       steps {
         sh '''
           set -eu
+
+          websocket_headers() {
+            ws_headers_file="$(mktemp)"
+            curl -sS --http1.1 -o /dev/null -D "$ws_headers_file" \
+              --connect-timeout 2 \
+              --max-time 2 \
+              --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
+              -H 'Connection: Upgrade' \
+              -H 'Upgrade: websocket' \
+              -H 'Sec-WebSocket-Version: 13' \
+              -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+              -H 'Origin: https://j14m101.p.ssafy.io' \
+              https://j14m101.p.ssafy.io/home/hairapply/ >/dev/null 2>&1 || true
+            tr -d '\r' < "$ws_headers_file"
+            rm -f "$ws_headers_file"
+          }
+
+          camera_headers() {
+            curl -fsSI \
+              --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
+              https://j14m101.p.ssafy.io/camera | tr -d '\r'
+          }
+
           for i in $(seq 1 20); do
+            READY_LABEL=""
             if curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/api/health >/dev/null 2>&1; then
-              WEBSOCKET_HEADERS="$(curl -sS --http1.1 -o /dev/null -D - \
-                --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
-                -H 'Connection: Upgrade' \
-                -H 'Upgrade: websocket' \
-                -H 'Sec-WebSocket-Version: 13' \
-                -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
-                -H 'Origin: https://j14m101.p.ssafy.io' \
-                https://j14m101.p.ssafy.io/home/hairapply/ | tr -d '\r')"
-
-              CAMERA_HEADERS="$(curl -fsSI \
-                --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
-                https://j14m101.p.ssafy.io/camera | tr -d '\r')"
-
-              if printf '%s\n' "$WEBSOCKET_HEADERS" | grep -q '^HTTP/1.1 101' \
-                && printf '%s\n' "$CAMERA_HEADERS" | grep -Fq "connect-src 'self' https: wss:"; then
-                echo "health check passed: api, websocket, csp"
-                exit 0
-              fi
+              READY_LABEL="api"
+            elif curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/actuator/health >/dev/null 2>&1; then
+              READY_LABEL="actuator"
             fi
 
-            if curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/actuator/health >/dev/null 2>&1; then
-              WEBSOCKET_HEADERS="$(curl -sS --http1.1 -o /dev/null -D - \
-                --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
-                -H 'Connection: Upgrade' \
-                -H 'Upgrade: websocket' \
-                -H 'Sec-WebSocket-Version: 13' \
-                -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
-                -H 'Origin: https://j14m101.p.ssafy.io' \
-                https://j14m101.p.ssafy.io/home/hairapply/ | tr -d '\r')"
-
-              CAMERA_HEADERS="$(curl -fsSI \
-                --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
-                https://j14m101.p.ssafy.io/camera | tr -d '\r')"
+            if [ -n "$READY_LABEL" ]; then
+              WEBSOCKET_HEADERS="$(websocket_headers)"
+              CAMERA_HEADERS="$(camera_headers)"
 
               if printf '%s\n' "$WEBSOCKET_HEADERS" | grep -q '^HTTP/1.1 101' \
                 && printf '%s\n' "$CAMERA_HEADERS" | grep -Fq "connect-src 'self' https: wss:"; then
-                echo "health check passed: actuator, websocket, csp"
+                echo "health check passed: $READY_LABEL, websocket, csp"
                 exit 0
               fi
             fi

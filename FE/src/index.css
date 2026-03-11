@@ -4,6 +4,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --app-frame-width: 430px;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -114,11 +115,55 @@
 }
 
 @layer base {
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
 
   body {
     @apply bg-background text-foreground;
+    overflow-x: hidden;
+    min-height: 100dvh;
+  }
+}
+
+@layer components {
+  .app-frame-shell {
+    min-height: 100dvh;
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    padding-top: env(safe-area-inset-top);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+  }
+
+  .app-frame {
+    width: 100%;
+    max-width: var(--app-frame-width);
+    min-height: 100dvh;
+    position: relative;
+    flex: 1 1 auto;
+    background: var(--background);
+    overflow-x: hidden;
+  }
+
+  .app-frame-content {
+    min-height: 100dvh;
+    padding-bottom: 5.5rem;
+  }
+
+  .app-frame-page {
+    min-height: 100%;
+  }
+
+  .app-frame-fill {
+    min-height: 100%;
   }
 }

@@ -24,12 +24,12 @@ export function PageShell({
   return (
     <main
       className={cn(
-        'min-h-screen bg-[radial-gradient(circle_at_top_left,white,transparent_38%),linear-gradient(135deg,var(--page-accent)_0%,#0f172a_82%)] px-6 py-10 text-white',
+        'app-frame-page bg-[radial-gradient(circle_at_top_left,white,transparent_38%),linear-gradient(135deg,var(--page-accent)_0%,#0f172a_82%)] px-6 py-10 text-white',
         className,
       )}
       style={{ '--page-accent': accent } as CSSProperties}
     >
-      <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-5xl flex-col rounded-[2rem] border border-white/20 bg-white/10 p-8 shadow-[0_24px_100px_rgba(15,23,42,0.28)] backdrop-blur md:p-10">
+      <div className="app-frame-fill mx-auto flex max-w-5xl flex-col rounded-[2rem] border border-white/20 bg-white/10 p-8 shadow-[0_24px_100px_rgba(15,23,42,0.28)] backdrop-blur md:p-10">
         <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div className="max-w-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.35em] text-white/70">

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { API_BASE_URL, buildApiUrl } from '@/lib/api'
 
@@ -8,12 +8,12 @@ type HealthResponse = {
   timestamp: string
 }
 
-function App() {
+function Home() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [health, setHealth] = useState<HealthResponse | null>(null)
 
-  async function checkHealth() {
+  const checkHealth = useCallback(async () => {
     setLoading(true)
     setError(null)
 
@@ -32,11 +32,11 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void checkHealth()
-  }, [])
+  }, [checkHealth])
 
   return (
     <main className="mx-auto flex min-h-screen max-w-xl flex-col items-start justify-center gap-4 p-6">
@@ -58,4 +58,4 @@ function App() {
   )
 }
 
-export default App
+export default Home

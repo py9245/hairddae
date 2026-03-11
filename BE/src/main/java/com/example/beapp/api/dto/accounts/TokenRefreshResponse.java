@@ -7,6 +7,6 @@ public record TokenRefreshResponse(
         String refreshToken
 ) {
     public static TokenRefreshResponse ok(String accessToken, String refreshToken) {
-        return new TokenRefreshResponse(200, "토큰 재발급 완료", accessToken, refreshToken);
+        return new TokenRefreshResponse(200, "재발급 성공", accessToken, refreshToken);
     }
 }

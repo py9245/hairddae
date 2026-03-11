@@ -20,8 +20,8 @@ spring:
       timeout: ${REDIS_TIMEOUT:2000}
   security:
     user:
-      name: ${APP_SECURITY_USER}
-      password: ${APP_SECURITY_PASSWORD}
+      name: ${APP_SECURITY_USER:admin}
+      password: ${APP_SECURITY_PASSWORD:admin_pw}
 
 server:
   port: ${SERVER_PORT:8080}
@@ -46,3 +46,17 @@ management:
 logging:
   level:
     org.springframework.security: INFO
+
+app:
+  security:
+    jwt:
+      secret: ${APP_SECURITY_JWT_SECRET:hairddae-local-jwt-secret-key-for-dev-only-2026}
+      access-token-expiry-minutes: ${APP_SECURITY_JWT_ACCESS_MINUTES:60}
+      refresh-token-expiry-days: ${APP_SECURITY_JWT_REFRESH_DAYS:14}
+      issuer: ${APP_SECURITY_JWT_ISSUER:hairddae}
+
+springdoc:
+  api-docs:
+    path: /api/v3/api-docs
+  swagger-ui:
+    path: /api/swagger-ui.html

@@ -196,10 +196,10 @@ export default function FaceLandmarksView({
   }, [landmarks])
 
   return (
-    <div className="grid h-screen w-screen place-items-center overflow-hidden">
+    <div className="app-frame-page grid w-full place-items-center overflow-hidden">
       <div
         ref={wrapRef}
-        className="relative h-screen w-[430px] overflow-hidden bg-black"
+        className="relative h-full w-full overflow-hidden bg-black"
       >
         <video
           ref={videoRef}

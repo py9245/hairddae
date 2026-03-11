@@ -1,0 +1,74 @@
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+  }
+
+  environment {
+    IMAGE_TAG = 'be-app:local'
+    COMPOSE_FILE = '/home/ubuntu/S14P21M101/BE/docker-compose.yml'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Build App Image') {
+      steps {
+        sh '''
+          set -eu
+          docker build -t "$IMAGE_TAG" -f "$WORKSPACE/BE/Dockerfile" "$WORKSPACE/BE"
+        '''
+      }
+    }
+
+    stage('Deploy With Compose') {
+      steps {
+        sh '''
+          set -eu
+          test -f "$COMPOSE_FILE"
+
+          docker compose -f "$COMPOSE_FILE" up -d postgres redis
+          docker compose -f "$COMPOSE_FILE" up -d --no-deps --no-build app
+          docker compose -f "$COMPOSE_FILE" up -d --no-deps --no-build nginx
+        '''
+      }
+    }
+
+    stage('Health Check') {
+      steps {
+        sh '''
+          set -eu
+          for i in $(seq 1 20); do
+            if curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/api/health >/dev/null 2>&1; then
+              echo "health check passed: /api/health"
+              exit 0
+            fi
+
+            if curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/actuator/health >/dev/null 2>&1; then
+              echo "health check passed: /actuator/health"
+              exit 0
+            fi
+
+            echo "health check retry $i/20"
+            sleep 3
+          done
+
+          echo "health check failed after retries"
+          exit 1
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      echo "BE pipeline finished: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+    }
+  }
+}

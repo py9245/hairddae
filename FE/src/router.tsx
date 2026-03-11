@@ -1,3 +1,5 @@
+
+
 import {
   createRootRouteWithContext,
   createRoute,
@@ -71,7 +73,7 @@ export const router = createRouter({
   },
   defaultPreload: 'intent',
   defaultNotFoundComponent: () => (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-white">
+    <main className="app-frame-page flex items-center justify-center bg-slate-950 px-6 text-white">
       <div className="w-full max-w-md rounded-[1.75rem] border border-white/15 bg-white/10 p-8 text-center backdrop-blur">
         <p className="text-xs font-semibold uppercase tracking-[0.35em] text-sky-300">
           404
@@ -114,18 +116,22 @@ function createProtectedRoute(
 
 function RootLayout() {
   return (
-    <>
-      <Outlet />
-      <div className="fixed bottom-4 left-1/2 z-10 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-full border border-slate-900/10 bg-white/80 p-2 shadow-lg backdrop-blur">
-        <nav className="grid grid-cols-5 gap-2">
-          <NavButton to="/" label="Splash" />
-          <NavButton to="/auth/login" label="Login" />
-          <NavButton to="/main" label="Main" />
-          <NavButton to="/camera" label="Camera" />
-          <NavButton to="/mypage" label="My" />
-        </nav>
+    <div className="app-frame-shell">
+      <div className="app-frame">
+        <main className="app-frame-content">
+          <Outlet />
+        </main>
+        <div className="absolute right-4 bottom-4 left-4 z-10 rounded-full border border-slate-900/10 bg-white/80 p-2 shadow-lg backdrop-blur">
+          <nav className="grid grid-cols-5 gap-2">
+            <NavButton to="/" label="Splash" />
+            <NavButton to="/auth/login" label="Login" />
+            <NavButton to="/main" label="Main" />
+            <NavButton to="/camera" label="Camera" />
+            <NavButton to="/mypage" label="My" />
+          </nav>
+        </div>
       </div>
-    </>
+    </div>
   )
 }
 
@@ -139,8 +145,8 @@ function NavButton({ to, label }: { to: string; label: string }) {
 
 function SplashPage() {
   return (
-    <main className="min-h-screen bg-[linear-gradient(145deg,#e0f2fe_0%,#f8fafc_35%,#fef3c7_100%)] px-6 py-10 text-slate-950">
-      <div className="mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1.15fr_0.85fr]">
+    <main className="app-frame-page bg-[linear-gradient(145deg,#e0f2fe_0%,#f8fafc_35%,#fef3c7_100%)] px-6 py-10 text-slate-950">
+      <div className="app-frame-fill mx-auto grid max-w-6xl items-center gap-8 lg:grid-cols-[1.15fr_0.85fr]">
         <RouteCard
           eyebrow="Splash"
           title="Capture starts here."
@@ -184,9 +190,31 @@ function SplashPage() {
 
 function AuthLayout() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-rose-50 px-6 py-10">
-      <div className="w-full max-w-md">
-        <Outlet />
+    <main className="app-frame-page bg-[linear-gradient(180deg,#082f49_0%,#0f172a_50%,#020617_100%)] px-6 py-10 text-white">
+      <div className="app-frame-fill mx-auto flex max-w-6xl items-center justify-center">
+        <div className="grid w-full items-stretch gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+          <section className="hidden rounded-[2rem] border border-white/10 bg-white/5 p-8 backdrop-blur lg:flex lg:flex-col lg:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-sky-300">
+                Auth
+              </p>
+              <h1 className="mt-4 text-4xl font-semibold tracking-tight">
+                계정 진입 흐름
+              </h1>
+              <p className="mt-4 text-sm leading-6 text-white/70">
+                로그인과 회원가입은 `/auth/*` 하위에서 관리합니다. 실제 API 연동
+                전까지는 임시 로컬 인증 상태를 사용합니다.
+              </p>
+            </div>
+            <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
+              <p className="text-sm text-white/80">Public routes</p>
+              <p className="mt-2 text-xs uppercase tracking-[0.3em] text-white/45">
+                / · /auth/login · /auth/signup
+              </p>
+            </div>
+          </section>
+          <Outlet />
+        </div>
       </div>
     </main>
   )

@@ -36,3 +36,40 @@
 
 - [[W2][BE] ERD 제작](https://ssafy.atlassian.net/browse/S14P21M101-618?atlOrigin=eyJpIjoiZTdlNDAxMDkwM2QyNDMzMTljMmNjOWFiOTc4ZmFkMDciLCJwIjoiaiJ9)
   - [산출물 - 3/9 [W2][BE] ERD](https://drive.google.com/file/d/1d5I9XN2TWAyUqhlKc8U3I3fTwtMoUCJB/view?usp=sharing)
+
+## 260310
+- [[W2][BE] DB 연결 + Flyway 초기 마이그레이션 (S14P21M101-552)](https://ssafy.atlassian.net/browse/S14P21M101-552?atlOrigin=eyJpIjoiYjU5YzAxZTU2ZTU3NDkwNDg5ZjllNGQ3YjBmNjI5N2YiLCJwIjoiaiJ9)
+  - [레포트 - 3/10 [W2][BE] DB 연결 + Flyway 초기 마이그레이션](https://drive.google.com/file/d/1ke6VdZwPOolspQ5CEgUgHtKQMGuo9MNb/view?usp=sharing)
+
+- [[W2][BE] 엔티티 설계(User/Hair/Like/History/Job/Ad) (S14P21M101-553)](https://ssafy.atlassian.net/browse/S14P21M101-553?atlOrigin=eyJpIjoiZTZkMGM3MjM3Y2M1NGY3NWFmNGM3MWIyNmZlZjEyOGEiLCJwIjoiaiJ9)
+  - [레포트 - 3/10 [W2][BE] 엔티티 설계(User/Hair/Like/History/Job/Ad)](https://drive.google.com/file/d/1sn0vJ_iNjf6TD1F2vXgU7kzMcHwOcdAs/view?usp=sharing)
+
+- [[W2][BE] Spring Security 기본 설정 + CORS (S14P21M101-555)](https://ssafy.atlassian.net/browse/S14P21M101-555?atlOrigin=eyJpIjoiM2Y5YmZlMWNjNTEwNGJhZGJlZDFiMjM3M2NjZjI2YmQiLCJwIjoiaiJ9)
+  - [레포트 - 3/10 [W2][BE] Spring Security 기본 설정 + CORS](https://drive.google.com/file/d/1mrFYMMDCNC_eqQLFxzZXYX6Yj0mzvI-r/view?usp=sharing)
+
+- [[W2][BE] JWT 발급/검증(Filter) 구현 (S14P21M101-556)](https://ssafy.atlassian.net/browse/S14P21M101-556?atlOrigin=eyJpIjoiZmE2ZTU5N2EwZTI0NDJhMmJhYTgyYzc2ODE2NTZmYTQiLCJwIjoiaiJ9)
+  - [레포트 - 3/10 [W2][BE] JWT 발급/검증(Filter) 구현](https://drive.google.com/file/d/1QiXoZr7A3himFRyLtTLuwIc_7g4A8n9o/view?usp=sharing)
+
+- [[W2][BE] RefreshToken 저장/검증 구현 (S14P21M101-557)](https://ssafy.atlassian.net/browse/S14P21M101-557?atlOrigin=eyJpIjoiNTI5NDU4ZWFmNzAzNDNjZWIyZGQ2YzM4MGY3NzFjOWEiLCJwIjoiaiJ9)
+  - [레포트 - 3/10 [W2][BE] RefreshToken 저장/검증 구현](https://drive.google.com/file/d/1L76sj8GS6XVqXq_vvOovZqJ-XrNv2e3A/view?usp=sharing)
+
+- [[W2][BE] 회원가입 API 구현 (S14P21M101-558)](https://ssafy.atlassian.net/browse/S14P21M101-558?atlOrigin=eyJpIjoiMzk1YTYwMDhmZGMyNDQyZTgxYzQ1MjRmZjYyMTQ5YTkiLCJwIjoiaiJ9)
+  - [레포트 - 3/10 [W2][BE] 회원가입 API 구현](https://drive.google.com/file/d/1XgfZVyFSHgVzQ6f_IEdQK0MSK_Kkpx18/view?usp=sharing)
+
+- [[W2][BE] 로그인 API 구현 (S14P21M101-559)](https://ssafy.atlassian.net/browse/S14P21M101-559?atlOrigin=eyJpIjoiNjBjMWRmYTA4MDcwNGUzOGFjM2I2ZTYzOGVkMDA0MzEiLCJwIjoiaiJ9)
+  - [레포트 - 3/10 [W2][BE] 로그인 API 구현](https://drive.google.com/file/d/1b8wWccAwNxleUC5E_M4J5rw9mhJDK4xp/view?usp=sharing)
+
+- [[W2][BE] 토큰 재발급 API 구현 (S14P21M101-560)](https://ssafy.atlassian.net/browse/S14P21M101-560?atlOrigin=eyJpIjoiZTUyMzI5ZTZhOTIzNGU1N2E1MmZhN2Q2ZjY3NDM2ZDQiLCJwIjoiaiJ9)
+  - [레포트 - 3/10 [W2][BE] 토큰 재발급 API 구현](https://drive.google.com/file/d/1u82PN8gb82UwB2fJQwbhd26UHDvnaC_d/view?usp=sharing)
+
+- [[W2][BE] 로그아웃 API 구현 (S14P21M101-561)](https://ssafy.atlassian.net/browse/S14P21M101-561?atlOrigin=eyJpIjoiNjg4OWYyYjBiZmY3NDgwY2JiMTJjYjZjMTgwYzI2ODgiLCJwIjoiaiJ9)
+  - [레포트 - 3/10 [W2][BE] 로그아웃 API 구현](https://drive.google.com/file/d/1vJV98UIrWe9c7MGcE7fl3IAVWDe51omL/view?usp=sharing)
+
+- [[W2][BE] 내 정보 조회 API(GET /me) (S14P21M101-562)](https://ssafy.atlassian.net/browse/S14P21M101-562?atlOrigin=eyJpIjoiZmZlMjlhNDc0NzcxNDgxOWJjOWI1ZWFhMGQ3MmIyYmMiLCJwIjoiaiJ9)
+  - [레포트 - 3/10 [W2][BE] 내 정보 조회 API(GET /me)](https://drive.google.com/file/d/1dYJ4nYzhpW5QRC30WY2XuE3N2fMPGU75/view?usp=sharing)
+
+- [[W2][BE][AI] BE-AI 연동 PoC(작업ID/상태) (S14P21M101-538)](https://ssafy.atlassian.net/browse/S14P21M101-538?atlOrigin=eyJpIjoiMmI4OGUwMTY3ZmNiNDdlOGI2MWJkZDJkYWEyZjg3MzciLCJwIjoiaiJ9)
+  - [레포트 - 3/10 [W2][BE][AI] BE-AI 연동 PoC(작업ID/상태)](https://drive.google.com/file/d/15DVGPBhecbln_Fj81ZHFC_bYU7jjScpd/view?usp=sharing)
+
+- [[W2][BE] 웹소켓 기초셋팅 BE (S14P21M101-623)](https://ssafy.atlassian.net/browse/S14P21M101-623?atlOrigin=eyJpIjoiMTk2MjQwYmQwYTk0NDNhOGE4MDgzZjBkMmFmYzhiNDkiLCJwIjoiaiJ9)
+  - [레포트 - 3/10 [W2][BE] 웹소켓 기초셋팅 BE](https://drive.google.com/file/d/18RsSK6jBcaYx9aCLEyGXuExhIuXUqck4/view?usp=sharing)

@@ -39,22 +39,26 @@ function Home() {
   }, [checkHealth])
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-xl flex-col items-start justify-center gap-4 p-6">
-      <h1 className="text-2xl font-semibold">FE ↔ BE Health Check</h1>
-      <p className="text-sm text-muted-foreground">API Base: {API_BASE_URL}</p>
+    <div className="app-frame-shell">
+      <div className="app-frame">
+        <main className="flex min-h-dvh flex-col items-start justify-center gap-4 p-6">
+          <h1 className="text-2xl font-semibold">FE ↔ BE Health Check</h1>
+          <p className="text-sm text-muted-foreground">API Base: {API_BASE_URL}</p>
 
-      <Button onClick={() => void checkHealth()} disabled={loading}>
-        {loading ? 'Checking...' : 'Check /api/health'}
-      </Button>
+          <Button onClick={() => void checkHealth()} disabled={loading}>
+            {loading ? 'Checking...' : 'Check /api/health'}
+          </Button>
 
-      {error && <p className="text-sm text-red-600">Failed: {error}</p>}
+          {error && <p className="text-sm text-red-600">Failed: {error}</p>}
 
-      {health && (
-        <pre className="w-full overflow-auto rounded-md border p-3 text-sm">
-          {JSON.stringify(health, null, 2)}
-        </pre>
-      )}
-    </main>
+          {health && (
+            <pre className="w-full overflow-auto rounded-md border p-3 text-sm">
+              {JSON.stringify(health, null, 2)}
+            </pre>
+          )}
+        </main>
+      </div>
+    </div>
   )
 }
 

@@ -1,7 +1,17 @@
 import type { Preview } from '@storybook/react-vite'
 
 const preview: Preview = {
+  decorators: [
+    (Story) => (
+      <div className="app-frame-shell">
+        <div className="app-frame">
+          <Story />
+        </div>
+      </div>
+    ),
+  ],
   parameters: {
+    layout: 'fullscreen',
     controls: {
       matchers: {
        color: /(background|color)$/i,

@@ -18,7 +18,7 @@ public class HealthController {
         this.applicationName = applicationName;
     }
 
-    @GetMapping({"/api/health", "/health"})
+    @GetMapping("/api/health")
     public HealthResponse health() {
         return new HealthResponse(applicationName, "ok", Instant.now());
     }

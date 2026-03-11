@@ -75,5 +75,5 @@
   - [레포트 - 3/10 [W2][BE] 웹소켓 기초셋팅 BE](https://drive.google.com/file/d/18RsSK6jBcaYx9aCLEyGXuExhIuXUqck4/view?usp=sharing)
 
 ## 260311
-- [[W2][AI] AI POC 검증 (S14P21M101-628)](https://ssafy.atlassian.net/browse/S14P21M101-628?atlOrigin=eyJpIjoiZTkxNjQwMTllNWEyNDg3N2JjMmVjY2Q0NGU5ZGZkYjYiLCJwIjoiaiJ9)
+- [[W2][AI] AI POC 검증 (S14P21M101-631)](https://ssafy.atlassian.net/browse/S14P21M101-631?atlOrigin=eyJpIjoiOTY2NjM5NTFmNWYwNDBiZWE1NTZlYmVlMjNlNjEzYzAiLCJwIjoiaiJ9)
   - [[W2][AI] AI POC 검증](https://docs.google.com/document/d/1G1nc8W5xWt4pYFRFIEunB8RUieKHb0RduFHoYsyMbHU/edit?usp=sharing)

@@ -7,12 +7,13 @@ import {
   redirect,
 } from '@tanstack/react-router'
 import type { ReactElement } from 'react'
-
+import Camera from '@/app/Camera'
+import Login from '@/app/Login'
+import SignUp from '@/app/SignUp'
 import { PageShell } from '@/components/page-shell'
 import { RouteCard } from '@/components/route-card'
 import { Button } from '@/components/ui/button'
 import { type AuthStore, auth } from '@/lib/auth'
-import Camera from './app/Camera'
 
 type RouterContext = {
   auth: AuthStore
@@ -42,13 +43,13 @@ const loginRoute = createRoute({
       throw redirect({ to: '/main' })
     }
   },
-  component: LoginPage,
+  component: Login,
 })
 
 const signupRoute = createRoute({
   getParentRoute: () => authRoute,
   path: 'signup',
-  component: SignupPage,
+  component: SignUp,
 })
 
 const mainRoute = createProtectedRoute('main', MainPage)
@@ -183,97 +184,11 @@ function SplashPage() {
 
 function AuthLayout() {
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#082f49_0%,#0f172a_50%,#020617_100%)] px-6 py-10 text-white">
-      <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center justify-center">
-        <div className="grid w-full items-stretch gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-          <section className="hidden rounded-[2rem] border border-white/10 bg-white/5 p-8 backdrop-blur lg:flex lg:flex-col lg:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.35em] text-sky-300">
-                Auth
-              </p>
-              <h1 className="mt-4 text-4xl font-semibold tracking-tight">
-                계정 진입 흐름
-              </h1>
-              <p className="mt-4 text-sm leading-6 text-white/70">
-                로그인과 회원가입은 `/auth/*` 하위에서 관리합니다. 실제 API 연동
-                전까지는 임시 로컬 인증 상태를 사용합니다.
-              </p>
-            </div>
-            <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
-              <p className="text-sm text-white/80">Public routes</p>
-              <p className="mt-2 text-xs uppercase tracking-[0.3em] text-white/45">
-                / · /auth/login · /auth/signup
-              </p>
-            </div>
-          </section>
-          <Outlet />
-        </div>
+    <main className="flex min-h-screen items-center justify-center bg-rose-50 px-6 py-10">
+      <div className="w-full max-w-md">
+        <Outlet />
       </div>
     </main>
-  )
-}
-
-function LoginPage() {
-  const redirectTo = getRedirectTarget()
-
-  async function handleLogin() {
-    auth.login()
-    await router.navigate({ to: redirectTo })
-  }
-
-  return (
-    <RouteCard
-      eyebrow="Login"
-      title="로그인"
-      description="보호 페이지 접근 시 이 화면으로 리다이렉트됩니다. 현재는 로컬 스토리지에 임시 인증 상태만 기록합니다."
-      className="self-center"
-    >
-      <div className="space-y-4">
-        <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
-          <p className="font-medium text-slate-900">테스트 인증</p>
-          <p className="mt-2">
-            버튼을 누르면 로그인 상태를 만들고 원래 요청 경로 또는 `/main`으로
-            이동합니다.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <Button className="rounded-full" onClick={() => void handleLogin()}>
-            로그인 처리
-          </Button>
-          <Button asChild variant="outline" className="rounded-full">
-            <Link to="/auth/signup">회원가입으로 이동</Link>
-          </Button>
-        </div>
-      </div>
-    </RouteCard>
-  )
-}
-
-function SignupPage() {
-  return (
-    <RouteCard
-      eyebrow="Sign Up"
-      title="회원가입"
-      description="실제 입력 폼과 서버 연동은 이후 단계에서 붙이고, 지금은 auth 영역과 페이지 흐름을 고정합니다."
-      className="self-center"
-    >
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
-          이메일, 비밀번호, 약관 동의
-        </div>
-        <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
-          소셜 로그인이나 프로필 초기화 자리
-        </div>
-      </div>
-      <div className="mt-6 flex flex-wrap gap-3">
-        <Button asChild className="rounded-full">
-          <Link to="/auth/login">로그인으로 돌아가기</Link>
-        </Button>
-        <Button asChild variant="outline" className="rounded-full">
-          <Link to="/">스플래시</Link>
-        </Button>
-      </div>
-    </RouteCard>
   )
 }
 
@@ -373,18 +288,4 @@ function GlassPanel({ title, body }: { title: string; body: string }) {
       <p className="mt-3 text-sm leading-6 text-white/65">{body}</p>
     </section>
   )
-}
-
-function getRedirectTarget() {
-  if (typeof window === 'undefined') {
-    return '/main'
-  }
-
-  const redirectTo = new URLSearchParams(window.location.search).get('redirect')
-
-  if (!redirectTo || !redirectTo.startsWith('/')) {
-    return '/main'
-  }
-
-  return redirectTo
 }

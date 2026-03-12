@@ -1,5 +1,3 @@
-
-
 import {
   createRootRouteWithContext,
   createRoute,
@@ -12,6 +10,7 @@ import type { ReactElement } from 'react'
 import Camera from '@/app/Camera'
 import Login from '@/app/Login'
 import SignUp from '@/app/SignUp'
+import { BottomNav } from '@/components/bottom-nav'
 import { PageShell } from '@/components/page-shell'
 import { RouteCard } from '@/components/route-card'
 import { Button } from '@/components/ui/button'
@@ -121,25 +120,9 @@ function RootLayout() {
         <main className="app-frame-content">
           <Outlet />
         </main>
-        <div className="absolute right-4 bottom-4 left-4 z-10 rounded-full border border-slate-900/10 bg-white/80 p-2 shadow-lg backdrop-blur">
-          <nav className="grid grid-cols-5 gap-2">
-            <NavButton to="/" label="Splash" />
-            <NavButton to="/auth/login" label="Login" />
-            <NavButton to="/main" label="Main" />
-            <NavButton to="/camera" label="Camera" />
-            <NavButton to="/mypage" label="My" />
-          </nav>
-        </div>
+        <BottomNav />
       </div>
     </div>
-  )
-}
-
-function NavButton({ to, label }: { to: string; label: string }) {
-  return (
-    <Button asChild size="sm" variant="ghost" className="rounded-full">
-      <Link to={to}>{label}</Link>
-    </Button>
   )
 }
 

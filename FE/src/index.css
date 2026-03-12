@@ -156,7 +156,7 @@
 
   .app-frame-content {
     min-height: 100dvh;
-    padding-bottom: 5.5rem;
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom));
   }
 
   .app-frame-page {

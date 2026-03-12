@@ -11,8 +11,8 @@ import Camera from '@/app/Camera'
 import Login from '@/app/Login'
 import SignUp from '@/app/SignUp'
 import { BottomNav } from '@/components/bottom-nav'
-import { ProfileCard } from '@/components/profile-card'
 import { PageShell } from '@/components/page-shell'
+import { ProfileCard } from '@/components/profile-card'
 import { RouteCard } from '@/components/route-card'
 import { Button } from '@/components/ui/button'
 import { type AuthStore, auth } from '@/lib/auth'
@@ -252,7 +252,7 @@ function MyPage() {
 
   const profile = {
     nickname: 'mijin.develop',
-    age: null,     // null이면 비공개 처리됨
+    age: null, // null이면 비공개 처리됨
     gender: null,
     avatarVariant: 1 as const,
   }

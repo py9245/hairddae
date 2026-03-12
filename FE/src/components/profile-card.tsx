@@ -11,7 +11,9 @@ export function ProfileCard({ profile, onLogout }: ProfileCardProps) {
   const ageDisplay = profile.age == null ? '비공개' : `${profile.age}세`
 
   const genderMap: Record<string, string> = { F: '여자', M: '남자' }
-  const mappedGender = profile.gender ? (genderMap[profile.gender] ?? profile.gender) : null
+  const mappedGender = profile.gender
+    ? (genderMap[profile.gender] ?? profile.gender)
+    : null
 
   const genderDisplay =
     mappedGender == null || mappedGender === '' ? '비공개' : mappedGender
@@ -29,12 +31,7 @@ export function ProfileCard({ profile, onLogout }: ProfileCardProps) {
           </p>
         </div>
       </div>
-      <Button
-        variant="logout"
-        size="full"
-        className="mt-5"
-        onClick={onLogout}
-      >
+      <Button variant="logout" size="full" className="mt-5" onClick={onLogout}>
         로그아웃
       </Button>
     </section>

@@ -13,6 +13,7 @@ import SignUp from '@/app/SignUp'
 import { BottomNav } from '@/components/bottom-nav'
 import { PageShell } from '@/components/page-shell'
 import { RouteCard } from '@/components/route-card'
+import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { type AuthStore, auth } from '@/lib/auth'
 
@@ -244,30 +245,41 @@ function MainPage() {
 }
 
 function MyPage() {
+  async function handleLogout() {
+    auth.logout()
+    await router.navigate({ to: '/' })
+  }
+
   return (
     <PageShell
       accent="#8b5cf6"
       badge="My Page"
       title="마이페이지"
-      description="프로필, 기록, 환경설정 등을 담는 보호 페이지입니다. 현재는 정보 카드와 인증 제어 동선만 구성합니다."
-      action={
-        <Button
-          variant="outline"
-          className="rounded-full border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-          onClick={() => void router.navigate({ to: '/camera' })}
-        >
-          카메라로
-        </Button>
-      }
+      description="프로필, 기록, 환경설정 등을 담는 보호 페이지입니다."
     >
-      <div className="grid gap-4 md:grid-cols-2">
-        <GlassPanel title="Profile" body="닉네임, 이메일, 아바타, 기본 설정" />
-        <GlassPanel title="History" body="촬영 이력, 즐겨찾기, 최근 활동" />
-        <GlassPanel title="Preferences" body="알림, 접근성, 화면 옵션" />
-        <GlassPanel
-          title="Security"
-          body="로그아웃, 계정 관리, 연결된 인증 수단"
-        />
+      <div className="grid gap-4">
+        <section className="rounded-[1.5rem] border border-white/15 bg-white/10 p-5 backdrop-blur">
+          <div className="flex items-center gap-4">
+            <Avatar variant={1} />
+            <div>
+              <p className="text-sm font-semibold text-white">mijin.develop</p>
+              <p className="mt-1 text-xs text-white/60">18세 · 비공개</p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            className="mt-4 w-full rounded-full border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+            onClick={() => void handleLogout()}
+          >
+            로그아웃
+          </Button>
+        </section>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <GlassPanel title="History" body="촬영 이력, 즐겨찾기, 최근 활동" />
+          <GlassPanel title="Preferences" body="알림, 접근성, 화면 옵션" />
+          <GlassPanel title="Security" body="계정 관리, 연결된 인증 수단" />
+        </div>
       </div>
     </PageShell>
   )

@@ -11,9 +11,9 @@ import Camera from '@/app/Camera'
 import Login from '@/app/Login'
 import SignUp from '@/app/SignUp'
 import { BottomNav } from '@/components/bottom-nav'
+import { ProfileCard } from '@/components/profile-card'
 import { PageShell } from '@/components/page-shell'
 import { RouteCard } from '@/components/route-card'
-import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { type AuthStore, auth } from '@/lib/auth'
 
@@ -250,6 +250,13 @@ function MyPage() {
     await router.navigate({ to: '/' })
   }
 
+  const profile = {
+    nickname: 'mijin.develop',
+    age: null,     // null이면 비공개 처리됨
+    gender: null,
+    avatarVariant: 1 as const,
+  }
+
   return (
     <PageShell
       accent="#8b5cf6"
@@ -258,22 +265,7 @@ function MyPage() {
       description="프로필, 기록, 환경설정 등을 담는 보호 페이지입니다."
     >
       <div className="grid gap-4">
-        <section className="rounded-[1.5rem] border border-white/15 bg-white/10 p-5 backdrop-blur">
-          <div className="flex items-center gap-4">
-            <Avatar variant={1} />
-            <div>
-              <p className="text-sm font-semibold text-white">mijin.develop</p>
-              <p className="mt-1 text-xs text-white/60">18세 · 비공개</p>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            className="mt-4 w-full rounded-full border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-            onClick={() => void handleLogout()}
-          >
-            로그아웃
-          </Button>
-        </section>
+        <ProfileCard profile={profile} onLogout={() => void handleLogout()} />
 
         <div className="grid gap-4 md:grid-cols-2">
           <GlassPanel title="History" body="촬영 이력, 즐겨찾기, 최근 활동" />

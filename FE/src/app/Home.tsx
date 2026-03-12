@@ -43,7 +43,9 @@ function Home() {
       <div className="app-frame">
         <main className="flex min-h-dvh flex-col items-start justify-center gap-4 p-6">
           <h1 className="text-2xl font-semibold">FE ↔ BE Health Check</h1>
-          <p className="text-sm text-muted-foreground">API Base: {API_BASE_URL}</p>
+          <p className="text-sm text-muted-foreground">
+            API Base: {API_BASE_URL}
+          </p>
 
           <Button onClick={() => void checkHealth()} disabled={loading}>
             {loading ? 'Checking...' : 'Check /api/health'}

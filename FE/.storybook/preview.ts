@@ -13,6 +13,23 @@ const preview: Preview = {
   ],
   parameters: {
     layout: 'fullscreen',
+    backgrounds: {
+      default: 'app-bg',
+      values: [
+        {
+          name: 'app-bg',
+          value: '#f5f5f5', // --bg-primary
+        },
+        {
+          name: 'light',
+          value: '#f5f5f5',
+        },
+        {
+          name: 'dark',
+          value: '#333333',
+        },
+      ],
+    },
     controls: {
       matchers: {
         color: /(background|color)$/i,

@@ -38,16 +38,16 @@ export type HairRgbaBBox = z.infer<typeof HairRgbaBBoxSchema>
 export type HairRecommendResponse = z.infer<typeof HairRecommendResponseSchema>
 
 export type FetchHairRecommendArgs = {
-  baseUrl?: string
+  baseUrl: string
   hairID: number
-  yaw1deg?: number
-  pitch1deg?: number
-  roll1deg?: number
-  fetchImpl?: typeof fetch
+  yaw1deg: number
+  pitch1deg: number
+  roll1deg: number
+  fetchImpl: typeof fetch
 }
 
 export async function fetchHairRecommend({
-  baseUrl = buildApiUrl('/hairs/recommend'),
+  baseUrl = buildApiUrl('/api/home/hairapply/'),
   hairID,
   yaw1deg,
   pitch1deg,
@@ -58,9 +58,13 @@ export async function fetchHairRecommend({
     hairId: String(hairID),
   })
 
-  if (yaw1deg !== undefined) params.set('yaw1deg', String(yaw1deg))
-  if (pitch1deg !== undefined) params.set('pitch1deg', String(pitch1deg))
-  if (roll1deg !== undefined) params.set('roll1deg', String(roll1deg))
+  const angles = { yaw1deg, pitch1deg, roll1deg }
+
+  Object.entries(angles).forEach(([key, value]) => {
+    if (value !== undefined) {
+      params.set(key, String(value))
+    }
+  })
 
   const response = await fetchImpl(`${baseUrl}?${params.toString()}`)
   if (!response.ok) {

@@ -1,5 +1,7 @@
 package com.example.beapp.api.dto.accounts;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -18,6 +20,7 @@ public record SignupRequest(
                 message = "영문/숫자/특수문자 각 1개 이상 포함")
         String password,
 
+        @JsonAlias("passwordCheck")
         @NotBlank
         @Size(min = 8, max = 16)
         String passwordConfirm,

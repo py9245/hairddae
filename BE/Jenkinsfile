@@ -9,6 +9,7 @@ pipeline {
   environment {
     IMAGE_TAG = 'be-app:local'
     DEPLOY_ROOT = '/home/ubuntu/S14P21M101/BE'
+    STATIC_ROOT = '/home/ubuntu/S14P21M101/static'
     COMPOSE_FILE = '/home/ubuntu/S14P21M101/BE/docker-compose.yml'
   }
 
@@ -32,9 +33,20 @@ pipeline {
       steps {
         sh '''
           set -eu
-          test -d "$DEPLOY_ROOT/nginx"
+          mkdir -p "$DEPLOY_ROOT/nginx"
           cp -f "$WORKSPACE/BE/docker-compose.yml" "$COMPOSE_FILE"
           cp -f "$WORKSPACE/BE/nginx/default.conf" "$DEPLOY_ROOT/nginx/default.conf"
+        '''
+      }
+    }
+
+    stage('Verify Static Dataset') {
+      steps {
+        sh '''
+          set -eu
+          test -d "$STATIC_ROOT"
+          test -f "$STATIC_ROOT/0001/manifests/asset_index_v0.json"
+          test -d "$STATIC_ROOT/0001/hair_rgba"
         '''
       }
     }
@@ -44,6 +56,7 @@ pipeline {
         sh '''
           set -eu
           test -f "$COMPOSE_FILE"
+          docker compose -f "$COMPOSE_FILE" config >/dev/null
 
           docker compose -f "$COMPOSE_FILE" up -d postgres redis
           docker compose -f "$COMPOSE_FILE" up -d --no-deps --no-build app
@@ -79,6 +92,12 @@ pipeline {
               https://j14m101.p.ssafy.io/camera | tr -d '\r'
           }
 
+          static_headers() {
+            curl -fsSI \
+              --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
+              https://j14m101.p.ssafy.io/static/0001/manifests/asset_index_v0.json | tr -d '\r'
+          }
+
           for i in $(seq 1 20); do
             READY_LABEL=""
             if curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/api/health >/dev/null 2>&1; then
@@ -90,10 +109,12 @@ pipeline {
             if [ -n "$READY_LABEL" ]; then
               WEBSOCKET_HEADERS="$(websocket_headers)"
               CAMERA_HEADERS="$(camera_headers)"
+              STATIC_HEADERS="$(static_headers)"
 
               if printf '%s\n' "$WEBSOCKET_HEADERS" | grep -q '^HTTP/1.1 101' \
-                && printf '%s\n' "$CAMERA_HEADERS" | grep -Fq "connect-src 'self' https: wss:"; then
-                echo "health check passed: $READY_LABEL, websocket, csp"
+                && printf '%s\n' "$CAMERA_HEADERS" | grep -Fq "connect-src 'self' https: wss:" \
+                && printf '%s\n' "$STATIC_HEADERS" | grep -q '^HTTP/2 200\\|^HTTP/1.1 200'; then
+                echo "health check passed: $READY_LABEL, websocket, csp, static"
                 exit 0
               fi
             fi

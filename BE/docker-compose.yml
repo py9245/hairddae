@@ -1,16 +1,19 @@
-version: "3.9"
-
 services:
   app:
     build: .
     image: be-app:local
     env_file:
       - .env
+    environment:
+      APP_HAIR_STATIC_ROOT_PATH: /opt/be-static
+      APP_HAIR_STATIC_BASE_URL: /static
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - ../static:/opt/be-static:ro
     expose:
       - "8080"
     networks:
@@ -28,6 +31,7 @@ services:
     volumes:
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/html:/usr/share/nginx/html:ro
+      - ../static:/srv/static:ro
       - ./nginx/certs:/etc/letsencrypt:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"

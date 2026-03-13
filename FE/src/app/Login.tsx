@@ -20,7 +20,6 @@ export default function Login() {
   const loginMutation = useLoginMutation()
 
   const isFormValid = input.userID.trim() !== '' && input.password.trim() !== ''
-
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const { id, value } = e.target
     setInput((prev) => ({

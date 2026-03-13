@@ -24,8 +24,23 @@ public class HairEntity extends BaseTimeEntity {
     @Column(name = "name", nullable = false, length = 120)
     private String name;
 
+    @Column(name = "slug", length = 120)
+    private String slug;
+
     @Column(name = "category", nullable = false, length = 50)
     private String category;
+
+    @Column(name = "dataset_code", length = 50)
+    private String datasetCode;
+
+    @Column(name = "dataset_root_url", length = 500)
+    private String datasetRootUrl;
+
+    @Column(name = "asset_index_url", length = 500)
+    private String assetIndexUrl;
+
+    @Column(name = "representative_asset_id", length = 255)
+    private String representativeAssetId;
 
     @Column(name = "preview_image_url", length = 500)
     private String previewImageUrl;
@@ -52,6 +67,29 @@ public class HairEntity extends BaseTimeEntity {
         this.description = description;
     }
 
+    public void applySeed(
+            String name,
+            String slug,
+            String category,
+            String datasetCode,
+            String datasetRootUrl,
+            String assetIndexUrl,
+            String representativeAssetId,
+            String previewImageUrl,
+            String description
+    ) {
+        this.name = name;
+        this.slug = slug;
+        this.category = category;
+        this.datasetCode = datasetCode;
+        this.datasetRootUrl = datasetRootUrl;
+        this.assetIndexUrl = assetIndexUrl;
+        this.representativeAssetId = representativeAssetId;
+        this.previewImageUrl = previewImageUrl;
+        this.description = description;
+        this.active = Boolean.TRUE;
+    }
+
     public Long getId() {
         return id;
     }
@@ -60,8 +98,28 @@ public class HairEntity extends BaseTimeEntity {
         return name;
     }
 
+    public String getSlug() {
+        return slug;
+    }
+
     public String getCategory() {
         return category;
+    }
+
+    public String getDatasetCode() {
+        return datasetCode;
+    }
+
+    public String getDatasetRootUrl() {
+        return datasetRootUrl;
+    }
+
+    public String getAssetIndexUrl() {
+        return assetIndexUrl;
+    }
+
+    public String getRepresentativeAssetId() {
+        return representativeAssetId;
     }
 
     public String getPreviewImageUrl() {
@@ -82,5 +140,21 @@ public class HairEntity extends BaseTimeEntity {
 
     public Boolean getActive() {
         return active;
+    }
+
+    public void incrementLikeCount() {
+        likeCount = likeCount == null ? 1 : likeCount + 1;
+    }
+
+    public void decrementLikeCount() {
+        if (likeCount == null || likeCount <= 0) {
+            likeCount = 0;
+            return;
+        }
+        likeCount -= 1;
+    }
+
+    public void incrementViewCount() {
+        viewCount = viewCount == null ? 1 : viewCount + 1;
     }
 }

@@ -52,6 +52,9 @@ logging:
     org.springframework.security: INFO
 
 app:
+  hair:
+    static-root-path: ${APP_HAIR_STATIC_ROOT_PATH:/opt/be-static}
+    static-base-url: ${APP_HAIR_STATIC_BASE_URL:/static}
   security:
     cors:
       allowed-origins: ${APP_SECURITY_CORS_ALLOWED_ORIGINS:https://j14m101.p.ssafy.io,https://localhost,https://127.0.0.1,https://localhost:8443,https://127.0.0.1:8443,http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000}

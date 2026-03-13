@@ -1,5 +1,6 @@
 package com.example.beapp.service;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import com.example.beapp.api.dto.mypage.BookmarkResponse;
@@ -17,15 +18,24 @@ public class MypageService {
 
     private final UserAccountRepository userAccountRepository;
     private final SampleHairRepository sampleHairRepository;
+    private final HairCatalogService hairCatalogService;
 
-    public MypageService(UserAccountRepository userAccountRepository, SampleHairRepository sampleHairRepository) {
+    public MypageService(
+            UserAccountRepository userAccountRepository,
+            SampleHairRepository sampleHairRepository,
+            ObjectProvider<HairCatalogService> hairCatalogServiceProvider) {
         this.userAccountRepository = userAccountRepository;
         this.sampleHairRepository = sampleHairRepository;
+        this.hairCatalogService = hairCatalogServiceProvider.getIfAvailable();
     }
 
-    public RecentResponse getRecent(String userId) {
+    public RecentResponse getRecent(String userId, int minViewSec, int page, int size) {
         verifyUserExists(userId);
-        return RecentResponse.ok(userId, sampleHairRepository.findRecentItems());
+        return RecentResponse.ok(
+                userId,
+                hairCatalogService != null
+                        ? hairCatalogService.getRecentItems(userId, minViewSec, page, size)
+                        : sampleHairRepository.findRecentItems());
     }
 
     public MeResponse getMe(String userId) {
@@ -38,9 +48,13 @@ public class MypageService {
         return UserIdResponse.ok(userId);
     }
 
-    public BookmarkResponse getBookmarks(String userId) {
+    public BookmarkResponse getBookmarks(String userId, int page, int size, boolean onlyActive) {
         verifyUserExists(userId);
-        return BookmarkResponse.ok(userId, sampleHairRepository.findBookmarkItems());
+        return BookmarkResponse.ok(
+                userId,
+                hairCatalogService != null
+                        ? hairCatalogService.getBookmarkItems(userId, page, size, onlyActive)
+                        : sampleHairRepository.findBookmarkItems());
     }
 
     private void verifyUserExists(String userId) {

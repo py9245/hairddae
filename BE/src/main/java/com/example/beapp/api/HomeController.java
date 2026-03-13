@@ -17,6 +17,8 @@ import com.example.beapp.api.dto.home.HairApplyRequest;
 import com.example.beapp.api.dto.home.HairApplyResponse;
 import com.example.beapp.api.dto.home.HairApplyStatusResponse;
 import com.example.beapp.api.dto.home.NormalRankResponse;
+import com.example.beapp.api.dto.home.RecodeHairRequest;
+import com.example.beapp.api.dto.home.RecodeHairResponse;
 import com.example.beapp.service.HomeService;
 
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -43,7 +45,7 @@ public class HomeController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size,
             @RequestParam(required = false) String ageCategory,
             @RequestParam(required = false) Integer gender) {
-        return ResponseEntity.ok(homeService.getCustomRank(authentication.getName(), ageCategory, gender));
+        return ResponseEntity.ok(homeService.getCustomRank(authentication.getName(), ageCategory, gender, size));
     }
 
     @GetMapping("/nomalrank")
@@ -52,7 +54,7 @@ public class HomeController {
             @RequestParam(defaultValue = "50") @Min(1) @Max(500) int size,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String sort) {
-        return ResponseEntity.ok(homeService.getNormalRank());
+        return ResponseEntity.ok(homeService.getNormalRank(category, sort, size));
     }
 
     @PostMapping("/hairapplystart")
@@ -67,5 +69,12 @@ public class HomeController {
             Authentication authentication,
             @PathVariable String applySessionId) {
         return ResponseEntity.ok(homeService.getHairApplyStatus(authentication.getName(), applySessionId));
+    }
+
+    @PostMapping("/recodehair")
+    public ResponseEntity<RecodeHairResponse> recodeHair(
+            @RequestHeader(name = "Authorization", required = false) String authorization,
+            @Valid @RequestBody RecodeHairRequest request) {
+        return ResponseEntity.ok(homeService.recordHair(request, authorization));
     }
 }

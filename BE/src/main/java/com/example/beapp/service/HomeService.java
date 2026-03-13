@@ -1,5 +1,6 @@
 package com.example.beapp.service;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -8,6 +9,8 @@ import com.example.beapp.api.dto.home.HairApplyRequest;
 import com.example.beapp.api.dto.home.HairApplyResponse;
 import com.example.beapp.api.dto.home.HairApplyStatusResponse;
 import com.example.beapp.api.dto.home.NormalRankResponse;
+import com.example.beapp.api.dto.home.RecodeHairRequest;
+import com.example.beapp.api.dto.home.RecodeHairResponse;
 import com.example.beapp.common.exception.ApiException;
 import com.example.beapp.common.exception.ErrorCode;
 import com.example.beapp.model.UserAccount;
@@ -23,19 +26,22 @@ public class HomeService {
     private final SampleHairRepository sampleHairRepository;
     private final HairApplyJobRepository hairApplyJobRepository;
     private final JwtTokenService jwtTokenService;
+    private final HairCatalogService hairCatalogService;
 
     public HomeService(
             UserAccountRepository userAccountRepository,
             SampleHairRepository sampleHairRepository,
             HairApplyJobRepository hairApplyJobRepository,
-            JwtTokenService jwtTokenService) {
+            JwtTokenService jwtTokenService,
+            ObjectProvider<HairCatalogService> hairCatalogServiceProvider) {
         this.userAccountRepository = userAccountRepository;
         this.sampleHairRepository = sampleHairRepository;
         this.hairApplyJobRepository = hairApplyJobRepository;
         this.jwtTokenService = jwtTokenService;
+        this.hairCatalogService = hairCatalogServiceProvider.getIfAvailable();
     }
 
-    public CustomRankResponse getCustomRank(String userId, String ageCategory, Integer gender) {
+    public CustomRankResponse getCustomRank(String userId, String ageCategory, Integer gender, int size) {
         UserAccount userAccount = userAccountRepository.findByUserId(userId)
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
 
@@ -48,11 +54,17 @@ public class HomeService {
                 resolvedGender,
                 resolvedAge,
                 resolvedAgeCategory,
-                sampleHairRepository.findCustomRankItems());
+                hairCatalogService != null
+                        ? hairCatalogService.getCustomRankItems(userId, size)
+                        : sampleHairRepository.findCustomRankItems());
     }
 
-    public NormalRankResponse getNormalRank() {
-        return NormalRankResponse.ok(4000, sampleHairRepository.findNormalRankItems());
+    public NormalRankResponse getNormalRank(String category, String sort, int size) {
+        return NormalRankResponse.ok(
+                4000,
+                hairCatalogService != null
+                        ? hairCatalogService.getNormalRankItems(category, sort, size)
+                        : sampleHairRepository.findNormalRankItems());
     }
 
     public HairApplyResponse startHairApply(HairApplyRequest request, String authorizationHeader) {
@@ -80,6 +92,15 @@ public class HomeService {
                 jobSnapshot.completedAt());
     }
 
+    public RecodeHairResponse recordHair(RecodeHairRequest request, String authorizationHeader) {
+        if (hairCatalogService == null) {
+            return RecodeHairResponse.ok();
+        }
+        String userId = resolveUserId(authorizationHeader, request.accessToken());
+        hairCatalogService.recordHistory(userId, request.hairID(), request.viewSec());
+        return RecodeHairResponse.ok();
+    }
+
     private int toGenderCode(String gender) {
         return "M".equalsIgnoreCase(gender) ? 1 : 0;
     }
@@ -97,5 +118,11 @@ public class HomeService {
         } catch (IllegalArgumentException exception) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "작업 ID 형식이 올바르지 않습니다.");
         }
+    }
+
+    private String resolveUserId(String authorizationHeader, String accessTokenFromBody) {
+        String bearerToken = jwtTokenService.extractBearerToken(authorizationHeader);
+        String accessToken = StringUtils.hasText(bearerToken) ? bearerToken : accessTokenFromBody;
+        return jwtTokenService.validateAccessToken(accessToken).userId();
     }
 }

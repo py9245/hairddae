@@ -4,12 +4,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Repository;
 
 import com.example.beapp.model.UserAccount;
 
 @Repository
+@Profile("test")
 public class InMemoryUserAccountRepository implements UserAccountRepository {
 
     private final Map<String, UserAccount> users = new ConcurrentHashMap<>();

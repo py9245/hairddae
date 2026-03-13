@@ -62,4 +62,11 @@ public class UserEntity extends BaseTimeEntity {
     public String getGender() {
         return gender;
     }
+
+    public UserEntity update(String passwordHash, Short age, String gender) {
+        this.passwordHash = passwordHash;
+        this.age = age;
+        this.gender = gender;
+        return this;
+    }
 }

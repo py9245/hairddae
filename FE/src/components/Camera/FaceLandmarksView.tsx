@@ -1,5 +1,5 @@
 import { useRouter } from '@tanstack/react-router'
-import { Settings, Settings2, X } from 'lucide-react'
+import { Settings, X } from 'lucide-react'
 import type { RefObject } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HairSelector } from '@/components/Camera/HairSelector'

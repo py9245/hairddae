@@ -104,5 +104,5 @@ export function useFaceTrackingLoop({
     }
   }, [enabled, videoRef, canvasRef, landmarks, ftm, pose, frameRef])
 
-  return { status, inGuide, poseNorm, landmarks: landmarksState }
+  return { status, inGuide, pose, poseNorm, landmarks: landmarksState }
 }

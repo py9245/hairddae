@@ -15,7 +15,7 @@ function ProgressWithLabel({ value }: { value: number }) {
         htmlFor="progress-upload"
         className="flex items-center text-sm font-medium text-zinc-700"
       >
-        <span>적용 진행률</span>
+        <span>Apply progress</span>
         <span className="ml-auto text-zinc-500">{value}%</span>
       </FieldLabel>
 
@@ -66,18 +66,18 @@ export function Modal({
 
   return (
     <Dialog open={open}>
-      <DialogContent className="sm:max-w-md overflow-hidden rounded-2xl border-0 p-0 shadow-2xl [&>button]:hidden">
+      <DialogContent className="overflow-hidden rounded-2xl border-0 p-0 shadow-2xl sm:max-w-md [&>button]:hidden">
         <div className="bg-gradient-to-b from-zinc-50 to-white px-6 py-6">
           <DialogHeader className="space-y-3 text-left">
             <DialogTitle className="text-xl font-semibold text-zinc-900">
-              헤어 적용 중...
+              Applying hair style...
             </DialogTitle>
           </DialogHeader>
 
           <div className="mt-5 space-y-5">
             <div className="rounded-2xl bg-zinc-100/80 px-4 py-4 text-sm leading-6 text-zinc-700">
-              <div className="font-medium text-zinc-900">선택한 스타일</div>
-              <div className="mt-1">{targetLabel ?? '헤어 스타일 적용 중'}</div>
+              <div className="font-medium text-zinc-900">Selected style</div>
+              <div className="mt-1">{targetLabel ?? 'Preparing style...'}</div>
             </div>
 
             <ProgressWithLabel value={progress} />

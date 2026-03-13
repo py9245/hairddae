@@ -1,12 +1,16 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import FaceLandmarksView from '@/components/Camera/FaceLandmarksView'
 import { useFaceLandmarker } from '@/hooks/Camera/useFaceLandmarker'
 import { useFaceTrackingLoop } from '@/hooks/Camera/useFaceTrackingLoop'
+import { useHairRecommendFlow } from '@/hooks/Camera/useHairRecommendFlow'
 import { useUserMedia } from '@/hooks/Camera/useUserMedia'
 
 export default function Camera() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const frameIdRef = useRef(0)
+  const [hairID, setHairID] = useState(0)
 
   const modelPath = useMemo(
     () => `${import.meta.env.BASE_URL}models/face_landmarker.task`,
@@ -22,7 +26,7 @@ export default function Camera() {
     wasmBaseUrl: wasmPath,
   })
 
-  const { poseNorm, landmarks } = useFaceTrackingLoop({
+  const { pose, landmarks } = useFaceTrackingLoop({
     videoRef,
     canvasRef,
     landmarkerRef: mp.landmarkerRef,
@@ -30,12 +34,62 @@ export default function Camera() {
     yawSign: 1,
   })
 
+  const flow = useHairRecommendFlow()
+  const { buildFeatureMessage, clearRecommendation, requestByPose } = flow
+
+  useEffect(() => {
+    if (!landmarks || landmarks.length === 0 || !pose) {
+      return
+    }
+
+    const video = videoRef.current
+    if (!video || !cam.ready || hairID <= 0) {
+      return
+    }
+
+    frameIdRef.current += 1
+
+    try {
+      buildFeatureMessage({
+        hairID,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        landmarks,
+        pose,
+        userId: 'user-123',
+        frameId: frameIdRef.current,
+        requestId: `camera-${hairID}-${frameIdRef.current}`,
+      })
+    } catch {
+      return
+    }
+  }, [buildFeatureMessage, cam.ready, hairID, landmarks, pose])
+
+  useEffect(() => {
+    if (hairID <= 0) {
+      clearRecommendation()
+      return
+    }
+
+    if (!cam.ready || !landmarks || landmarks.length === 0 || !pose) {
+      return
+    }
+
+    void requestByPose(hairID, pose).catch(() => {})
+  }, [cam.ready, clearRecommendation, hairID, landmarks, pose, requestByPose])
+
   return (
     <FaceLandmarksView
       videoRef={videoRef}
       canvasRef={canvasRef}
-      poseNorm={poseNorm}
+      overlayCanvasRef={overlayCanvasRef}
       landmarks={landmarks}
+      selectedHairId={hairID}
+      onHairApplied={setHairID}
+      recommendation={flow.recommendation}
+      overlayImage={flow.overlayImage}
+      loading={flow.loading}
+      error={flow.error}
     />
   )
 }

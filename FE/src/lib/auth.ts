@@ -3,7 +3,7 @@ const AUTH_STORAGE_KEY = 'ssafy-authenticated'
 type AuthListener = () => void
 
 const listeners = new Set<AuthListener>()
-const BaseUrl = import.meta.env.VITE_BASE_URL
+const BaseUrl = "/api"
 
 function notifyListeners() {
   for (const listener of listeners) {

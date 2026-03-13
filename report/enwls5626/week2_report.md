@@ -29,3 +29,7 @@
 - [헤어스타일 에셋 최적화](https://ssafy.atlassian.net/browse/S14P21M101-580?atlOrigin=eyJpIjoiMmU5ZjUxNjVlMWYzNDgyODgyYTkzNDFhYWM4ZjE2MGIiLCJwIjoiaiJ9)
     - [헤어스타일 가발 이미지 배경 제거 및 알파 채널 분리](https://ssafy.atlassian.net/browse/S14P21M101-582?atlOrigin=eyJpIjoiYzYwZjdmOTVmOTdiNGE1M2EyYzE3ZDA3MzNjNDE5OTMiLCJwIjoiaiJ9)
     - [가발 전용 표준 좌표 생성기 개발](https://ssafy.atlassian.net/browse/S14P21M101-583?atlOrigin=eyJpIjoiMmU0NDUxOGMwNDFiNDEwZWFmYjRiYTJjMTRjNmE1Y2QiLCJwIjoiaiJ9)
+
+# 260312
+- [[W2][docs]중간 발표 대비 보고서/산출물 관리 및 작성](https://ssafy.atlassian.net/browse/S14P21M101-579?atlOrigin=eyJpIjoiY2ZhYTViZTA5MjU0NGE0Mzk4MjBjYzdjZWU2ODQ0ZGIiLCJwIjoiaiJ9)
+  - [요구사항 명세서 작성](https://ssafy.atlassian.net/browse/S14P21M101-632?atlOrigin=eyJpIjoiZWQyZTVlZDA3ZTE1NDUwNGI2ZGZiMWQ1YzBlOWUwYjciLCJwIjoiaiJ9)

@@ -3,6 +3,7 @@ const AUTH_STORAGE_KEY = 'ssafy-authenticated'
 type AuthListener = () => void
 
 const listeners = new Set<AuthListener>()
+  const BaseUrl = import.meta.env.VITE_BASE_URL
 
 function notifyListeners() {
   for (const listener of listeners) {
@@ -57,7 +58,7 @@ export type SignUpResponse = {
 export async function signUpApi(
   payload: SignUpRequest,
 ): Promise<SignUpResponse> {
-  const res = await fetch('/accounts/signin/', {
+  const res = await fetch(`${BaseUrl}/accounts/signin/`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -87,7 +88,7 @@ export type LoginResponse = {
 }
 
 export async function loginApi(payload: LoginRequest): Promise<LoginResponse> {
-  const res = await fetch('/accounts/login/', {
+  const res = await fetch(`${BaseUrl}/accounts/login/`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

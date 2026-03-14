@@ -37,45 +37,45 @@ export default function Camera() {
   const flow = useHairRecommendFlow()
   const { buildFeatureMessage, clearRecommendation, requestByPose } = flow
 
-useEffect(() => {
-  if (!landmarks || landmarks.length === 0 || !pose) {
-    return
-  }
+  useEffect(() => {
+    if (!landmarks || landmarks.length === 0 || !pose) {
+      return
+    }
 
-  const video = videoRef.current
-  if (!video || !cam.ready || hairID <= 0) {
-    return
-  }
+    const video = videoRef.current
+    if (!video || !cam.ready || hairID <= 0) {
+      return
+    }
 
-  frameIdRef.current += 1
+    frameIdRef.current += 1
 
-  try {
-    const message = buildFeatureMessage({
-      hairID,
-      videoWidth: video.videoWidth,
-      videoHeight: video.videoHeight,
-      landmarks,
-      pose,
-      userId: 'user-123',
-      frameId: frameIdRef.current,
-      requestId: `camera-${hairID}-${frameIdRef.current}`,
-    })
+    try {
+      const message = buildFeatureMessage({
+        hairID,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        landmarks,
+        pose,
+        userId: 'user-123',
+        frameId: frameIdRef.current,
+        requestId: `camera-${hairID}-${frameIdRef.current}`,
+      })
 
-    console.log('feature message:', message)
-  } catch (error) {
-    console.error('buildFeatureMessage 실패', {
-      error,
-      hairID,
-      videoWidth: video.videoWidth,
-      videoHeight: video.videoHeight,
-      pose,
-      landmarksCount: landmarks.length,
-      frameId: frameIdRef.current,
-    })
-  }
-}, [buildFeatureMessage, cam.ready, hairID, landmarks, pose])
+      console.log('feature message:', message)
+    } catch (error) {
+      console.error('buildFeatureMessage 실패', {
+        error,
+        hairID,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight,
+        pose,
+        landmarksCount: landmarks.length,
+        frameId: frameIdRef.current,
+      })
+    }
+  }, [buildFeatureMessage, cam.ready, hairID, landmarks, pose])
 
-useEffect(() => {
+  useEffect(() => {
     if (hairID <= 0) {
       clearRecommendation()
       return

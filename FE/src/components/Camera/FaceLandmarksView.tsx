@@ -1,7 +1,7 @@
 import { useRouter } from '@tanstack/react-router'
+import { QueryErrorResetBoundary } from '@tanstack/react-query'
 import { Settings, X } from 'lucide-react'
-import type { RefObject } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense, type RefObject, type ReactNode, Component } from 'react'
 import { HairSelector } from '@/components/Camera/HairSelector'
 import { Modal } from '@/components/Camera/Modal'
 import type { HairRecommendResponse } from '@/lib/Camera/recommend'
@@ -161,70 +161,124 @@ export default function FaceLandmarksView({
   }, [overlayCanvasRef, overlayImage, recommendation, videoRef])
 
   return (
-    <div className="grid h-[100dvh] w-full place-items-center overflow-hidden bg-neutral-100">
-      <div
-        ref={wrapRef}
-        className="relative h-[100dvh] w-[430px] max-w-full overflow-hidden bg-black"
-      >
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="block h-full w-full object-cover -scale-x-100"
-        />
-
-        <canvas
-          ref={canvasRef}
-          className="pointer-events-none absolute inset-0 hidden h-full w-full -scale-x-100"
-        />
-
-        <canvas
-          ref={overlayCanvasRef}
-          className="pointer-events-none absolute inset-0 z-10 h-full w-full -scale-x-100"
-        />
-
-        <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 pb-4 pt-5">
-          <button
-            type="button"
-            aria-label="Go to main"
-            onClick={handleClose}
-            className="flex h-11 w-11 items-center justify-center text-white/85 transition hover:text-white"
+    <QueryErrorResetBoundary>
+      {({ reset }) => (
+        <ErrorBoundary
+          onReset={reset}
+          fallback={
+            <div className="grid h-[100dvh] w-full place-items-center bg-neutral-100">
+              <div className="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-700">
+                문제가 발생했습니다. 다시 시도해 주세요.
+                <div className="mt-3 text-right">
+                  <button
+                    type="button"
+                    onClick={reset}
+                    className="rounded bg-red-600 px-3 py-1 text-white"
+                  >
+                    다시 시도
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
+        >
+          <Suspense
+            fallback={
+              <div className="grid h-[100dvh] w-full place-items-center bg-neutral-100">
+                <div className="rounded-md border bg-white px-4 py-3 text-sm">로딩 중…</div>
+              </div>
+            }
           >
-            <X className="h-10 w-10" />
-          </button>
+            <div className="grid h-[100dvh] w-full place-items-center overflow-hidden bg-neutral-100">
+              <div
+                ref={wrapRef}
+                className="relative h-[100dvh] w-[430px] max-w-full overflow-hidden bg-black"
+              >
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="block h-full w-full object-cover -scale-x-100"
+                />
 
-          <button
-            type="button"
-            aria-label="Open settings"
-            className="flex h-11 w-11 items-center justify-center text-white/85 transition hover:text-white"
-          >
-            <Settings className="h-10 w-10" />
-          </button>
-        </div>
+                <canvas
+                  ref={canvasRef}
+                  className="pointer-events-none absolute inset-0 hidden h-full w-full -scale-x-100"
+                />
 
-        <div className="absolute top-2 left-2 z-20 rounded bg-black/60 px-2 py-1 text-xs text-white">
-          {loading ? 'Loading recommendation' : 'Recommendation ready'}
-        </div>
+                <canvas
+                  ref={overlayCanvasRef}
+                  className="pointer-events-none absolute inset-0 z-10 h-full w-full -scale-x-100"
+                />
 
-        {error && (
-          <div className="absolute top-10 left-2 z-20 rounded bg-red-600/80 px-2 py-1 text-xs text-white">
-            {error}
-          </div>
-        )}
+                <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 pb-4 pt-5">
+                  <button
+                    type="button"
+                    aria-label="Go to main"
+                    onClick={handleClose}
+                    className="flex h-11 w-11 items-center justify-center text-white/85 transition hover:text-white"
+                  >
+                    <X className="h-10 w-10" />
+                  </button>
 
-        <HairSelector
-          items={HAIR_ITEMS}
-          selectedId={displayHairId}
-          onSelect={handleHairSelect}
-        />
-      </div>
+                  <button
+                    type="button"
+                    aria-label="Open settings"
+                    className="flex h-11 w-11 items-center justify-center text-white/85 transition hover:text-white"
+                  >
+                    <Settings className="h-10 w-10" />
+                  </button>
+                </div>
 
-      <Modal
-        open={modalOpen}
-        targetLabel={pendingHair?.label}
-        onComplete={handleModalComplete}
-      />
-    </div>
+                <div className="absolute top-2 left-2 z-20 rounded bg-black/60 px-2 py-1 text-xs text-white">
+                  {loading ? 'Loading recommendation' : 'Recommendation ready'}
+                </div>
+
+                {error && (
+                  <div className="absolute top-10 left-2 z-20 rounded bg-red-600/80 px-2 py-1 text-xs text-white">
+                    {error}
+                  </div>
+                )}
+
+                <HairSelector
+                  items={HAIR_ITEMS}
+                  selectedId={displayHairId}
+                  onSelect={handleHairSelect}
+                />
+              </div>
+
+              <Modal
+                open={modalOpen}
+                targetLabel={pendingHair?.label}
+                onComplete={handleModalComplete}
+              />
+            </div>
+          </Suspense>
+        </ErrorBoundary>
+      )}
+    </QueryErrorResetBoundary>
   )
+}
+
+class ErrorBoundary extends Component<{
+  fallback: ReactNode
+  onReset?: () => void
+  children: ReactNode
+}, { hasError: boolean }> {
+  constructor(props: { fallback: ReactNode; onReset?: () => void; children: ReactNode }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback
+    }
+    return this.props.children
+  }
 }

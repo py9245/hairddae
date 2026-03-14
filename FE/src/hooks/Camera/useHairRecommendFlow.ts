@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
+import { buildApiUrl } from '@/lib/api'
 import type { UserFeatureMessage } from '@/lib/Camera/contracts'
 import {
   type BuildUserFeaturePayloadArgs,
@@ -66,7 +67,7 @@ export function useHairRecommendFlow({
 
       try {
         const nextRecommendation = await fetchHairRecommend({
-          baseUrl: recommendBaseUrl,
+          baseUrl: recommendBaseUrl ?? buildApiUrl('/home/hairapply/'),
           fetchImpl,
           hairID,
           yaw1deg,

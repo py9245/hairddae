@@ -3,7 +3,6 @@ import { ChevronDown, Eye, EyeClosed } from 'lucide-react'
 import { useState } from 'react'
 import { useSignUpForm } from '@/hooks/Auth/SignUp/useSignUpForm'
 import { useSignUpMutation } from '@/hooks/Auth/SignUp/useSignUpMutation'
- 
 
 export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false)
@@ -60,11 +59,11 @@ export default function SignUp() {
               onChange={(e) => handleChange('userId', e.target.value)}
               onBlur={() => handleBlur('userId')}
               placeholder="사용하실 아이디를 입력하세요"
-                className={`h-12 w-full rounded-2xl border px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
-                  errors.userId
-                    ? 'border-red-400 focus:border-red-400'
-                    : 'border-gray-200 focus:border-primary-200'
-                }`}
+              className={`h-12 w-full rounded-2xl border px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
+                errors.userId
+                  ? 'border-red-400 focus:border-red-400'
+                  : 'border-gray-200 focus:border-primary-200'
+              }`}
             />
             {errors.userId && (
               <p className="mt-2 text-sm text-red-500">{errors.userId}</p>

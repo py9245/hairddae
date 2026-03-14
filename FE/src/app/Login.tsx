@@ -123,7 +123,10 @@ export default function Login() {
 
         <p className="mt-10 text-center text-sm font-medium text-slate-500">
           아직 계정이 없으신가요?{' '}
-          <Link to="/auth/signup" className="text-sm font-bold text-primary-300">
+          <Link
+            to="/auth/signup"
+            className="text-sm font-bold text-primary-300"
+          >
             회원가입
           </Link>
         </p>

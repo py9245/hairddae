@@ -15,34 +15,13 @@ import {
 import { HairSelector } from '@/components/Camera/HairSelector'
 import { Modal } from '@/components/Camera/Modal'
 import type { HairRecommendResponse } from '@/lib/Camera/recommend'
+import { HAIR_ITEMS } from '@/lib/Camera/HairItem'
 
 type LandmarkPoint = {
   x: number
   y: number
   z: number
 }
-
-type HairItem = {
-  id: number
-  img: string
-  thumb: string
-  label: string
-}
-
-const HAIR_ITEMS: HairItem[] = [
-  {
-    id: 0,
-    img: '',
-    thumb: '',
-    label: 'None',
-  },
-  {
-    id: 1,
-    img: '/hair/hair.png',
-    thumb: '/hair/hair.png',
-    label: 'Hair 1',
-  },
-]
 
 function getVideoCoverLayout(
   containerWidth: number,

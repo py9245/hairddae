@@ -1,5 +1,0 @@
-{
-  "type": "subscribe",
-  "accessToken": "<JWT_ACCESS_TOKEN>",
-  "applySessionId": "<UUID>"
-}

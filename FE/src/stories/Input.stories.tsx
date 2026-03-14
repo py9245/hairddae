@@ -2,12 +2,11 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useMemo, useState } from 'react'
 import { Eye, EyeClosed } from 'lucide-react'
 
-type LabelKind = '아이디' | '비밀번호' | '비밀번호 확인'
+type LabelKind = '아이디' | '비밀번호' | '비밀번호 확인' | '나이'
 
 type InputPreviewProps = {
   label: LabelKind
   placeholder?: string
-  // 비밀번호 확인용: 원래 비밀번호 값(선택). 제공되면 불일치 시 경고 표시
   confirmTarget?: string
 }
 
@@ -37,6 +36,12 @@ function validateValue(
     return null
   }
 
+  if (label === '나이') {
+    if (v.length === 0) return null // 선택 입력
+    const ok = /^(?:[1-9]|[1-9][0-9]|1[01][0-9])$/.test(v)
+    return ok ? null : '나이는 1~119 사이의 숫자만 입력할 수 있습니다.'
+  }
+
   if (v.length === 0) return '비밀번호 확인을 입력해 주세요.'
   if (typeof confirmTarget === 'string' && v !== confirmTarget)
     return '비밀번호가 일치하지 않습니다.'
@@ -49,13 +54,16 @@ function InputPreview({ label, placeholder, confirmTarget }: InputPreviewProps) 
   const [touched, setTouched] = useState(false)
 
   const isPassword = label === '비밀번호' || label === '비밀번호 확인'
+  const isAge = label === '나이'
   const derivedPlaceholder =
     placeholder ??
     (label === '비밀번호'
       ? '비밀번호를 입력하세요'
       : label === '비밀번호 확인'
         ? '비밀번호를 다시 입력하세요'
-        : '아이디를 입력하세요')
+        : label === '나이'
+          ? 'ex. 25'
+          : '아이디를 입력하세요')
 
   const error = useMemo(
     () => validateValue(label, value, confirmTarget),
@@ -75,11 +83,15 @@ function InputPreview({ label, placeholder, confirmTarget }: InputPreviewProps) 
             id="field"
             type={isPassword && !showPassword ? 'password' : 'text'}
             value={value}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) =>
+              setValue(isAge ? e.target.value.replace(/\D/g, '') : e.target.value)
+            }
             onBlur={() => setTouched(true)}
             placeholder={derivedPlaceholder}
             aria-invalid={hasError || undefined}
             aria-describedby={hasError ? 'field-error' : undefined}
+            inputMode={isAge ? 'numeric' : undefined}
+            maxLength={isAge ? 3 : undefined}
             className={`h-12 w-full rounded-2xl border px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
               hasError ? 'border-red-400 focus:border-red-400' : 'border-gray-200 focus:border-rose-200'
             }`}
@@ -105,7 +117,7 @@ function InputPreview({ label, placeholder, confirmTarget }: InputPreviewProps) 
 }
 
 const meta = {
-  title: 'Auth/Input',
+  title: 'UI/Input',
   component: InputPreview,
   parameters: {
     layout: 'centered',
@@ -117,7 +129,7 @@ const meta = {
   argTypes: {
     label: {
       control: { type: 'select' },
-      options: ['아이디', '비밀번호', '비밀번호 확인'],
+      options: ['아이디', '비밀번호', '비밀번호 확인', '나이'],
     },
     placeholder: { control: 'text' },
     confirmTarget: {

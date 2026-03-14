@@ -40,7 +40,7 @@ function SignUpButtonPreview({
 }
 
 const meta = {
-  title: 'Auth/SignUpButton',
+  title: 'UI/Button/SignUpButton',
   component: SignUpButtonPreview,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],

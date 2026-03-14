@@ -40,7 +40,7 @@ function LoginButtonPreview({
 }
 
 const meta = {
-  title: 'Auth/LoginButton',
+  title: 'UI/Button/LoginButton',
   component: LoginButtonPreview,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],

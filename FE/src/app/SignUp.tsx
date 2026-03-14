@@ -3,6 +3,7 @@ import { ChevronDown, Eye, EyeClosed } from 'lucide-react'
 import { useState } from 'react'
 import { useSignUpForm } from '@/hooks/Auth/SignUp/useSignUpForm'
 import { useSignUpMutation } from '@/hooks/Auth/SignUp/useSignUpMutation'
+import { AgreementCheckbox } from '@/components/Auth/AgreementCheckbox'
 
 export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false)
@@ -22,7 +23,7 @@ export default function SignUp() {
   } = useSignUpForm()
 
   return (
-    <div className="rounded-3xl bg-white px-5 py-8 shadow-sm">
+    <div className="rounded-3xl bg-white px-10 py-8 shadow-sm">
       <div className="mx-auto w-full max-w-md">
         <h1 className="mt-4 text-center text-3xl font-extrabold tracking-tight text-primary-300">
           회원가입
@@ -220,19 +221,12 @@ export default function SignUp() {
             </div>
           </div>
 
-          <label className="flex items-center justify-center gap-3 pt-3">
-            <input
-              type="checkbox"
-              checked={values.agreed}
-              onChange={(e) => handleChange('agreed', e.target.checked)}
-              onBlur={() => handleBlur('agreed')}
-              className="h-5 w-5 rounded border border-gray-300 accent-primary-300"
-            />
-            <span className="text-sm font-semibold text-slate-600">
-              <span className="text-primary-300">[필수]</span> 이용약관 및
-              개인정보수집에 동의합니다.
-            </span>
-          </label>
+          <AgreementCheckbox
+          checked={values.agreed}
+          onChange={(checked) => handleChange('agreed', checked)}
+          onBlur={() => handleBlur('agreed')}
+          label="이용약관 및 개인정보수집에 동의합니다."
+        />
           {errors.agreed && (
             <p className="text-center text-sm text-red-500">{errors.agreed}</p>
           )}

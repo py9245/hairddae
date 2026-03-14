@@ -93,7 +93,7 @@ function InputPreview({ label, placeholder, confirmTarget }: InputPreviewProps) 
             inputMode={isAge ? 'numeric' : undefined}
             maxLength={isAge ? 3 : undefined}
             className={`h-12 w-full rounded-2xl border px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
-              hasError ? 'border-red-400 focus:border-red-400' : 'border-gray-200 focus:border-rose-200'
+              hasError ? 'border-red-400 focus:border-red-400' : 'border-gray-200 focus:border-primary-200'
             }`}
           />
           {isPassword && (

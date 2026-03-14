@@ -17,8 +17,8 @@ function LoginButtonPreview({
   const disabled = !isValid || isPending
   const className = `mt-4 h-12 w-80 rounded-2xl text-lg font-bold text-white transition ${
     disabled
-      ? 'cursor-not-allowed bg-rose-200'
-      : 'cursor-pointer bg-rose-400 hover:bg-rose-500'
+      ? 'cursor-not-allowed bg-primary-100'
+      : 'cursor-pointer bg-primary-300 hover:bg-primary-200'
   }`
 
   return (

@@ -174,7 +174,7 @@ function SplashPage() {
 
 function AuthLayout() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-rose-50 px-6 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-primary-100 px-6 py-10">
       <div className="w-full max-w-md">
         <Outlet />
       </div>

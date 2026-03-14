@@ -17,8 +17,8 @@ function SignUpButtonPreview({
   const disabled = !isValid || isPending
   const className = `mt-4 h-12 w-80 rounded-2xl text-lg font-bold text-white transition ${
     disabled
-      ? 'bg-rose-200 cursor-not-allowed'
-      : 'bg-rose-400 hover:bg-rose-500 cursor-pointer'
+      ? 'bg-primary-100 cursor-not-allowed'
+      : 'bg-primary-300 hover:bg-primary-200 cursor-pointer'
   }`
 
   return (

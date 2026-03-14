@@ -23,7 +23,7 @@ export function GenderSelect({ value, onChange, onBlur }: Props) {
           value={value}
           onChange={(e) => onChange(e.target.value as Gender)}
           onBlur={onBlur}
-          className="h-12 w-full appearance-none rounded-2xl border border-gray-200 bg-white px-4 text-base text-slate-700 outline-none focus:border-rose-200"
+          className="h-12 w-full appearance-none rounded-2xl border border-gray-200 bg-white px-4 text-base text-slate-700 outline-none focus:border-primary-200"
         >
           <option value="">선택안함</option>
           <option value="M">남성</option>
@@ -36,4 +36,3 @@ export function GenderSelect({ value, onChange, onBlur }: Props) {
     </div>
   )
 }
-

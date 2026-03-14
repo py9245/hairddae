@@ -13,7 +13,7 @@ export function AgreementCheckbox({ id, checked, onChange, onBlur }: Props) {
       checked={checked}
       onChange={(e) => onChange(e.target.checked)}
       onBlur={onBlur}
-      className="h-5 w-5 rounded border border-gray-300 accent-rose-300"
+      className="h-5 w-5 rounded border border-gray-300 accent-primary-300"
     />
   )
 }

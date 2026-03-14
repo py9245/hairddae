@@ -37,6 +37,11 @@ Backend:
 - Use Conventional Commit prefixes where possible (`feat:`, `docs:`, `delete:`), as seen in history.
 - Keep commit messages short and scoped to one change.
 - PRs should include: purpose summary, changed area (`FE`/`BE`), related issue/ticket, and screenshots for UI changes.
+- Select the MR template by primary change area:
+- `FE_template`: `FE/**` 중심 변경
+- `BE_Infra_template`: `BE/**`, `BE/nginx/**`, 백엔드/인프라 설정 중심 변경
+- `Docs_template`: `report/**`, `docs/**`, root `README.md` 중심 변경
+- If code and docs are mixed, use the code template for the primary area.
 - Ensure lint/tests pass before requesting review.
 
 ## Security & Configuration Tips

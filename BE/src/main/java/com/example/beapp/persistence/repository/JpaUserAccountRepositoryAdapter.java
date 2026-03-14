@@ -36,12 +36,12 @@ public class JpaUserAccountRepositoryAdapter implements UserAccountRepository {
         UserEntity entity = userJpaRepository.findByUserId(userAccount.userID())
                 .map(existing -> existing.update(
                         userAccount.encodedPassword(),
-                        toShort(userAccount.age()),
+                        userAccount.birthDate(),
                         userAccount.gender()))
                 .orElseGet(() -> new UserEntity(
                         userAccount.userID(),
                         userAccount.encodedPassword(),
-                        toShort(userAccount.age()),
+                        userAccount.birthDate(),
                         userAccount.gender()));
 
         UserEntity saved = userJpaRepository.save(entity);
@@ -57,11 +57,7 @@ public class JpaUserAccountRepositoryAdapter implements UserAccountRepository {
         return new UserAccount(
                 entity.getUserId(),
                 entity.getPasswordHash(),
-                entity.getAge() == null ? null : entity.getAge().intValue(),
+                entity.getBirthDate(),
                 entity.getGender());
-    }
-
-    private Short toShort(Integer value) {
-        return value == null ? null : value.shortValue();
     }
 }

@@ -1,10 +1,12 @@
 package com.example.beapp.api.dto.accounts;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
+import java.time.LocalDate;
 
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonFormat;
+
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.PastOrPresent;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
@@ -25,8 +27,9 @@ public record SignupRequest(
         @Size(min = 8, max = 16)
         String passwordConfirm,
 
-        @Min(1) @Max(119)
-        Integer age,
+        @PastOrPresent
+        @JsonFormat(pattern = "yyyy-MM-dd")
+        LocalDate birthDate,
 
         @Pattern(regexp = "^[FM]$", message = "성별은 F 또는 M")
         String gender

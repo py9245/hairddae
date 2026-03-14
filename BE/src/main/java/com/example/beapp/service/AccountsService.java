@@ -39,7 +39,7 @@ public class AccountsService {
         this.jwtTokenService = jwtTokenService;
     }
 
-    public LoginResponse login(LoginRequest request) {
+    public AuthTokens login(LoginRequest request) {
         UserAccount userAccount = userAccountRepository.findByUserId(request.userID())
                 .orElseThrow(() -> new ApiException(ErrorCode.INVALID_CREDENTIALS));
 
@@ -47,7 +47,7 @@ public class AccountsService {
             throw new ApiException(ErrorCode.INVALID_CREDENTIALS);
         }
 
-        return LoginResponse.ok(
+        return new AuthTokens(
                 userAccount.userID(),
                 jwtTokenService.issueAccessToken(userAccount.userID()),
                 issueAndStoreRefreshToken(userAccount.userID()));
@@ -65,52 +65,55 @@ public class AccountsService {
         userAccountRepository.save(new UserAccount(
                 request.userID(),
                 passwordEncoder.encode(request.password()),
-                request.age(),
+                request.birthDate(),
                 request.gender()));
 
         return SignupResponse.created(request.userID());
     }
 
-    public SimpleResponse logout(LogoutRequest request) {
-        String userId = jwtTokenService.validateAccessToken(request.accessToken()).userId();
-        jwtTokenService.blockToken(request.accessToken());
+    public SimpleResponse logout(String accessToken, String refreshToken, LogoutRequest request) {
+        String userId = jwtTokenService.validateAccessToken(accessToken).userId();
+        jwtTokenService.blockToken(accessToken);
 
-        if (StringUtils.hasText(request.refreshToken())) {
-            JwtTokenService.TokenPrincipal refreshTokenPrincipal = validateStoredRefreshToken(request.refreshToken());
+        if (StringUtils.hasText(refreshToken)) {
+            JwtTokenService.TokenPrincipal refreshTokenPrincipal = validateStoredRefreshToken(refreshToken);
             if (!userId.equals(refreshTokenPrincipal.userId())) {
                 throw new ApiException(ErrorCode.INVALID_TOKEN, "사용자와 일치하지 않는 리프레시 토큰입니다.");
             }
-            jwtTokenService.blockToken(request.refreshToken());
+            jwtTokenService.blockToken(refreshToken);
         }
 
         refreshTokenRepository.delete(userId);
         return SimpleResponse.ok("로그아웃 완료");
     }
 
-    public SimpleResponse signout(SignoutRequest request) {
-        String userId = jwtTokenService.validateAccessToken(request.accessToken()).userId();
+    public SimpleResponse signout(String accessToken, String refreshToken, SignoutRequest request) {
+        String userId = jwtTokenService.validateAccessToken(accessToken).userId();
         if (!userAccountRepository.existsByUserId(userId)) {
             throw new ApiException(ErrorCode.USER_NOT_FOUND);
         }
 
-        jwtTokenService.blockToken(request.accessToken());
+        jwtTokenService.blockToken(accessToken);
+        if (StringUtils.hasText(refreshToken)) {
+            jwtTokenService.blockToken(refreshToken);
+        }
         refreshTokenRepository.delete(userId);
         userAccountRepository.deleteByUserId(userId);
         return SimpleResponse.ok("회원탈퇴 완료");
     }
 
-    public TokenRefreshResponse refresh(TokenRefreshRequest request) {
-        String userId = validateStoredRefreshToken(request.refreshToken()).userId();
+    public AuthTokens refresh(String refreshToken, TokenRefreshRequest request) {
+        String userId = validateStoredRefreshToken(refreshToken).userId();
         boolean rotate = request.rotate() == null || request.rotate();
 
         String newAccessToken = jwtTokenService.issueAccessToken(userId);
-        String newRefreshToken = rotate ? issueAndStoreRefreshToken(userId) : request.refreshToken();
+        String newRefreshToken = rotate ? issueAndStoreRefreshToken(userId) : refreshToken;
 
         if (rotate) {
-            jwtTokenService.blockToken(request.refreshToken());
+            jwtTokenService.blockToken(refreshToken);
         }
 
-        return TokenRefreshResponse.ok(newAccessToken, newRefreshToken);
+        return new AuthTokens(userId, newAccessToken, newRefreshToken);
     }
 
     private String issueAndStoreRefreshToken(String userId) {
@@ -125,5 +128,12 @@ public class AccountsService {
             throw new ApiException(ErrorCode.INVALID_TOKEN, "저장된 리프레시 토큰이 아닙니다.");
         }
         return tokenPrincipal;
+    }
+
+    public record AuthTokens(
+            String userId,
+            String accessToken,
+            String refreshToken
+    ) {
     }
 }

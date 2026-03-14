@@ -14,54 +14,39 @@ import {
 } from 'react'
 import { HairSelector } from '@/components/Camera/HairSelector'
 import { Modal } from '@/components/Camera/Modal'
+import type { AssetPackage } from '@/lib/Camera/assetRuntime'
+import {
+  buildOverlayAffine,
+  drawHairOverlayToCanvas,
+} from '@/lib/Camera/overlay'
 import type { HairRecommendResponse } from '@/lib/Camera/recommend'
+import { syncCanvasSize } from '@/lib/Camera/drawLandmarks'
 import { HAIR_ITEMS } from '@/lib/Camera/HairItem'
-
-type LandmarkPoint = {
-  x: number
-  y: number
-  z: number
-}
-
-function getVideoCoverLayout(
-  containerWidth: number,
-  containerHeight: number,
-  videoWidth: number,
-  videoHeight: number,
-) {
-  const scale = Math.max(
-    containerWidth / videoWidth,
-    containerHeight / videoHeight,
-  )
-  const drawWidth = videoWidth * scale
-  const drawHeight = videoHeight * scale
-
-  return {
-    scale,
-    offsetX: (containerWidth - drawWidth) / 2,
-    offsetY: (containerHeight - drawHeight) / 2,
-  }
-}
+import type { FaceFrame } from '@/lib/Camera/types'
 
 export default function FaceLandmarksView({
   videoRef,
   canvasRef,
   overlayCanvasRef,
+  frameRef,
   selectedHairId,
   onHairApplied,
   recommendation,
   overlayImage,
+  activeAsset,
   loading,
   error,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>
   canvasRef: RefObject<HTMLCanvasElement | null>
   overlayCanvasRef: RefObject<HTMLCanvasElement | null>
-  landmarks: LandmarkPoint[] | null
+  landmarks: Array<{ x: number; y: number; z: number }> | null
+  frameRef: RefObject<FaceFrame | null>
   selectedHairId: number
   onHairApplied: (hairId: number) => void
   recommendation: HairRecommendResponse | null
   overlayImage: HTMLImageElement | null
+  activeAsset: AssetPackage | null
   loading: boolean
   error: string | null
 }) {
@@ -103,9 +88,7 @@ export default function FaceLandmarksView({
     const canvas = overlayCanvasRef.current
     const wrap = wrapRef.current
     const video = videoRef.current
-    const bbox = recommendation?.asset.hairRgbaBBox
-
-    if (!canvas || !wrap) {
+    if (!canvas || !wrap || !video) {
       return
     }
 
@@ -114,40 +97,58 @@ export default function FaceLandmarksView({
       return
     }
 
-    const width = wrap.clientWidth
-    const height = wrap.clientHeight
+    let rafId: number | null = null
 
-    if (canvas.width !== width) {
-      canvas.width = width
+    const render = () => {
+      rafId = requestAnimationFrame(render)
+      syncCanvasSize(canvas)
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      const frame = frameRef.current
+      if (
+        !frame ||
+        !frame.faceFound ||
+        frame.landmarks.length === 0 ||
+        !activeAsset ||
+        !overlayImage ||
+        video.readyState < 2 ||
+        video.videoWidth <= 0 ||
+        video.videoHeight <= 0
+      ) {
+        return
+      }
+
+      const affine = buildOverlayAffine({
+        metadata: activeAsset.metadata,
+        anchors: activeAsset.anchors,
+        landmarks: frame.landmarks,
+        videoWidth: frame.videoW,
+        videoHeight: frame.videoH,
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+      })
+
+      if (!affine) {
+        return
+      }
+
+      drawHairOverlayToCanvas({
+        ctx,
+        image: overlayImage,
+        bbox: activeAsset.metadata.hair_rgba_bbox,
+        affine,
+        alpha: 0.96,
+      })
     }
-    if (canvas.height !== height) {
-      canvas.height = height
+
+    rafId = requestAnimationFrame(render)
+
+    return () => {
+      if (rafId != null) {
+        cancelAnimationFrame(rafId)
+      }
     }
-
-    ctx.clearRect(0, 0, width, height)
-
-    if (!overlayImage || !bbox || !video?.videoWidth || !video.videoHeight) {
-      return
-    }
-
-    const { scale, offsetX, offsetY } = getVideoCoverLayout(
-      width,
-      height,
-      video.videoWidth,
-      video.videoHeight,
-    )
-
-    ctx.save()
-    ctx.globalAlpha = 0.96
-    ctx.drawImage(
-      overlayImage,
-      bbox.x * scale + offsetX,
-      bbox.y * scale + offsetY,
-      bbox.w * scale,
-      bbox.h * scale,
-    )
-    ctx.restore()
-  }, [overlayCanvasRef, overlayImage, recommendation, videoRef])
+  }, [activeAsset, frameRef, overlayCanvasRef, overlayImage, recommendation, videoRef])
 
   return (
     <QueryErrorResetBoundary>

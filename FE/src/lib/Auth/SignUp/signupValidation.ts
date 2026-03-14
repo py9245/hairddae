@@ -6,7 +6,20 @@ const PASSWORD_ALLOWED_REGEX =
 const PASSWORD_HAS_LETTER_REGEX = /[A-Za-z]/
 const PASSWORD_HAS_NUMBER_REGEX = /\d/
 const PASSWORD_HAS_SPECIAL_REGEX = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/
-const AGE_REGEX = /^(?:[1-9]|[1-9][0-9]|1[01][0-9])$/
+const BIRTH_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
+
+function isValidBirthDate(value: string) {
+  if (value.trim() === '') return true
+  if (!BIRTH_DATE_REGEX.test(value)) return false
+
+  const parsed = new Date(`${value}T00:00:00Z`)
+  if (Number.isNaN(parsed.getTime())) return false
+
+  const normalized = parsed.toISOString().slice(0, 10)
+  const today = new Date().toISOString().slice(0, 10)
+
+  return normalized === value && value >= '1900-01-01' && value <= today
+}
 
 export const signupFormSchema = z
   .object({
@@ -45,11 +58,11 @@ export const signupFormSchema = z
 
     passwordConfirm: z.string().min(1, '비밀번호 확인을 입력해주세요.'),
 
-    age: z
+    birthDate: z
       .string()
       .refine(
-        (value) => value.trim() === '' || AGE_REGEX.test(value),
-        '나이는 1~119 사이의 숫자만 입력할 수 있습니다.',
+        (value) => isValidBirthDate(value),
+        '생년월일은 1900-01-01부터 오늘 사이만 입력할 수 있습니다.',
       ),
 
     gender: z.enum(['', 'M', 'F']),

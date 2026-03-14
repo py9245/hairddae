@@ -1,5 +1,7 @@
 package com.example.beapp.persistence.entity;
 
+import java.time.LocalDate;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -27,8 +29,8 @@ public class UserEntity extends BaseTimeEntity {
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;
 
-    @Column(name = "age")
-    private Short age;
+    @Column(name = "birth_date")
+    private LocalDate birthDate;
 
     @Column(name = "gender", length = 1)
     private String gender;
@@ -36,10 +38,10 @@ public class UserEntity extends BaseTimeEntity {
     protected UserEntity() {
     }
 
-    public UserEntity(String userId, String passwordHash, Short age, String gender) {
+    public UserEntity(String userId, String passwordHash, LocalDate birthDate, String gender) {
         this.userId = userId;
         this.passwordHash = passwordHash;
-        this.age = age;
+        this.birthDate = birthDate;
         this.gender = gender;
     }
 
@@ -55,17 +57,17 @@ public class UserEntity extends BaseTimeEntity {
         return passwordHash;
     }
 
-    public Short getAge() {
-        return age;
+    public LocalDate getBirthDate() {
+        return birthDate;
     }
 
     public String getGender() {
         return gender;
     }
 
-    public UserEntity update(String passwordHash, Short age, String gender) {
+    public UserEntity update(String passwordHash, LocalDate birthDate, String gender) {
         this.passwordHash = passwordHash;
-        this.age = age;
+        this.birthDate = birthDate;
         this.gender = gender;
         return this;
     }

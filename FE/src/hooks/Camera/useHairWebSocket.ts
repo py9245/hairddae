@@ -1,42 +1,40 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-type Point3D = {
-  x: number
-  y: number
-  z: number
-}
-
-export type HairFramePayload = {
-  user_id: string
-  frame_id: number
-  camera: {
-    w: number
-    h: number
-  }
-  angle_hash: number
-  angle: {
-    pitch: number
-    yaw: number
-    roll: number
-  }
-  forehead: Point3D
-  landmark: Point3D[]
-}
-
-export type HairWsResult = {
-  type?: 'result'
-  png?: string
-  json?: Record<string, unknown>
-  frame_id?: number
-  hair_id?: number
-}
-
-export type HairWsError = {
-  type?: 'error'
-  message?: string
-}
-
-type HairWsMessage = HairWsResult | HairWsError
+export type HairWebSocketMessage =
+  | {
+      type?: 'connected'
+      message?: string
+      code?: number
+      data?: {
+        endpoint: string
+      }
+    }
+  | {
+      type?: 'pong'
+      message?: string
+      code?: number
+      data?: null
+    }
+  | {
+      type?: 'status'
+      message?: string
+      code?: number
+      data?: {
+        code: number
+        message: string
+        applySessionId: string
+        jobType: string
+        status: string
+        hairID?: number
+        completedAt?: string | null
+      }
+    }
+  | {
+      type?: 'error'
+      message?: string
+      code?: number
+      data?: null
+    }
 
 type UseHairWebSocketArgs = {
   enabled?: boolean
@@ -44,28 +42,33 @@ type UseHairWebSocketArgs = {
 
 const WS_URL = 'home/hairapply/'
 
+function resolveWebSocketUrl() {
+  if (typeof window === 'undefined') return null
+
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}/${WS_URL.replace(/^\/+/, '')}`
+}
+
 export function useHairWebSocket({
   enabled = true,
 }: UseHairWebSocketArgs = {}) {
   const wsRef = useRef<WebSocket | null>(null)
 
   const [isConnected, setIsConnected] = useState(false)
-  const [lastMessage, setLastMessage] = useState<HairWsMessage | null>(null)
-  const [resultPng, setResultPng] = useState<string | null>(null)
-  const [resultJson, setResultJson] = useState<Record<string, unknown> | null>(
+  const [lastMessage, setLastMessage] = useState<HairWebSocketMessage | null>(
     null,
   )
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!enabled) return
-    console.log('WS_URL:', WS_URL)
-    if (!WS_URL) {
-      setError('VITE_WS_URL이 설정되지 않았습니다.')
+    const wsUrl = resolveWebSocketUrl()
+    if (!wsUrl) {
+      setError('웹소켓 URL을 구성할 수 없습니다.')
       return
     }
 
-    const ws = new WebSocket(`${WS_URL}`)
+    const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
     ws.onopen = () => {
@@ -75,19 +78,11 @@ export function useHairWebSocket({
 
     ws.onmessage = (event) => {
       try {
-        const parsed = JSON.parse(event.data) as HairWsMessage
+        const parsed = JSON.parse(event.data) as HairWebSocketMessage
         setLastMessage(parsed)
 
         if ('message' in parsed && parsed.message) {
-          setError(parsed.message)
-        }
-
-        if ('png' in parsed && parsed.png) {
-          setResultPng(parsed.png)
-        }
-
-        if ('json' in parsed && parsed.json) {
-          setResultJson(parsed.json)
+          setError(parsed.type === 'error' ? parsed.message : null)
         }
       } catch (err) {
         console.error('ws message parse failed:', err)
@@ -110,7 +105,7 @@ export function useHairWebSocket({
     }
   }, [enabled])
 
-  const sendFrame = useCallback((payload: HairFramePayload) => {
+  const sendJson = useCallback((payload: Record<string, unknown>) => {
     const ws = wsRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return false
 
@@ -123,12 +118,27 @@ export function useHairWebSocket({
     }
   }, [])
 
+  const ping = useCallback(() => sendJson({ type: 'ping' }), [sendJson])
+
+  const requestStatus = useCallback(
+    (
+      accessToken: string,
+      applySessionId: string,
+      type: 'status' | 'subscribe' = 'subscribe',
+    ) =>
+      sendJson({
+        type,
+        accessToken,
+        applySessionId,
+      }),
+    [sendJson],
+  )
+
   return {
     isConnected,
     lastMessage,
-    resultPng,
-    resultJson,
     error,
-    sendFrame,
+    ping,
+    requestStatus,
   }
 }

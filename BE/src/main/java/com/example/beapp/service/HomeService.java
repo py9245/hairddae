@@ -1,5 +1,8 @@
 package com.example.beapp.service;
 
+import java.time.LocalDate;
+import java.time.Period;
+
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -46,13 +49,13 @@ public class HomeService {
                 .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
 
         Integer resolvedGender = gender != null ? gender : toGenderCode(userAccount.gender());
-        Integer resolvedAge = userAccount.age() != null ? userAccount.age() : 25;
+        Integer resolvedAge = resolveAge(userAccount.birthDate());
         String resolvedAgeCategory = StringUtils.hasText(ageCategory) ? ageCategory : resolveAgeCategory(resolvedAge);
 
         return CustomRankResponse.ok(
                 userId,
                 resolvedGender,
-                resolvedAge,
+                userAccount.birthDate(),
                 resolvedAgeCategory,
                 hairCatalogService != null
                         ? hairCatalogService.getCustomRankItems(userId, size)
@@ -103,6 +106,13 @@ public class HomeService {
 
     private int toGenderCode(String gender) {
         return "M".equalsIgnoreCase(gender) ? 1 : 0;
+    }
+
+    private Integer resolveAge(LocalDate birthDate) {
+        if (birthDate == null) {
+            return 25;
+        }
+        return Math.max(0, Period.between(birthDate, LocalDate.now()).getYears());
     }
 
     private String resolveAgeCategory(Integer age) {

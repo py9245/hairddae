@@ -1,5 +1,6 @@
 package com.example.beapp.repository;
 
+import java.time.LocalDate;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,7 +18,7 @@ public class InMemoryUserAccountRepository implements UserAccountRepository {
     private final Map<String, UserAccount> users = new ConcurrentHashMap<>();
 
     public InMemoryUserAccountRepository(PasswordEncoder passwordEncoder) {
-        save(new UserAccount("TestUser01", passwordEncoder.encode("P@ssw0rd1"), 25, "M"));
+        save(new UserAccount("TestUser01", passwordEncoder.encode("P@ssw0rd1"), LocalDate.of(2000, 1, 1), "M"));
     }
 
     @Override

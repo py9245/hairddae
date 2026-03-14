@@ -17,9 +17,10 @@ export default function SignUp() {
     isFormValid,
     handleChange,
     handleBlur,
-    handleAgeChange,
     handleSubmit,
   } = useSignUpForm()
+
+  const today = new Date().toISOString().slice(0, 10)
 
   return (
     <div className="rounded-3xl bg-white px-5 py-8 shadow-sm">
@@ -36,7 +37,7 @@ export default function SignUp() {
                 userID: formValues.userId,
                 password: formValues.password,
                 passwordCheck: formValues.passwordConfirm,
-                age: formValues.age ? Number(formValues.age) : undefined,
+                birthDate: formValues.birthDate || undefined,
                 gender: formValues.gender || undefined,
               })
 
@@ -161,31 +162,32 @@ export default function SignUp() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label
-                htmlFor="age"
+                htmlFor="birthDate"
                 className="mb-2 block text-base font-semibold text-slate-700"
               >
-                나이{' '}
+                생년월일{' '}
                 <span className="text-sm font-medium text-gray-400">
                   (선택)
                 </span>
               </label>
               <input
-                id="age"
-                type="text"
-                inputMode="numeric"
-                value={values.age}
-                onChange={(e) => handleAgeChange(e.target.value)}
-                onBlur={() => handleBlur('age')}
-                maxLength={3}
-                placeholder="ex. 25"
+                id="birthDate"
+                type="date"
+                value={values.birthDate}
+                onChange={(e) => handleChange('birthDate', e.target.value)}
+                onBlur={() => handleBlur('birthDate')}
+                min="1900-01-01"
+                max={today}
                 className={`h-12 w-full rounded-2xl border px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
-                  errors.age
+                  errors.birthDate
                     ? 'border-red-400 focus:border-red-400'
                     : 'border-gray-200 focus:border-rose-200'
                 }`}
               />
-              {errors.age && (
-                <p className="mt-2 text-sm text-red-500">{errors.age}</p>
+              {errors.birthDate && (
+                <p className="mt-2 text-sm text-red-500">
+                  {errors.birthDate}
+                </p>
               )}
             </div>
 

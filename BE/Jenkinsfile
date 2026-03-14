@@ -7,10 +7,12 @@ pipeline {
   }
 
   environment {
-    IMAGE_TAG = 'be-app:local'
+    APP_IMAGE = 'be-app:local'
+    NODE_IMAGE = 'node:22-alpine'
     DEPLOY_ROOT = '/home/ubuntu/S14P21M101/BE'
     STATIC_ROOT = '/home/ubuntu/S14P21M101/static'
     COMPOSE_FILE = '/home/ubuntu/S14P21M101/BE/docker-compose.yml'
+    DEPLOY_HTML = '/home/ubuntu/S14P21M101/BE/nginx/html'
   }
 
   stages {
@@ -20,11 +22,25 @@ pipeline {
       }
     }
 
+    stage('Build Frontend Dist') {
+      steps {
+        sh '''
+          set -eu
+          docker run --rm \
+            -u "$(id -u):$(id -g)" \
+            -v "$WORKSPACE:/workspace" \
+            -w /workspace/FE \
+            "$NODE_IMAGE" \
+            sh -lc 'corepack enable && corepack pnpm install --frozen-lockfile && corepack pnpm build'
+        '''
+      }
+    }
+
     stage('Build App Image') {
       steps {
         sh '''
           set -eu
-          docker build -t "$IMAGE_TAG" -f "$WORKSPACE/BE/Dockerfile" "$WORKSPACE/BE"
+          docker build -t "$APP_IMAGE" -f "$WORKSPACE/BE/Dockerfile" "$WORKSPACE/BE"
         '''
       }
     }
@@ -33,9 +49,11 @@ pipeline {
       steps {
         sh '''
           set -eu
-          mkdir -p "$DEPLOY_ROOT/nginx"
+          mkdir -p "$DEPLOY_ROOT/nginx" "$DEPLOY_HTML"
           cp -f "$WORKSPACE/BE/docker-compose.yml" "$COMPOSE_FILE"
           cp -f "$WORKSPACE/BE/nginx/default.conf" "$DEPLOY_ROOT/nginx/default.conf"
+          find "$DEPLOY_HTML" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+          cp -a "$WORKSPACE/FE/dist/." "$DEPLOY_HTML/"
         '''
       }
     }
@@ -59,7 +77,7 @@ pipeline {
           docker compose -f "$COMPOSE_FILE" config >/dev/null
 
           docker compose -f "$COMPOSE_FILE" up -d postgres redis
-          docker compose -f "$COMPOSE_FILE" up -d --no-deps --no-build app
+          docker compose -f "$COMPOSE_FILE" up -d --no-deps app
           docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate nginx
         '''
       }
@@ -92,10 +110,16 @@ pipeline {
               https://j14m101.p.ssafy.io/camera | tr -d '\r'
           }
 
-          static_headers() {
+          static_manifest_headers() {
             curl -fsSI \
               --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
               https://j14m101.p.ssafy.io/static/0001/manifests/asset_index_v0.json | tr -d '\r'
+          }
+
+          static_image_headers() {
+            curl -fsSI \
+              --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
+              https://j14m101.p.ssafy.io/static/0001/hair_rgba/base_pose_bank__yaw+00_pitch+01_roll-01_frame000922.png | tr -d '\r'
           }
 
           for i in $(seq 1 20); do
@@ -109,12 +133,16 @@ pipeline {
             if [ -n "$READY_LABEL" ]; then
               WEBSOCKET_HEADERS="$(websocket_headers)"
               CAMERA_HEADERS="$(camera_headers)"
-              STATIC_HEADERS="$(static_headers)"
+              STATIC_MANIFEST_HEADERS="$(static_manifest_headers)"
+              STATIC_IMAGE_HEADERS="$(static_image_headers)"
 
               if printf '%s\n' "$WEBSOCKET_HEADERS" | grep -q '^HTTP/1.1 101' \
                 && printf '%s\n' "$CAMERA_HEADERS" | grep -Fq "connect-src 'self' https: wss:" \
-                && printf '%s\n' "$STATIC_HEADERS" | grep -q '^HTTP/2 200\\|^HTTP/1.1 200'; then
-                echo "health check passed: $READY_LABEL, websocket, csp, static"
+                && printf '%s\n' "$STATIC_MANIFEST_HEADERS" | grep -q '^HTTP/2 200\\|^HTTP/1.1 200' \
+                && printf '%s\n' "$STATIC_MANIFEST_HEADERS" | grep -Fq 'cache-control: public, max-age=60' \
+                && printf '%s\n' "$STATIC_IMAGE_HEADERS" | grep -q '^HTTP/2 200\\|^HTTP/1.1 200' \
+                && printf '%s\n' "$STATIC_IMAGE_HEADERS" | grep -Fq 'cache-control: public, max-age=31536000, immutable'; then
+                echo "health check passed: $READY_LABEL, websocket, csp, static-manifest, static-image"
                 exit 0
               fi
             fi

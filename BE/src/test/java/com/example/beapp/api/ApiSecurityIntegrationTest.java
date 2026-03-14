@@ -3,13 +3,17 @@ package com.example.beapp.api;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.time.LocalDate;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockCookie;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -47,6 +51,7 @@ class ApiSecurityIntegrationTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
+                .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("HttpOnly")))
                 .andReturn();
 
         JsonNode loginBody = objectMapper.readTree(loginResult.getResponse().getContentAsString());
@@ -56,7 +61,7 @@ class ApiSecurityIntegrationTest {
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userID").value("TestUser01"))
-                .andExpect(jsonPath("$.age").value(25))
+                .andExpect(jsonPath("$.birthDate").value("2000-01-01"))
                 .andExpect(jsonPath("$.gender").value("M"));
     }
 
@@ -75,17 +80,17 @@ class ApiSecurityIntegrationTest {
 
         JsonNode loginBody = objectMapper.readTree(loginResult.getResponse().getContentAsString());
         String accessToken = loginBody.get("accessToken").asText();
-        String refreshToken = loginBody.get("refreshToken").asText();
+        MockCookie refreshTokenCookie = extractRefreshTokenCookie(loginResult);
 
         mockMvc.perform(post("/api/accounts/logout")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .header("Authorization", "Bearer " + accessToken)
+                        .cookie(refreshTokenCookie)
                         .content("""
                                 {
-                                  "accessToken": "%s",
-                                  "refreshToken": "%s",
                                   "allDevices": false
                                 }
-                                """.formatted(accessToken, refreshToken)))
+                                """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("로그아웃 완료"));
 
@@ -108,43 +113,39 @@ class ApiSecurityIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        JsonNode loginBody = objectMapper.readTree(loginResult.getResponse().getContentAsString());
-        String refreshToken = loginBody.get("refreshToken").asText();
-
         MvcResult refreshResult = mockMvc.perform(post("/api/accounts/refreshToken")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .cookie(extractRefreshTokenCookie(loginResult))
                         .content("""
                                 {
-                                  "refreshToken": "%s",
                                   "rotate": true
                                 }
-                                """.formatted(refreshToken)))
+                                """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andReturn();
 
-        JsonNode refreshBody = objectMapper.readTree(refreshResult.getResponse().getContentAsString());
-        String rotatedRefreshToken = refreshBody.get("refreshToken").asText();
+        MockCookie rotatedRefreshToken = extractRefreshTokenCookie(refreshResult);
 
         mockMvc.perform(post("/api/accounts/refreshToken")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .cookie(extractRefreshTokenCookie(loginResult))
                         .content("""
                                 {
-                                  "refreshToken": "%s",
                                   "rotate": true
                                 }
-                                """.formatted(refreshToken)))
+                                """))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(401));
 
         mockMvc.perform(post("/api/accounts/refreshToken")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .cookie(rotatedRefreshToken)
                         .content("""
                                 {
-                                  "refreshToken": "%s",
                                   "rotate": false
                                 }
-                                """.formatted(rotatedRefreshToken)))
+                                """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200));
     }
@@ -158,10 +159,10 @@ class ApiSecurityIntegrationTest {
                                   "userID": "bad",
                                   "password": "short",
                                   "passwordConfirm": "short",
-                                  "age": 150,
+                                  "birthDate": "%s",
                                   "gender": "X"
                                 }
-                                """))
+                                """.formatted(LocalDate.now().plusDays(1))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.errors").isArray())
@@ -177,7 +178,7 @@ class ApiSecurityIntegrationTest {
                                   "userID": "NewUser01",
                                   "password": "P@ssw0rd1",
                                   "passwordConfirm": "P@ssw0rd2",
-                                  "age": 27,
+                                  "birthDate": "1998-03-14",
                                   "gender": "F"
                                 }
                                 """))
@@ -195,7 +196,7 @@ class ApiSecurityIntegrationTest {
                                   "userID": "TestUser01",
                                   "password": "P@ssw0rd1",
                                   "passwordConfirm": "P@ssw0rd1",
-                                  "age": 25,
+                                  "birthDate": "2000-01-01",
                                   "gender": "M"
                                 }
                                 """))
@@ -242,5 +243,16 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.jobType").value("HAIR_APPLY"))
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.hairID").value(1));
+    }
+
+    private MockCookie extractRefreshTokenCookie(MvcResult result) {
+        String setCookie = result.getResponse().getHeader("Set-Cookie");
+        String token = java.util.Arrays.stream(setCookie.split(";"))
+                .map(String::trim)
+                .filter(part -> part.startsWith("refreshToken="))
+                .map(part -> part.substring("refreshToken=".length()))
+                .findFirst()
+                .orElseThrow();
+        return new MockCookie("refreshToken", token);
     }
 }

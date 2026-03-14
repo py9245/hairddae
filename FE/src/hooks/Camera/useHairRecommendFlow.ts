@@ -1,5 +1,14 @@
 import { useCallback, useRef, useState } from 'react'
 import { buildApiUrl } from '@/lib/api'
+import {
+  type AssetIndex,
+  type AssetPackage,
+  buildAssetRuntimeRecommendation,
+  findNearestAsset,
+  loadAssetIndex,
+  loadAssetPackage,
+  prefetchNearestAssets,
+} from '@/lib/Camera/assetRuntime'
 import type { UserFeatureMessage } from '@/lib/Camera/contracts'
 import {
   type BuildUserFeaturePayloadArgs,
@@ -22,6 +31,15 @@ type RequestRecommendationArgs = Omit<
   FetchHairRecommendArgs,
   'baseUrl' | 'fetchImpl'
 >
+
+type HairRuntime = {
+  hairID: number
+  hairName: string
+  datasetCode: string
+  datasetRootUrl: string
+  assetIndexUrl: string
+  assetIndex: AssetIndex
+}
 
 function roundPoseAngles(pose: PoseAngles) {
   return {
@@ -54,6 +72,43 @@ export function useHairRecommendFlow({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const lastAssetIdRef = useRef<string | null>(null)
+  const lastRecommendationRef = useRef<HairRecommendResponse | null>(null)
+  const lastAssetSwitchAtRef = useRef(0)
+  const runtimeRef = useRef<HairRuntime | null>(null)
+  const activeAssetRef = useRef<AssetPackage | null>(null)
+
+  const ensureRuntime = useCallback(
+    async ({ hairID, yaw1deg, pitch1deg, roll1deg }: RequestRecommendationArgs) => {
+      if (runtimeRef.current?.hairID === hairID) {
+        return runtimeRef.current
+      }
+
+      const baseUrl = recommendBaseUrl ?? buildApiUrl('/hairs/recommend')
+      const bootstrap = await fetchHairRecommend({
+        baseUrl,
+        fetchImpl,
+        hairID,
+        yaw1deg,
+        pitch1deg,
+        roll1deg,
+      })
+
+      const assetIndex = await loadAssetIndex(bootstrap.assetIndexUrl, fetchImpl)
+
+      const nextRuntime: HairRuntime = {
+        hairID: bootstrap.hairID,
+        hairName: bootstrap.hairName,
+        datasetCode: bootstrap.datasetCode,
+        datasetRootUrl: bootstrap.datasetRootUrl,
+        assetIndexUrl: bootstrap.assetIndexUrl,
+        assetIndex,
+      }
+
+      runtimeRef.current = nextRuntime
+      return nextRuntime
+    },
+    [fetchImpl, recommendBaseUrl],
+  )
 
   const requestRecommendation = useCallback(
     async ({
@@ -62,36 +117,49 @@ export function useHairRecommendFlow({
       pitch1deg,
       roll1deg,
     }: RequestRecommendationArgs) => {
-      setLoading(true)
-      setError(null)
-
       try {
-        const nextRecommendation = await fetchHairRecommend({
-          baseUrl: recommendBaseUrl ?? buildApiUrl('/home/hairapply/'),
-          fetchImpl,
+        setLoading(true)
+        setError(null)
+
+        const runtime = await ensureRuntime({
           hairID,
           yaw1deg,
           pitch1deg,
           roll1deg,
         })
 
+        const nearest = findNearestAsset(runtime.assetIndex.items, {
+          yaw: yaw1deg ?? 0,
+          pitch: pitch1deg ?? 0,
+          roll: roll1deg ?? 0,
+        })
+        if (!nearest) {
+          throw new Error('no approved asset found for current pose')
+        }
+
+        const assetPackage = await loadAssetPackage(
+          runtime.datasetRootUrl,
+          nearest,
+          fetchImpl,
+          imageLoader,
+        )
+
+        activeAssetRef.current = assetPackage
+        lastAssetIdRef.current = assetPackage.item.asset_id
+        lastAssetSwitchAtRef.current = Date.now()
+
+        const nextRecommendation = buildAssetRuntimeRecommendation(
+          runtime.hairID,
+          runtime.hairName,
+          runtime.datasetCode,
+          runtime.datasetRootUrl,
+          runtime.assetIndexUrl,
+          assetPackage,
+        )
+
         setRecommendation(nextRecommendation)
-
-        const asset = nextRecommendation.asset
-        if (
-          asset.hairRgbaUrl &&
-          asset.assetID &&
-          lastAssetIdRef.current !== asset.assetID
-        ) {
-          const image = await imageLoader(asset.hairRgbaUrl)
-          lastAssetIdRef.current = asset.assetID
-          setOverlayImage(image)
-        }
-
-        if (!asset.hairRgbaUrl) {
-          lastAssetIdRef.current = null
-          setOverlayImage(null)
-        }
+        setOverlayImage(assetPackage.image)
+        lastRecommendationRef.current = nextRecommendation
 
         return nextRecommendation
       } catch (caught) {
@@ -103,12 +171,51 @@ export function useHairRecommendFlow({
         setLoading(false)
       }
     },
-    [fetchImpl, imageLoader, recommendBaseUrl],
+    [ensureRuntime, fetchImpl, imageLoader],
   )
 
   const requestByPose = useCallback(
     async (hairID: number, pose: PoseAngles) => {
       const rounded = roundPoseAngles(pose)
+
+      const runtime = await ensureRuntime({
+        hairID,
+        yaw1deg: rounded.yaw1deg,
+        pitch1deg: rounded.pitch1deg,
+        roll1deg: rounded.roll1deg,
+      })
+
+      const now = Date.now()
+      const nearest = findNearestAsset(runtime.assetIndex.items, {
+        yaw: rounded.yaw1deg,
+        pitch: rounded.pitch1deg,
+        roll: rounded.roll1deg,
+      })
+
+      if (!nearest) {
+        return lastRecommendationRef.current
+      }
+
+      prefetchNearestAssets(
+        runtime.assetIndex.items,
+        runtime.datasetRootUrl,
+        {
+          yaw: rounded.yaw1deg,
+          pitch: rounded.pitch1deg,
+          roll: rounded.roll1deg,
+        },
+        fetchImpl,
+        imageLoader,
+      )
+
+      if (lastAssetIdRef.current === nearest.asset_id) {
+        return lastRecommendationRef.current
+      }
+
+      if (now - lastAssetSwitchAtRef.current < 80) {
+        return lastRecommendationRef.current
+      }
+
       return requestRecommendation({
         hairID,
         yaw1deg: rounded.yaw1deg,
@@ -116,7 +223,7 @@ export function useHairRecommendFlow({
         roll1deg: rounded.roll1deg,
       })
     },
-    [requestRecommendation],
+    [ensureRuntime, fetchImpl, imageLoader, requestRecommendation],
   )
 
   const buildFeatureMessage = useCallback(
@@ -127,6 +234,10 @@ export function useHairRecommendFlow({
 
   const clearRecommendation = useCallback(() => {
     lastAssetIdRef.current = null
+    lastRecommendationRef.current = null
+    lastAssetSwitchAtRef.current = 0
+    runtimeRef.current = null
+    activeAssetRef.current = null
     setRecommendation(null)
     setOverlayImage(null)
     setLoading(false)
@@ -142,5 +253,6 @@ export function useHairRecommendFlow({
     requestByPose,
     buildFeatureMessage,
     clearRecommendation,
+    activeAsset: activeAssetRef.current,
   }
 }

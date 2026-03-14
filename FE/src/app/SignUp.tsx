@@ -23,7 +23,7 @@ export default function SignUp() {
   } = useSignUpForm()
 
   return (
-    <div className="rounded-3xl bg-white px-10 py-8 shadow-sm">
+    <div className="rounded-3xl bg-white px-9 py-8 shadow-sm">
       <div className="mx-auto w-full max-w-md">
         <h1 className="mt-4 text-center text-3xl font-extrabold tracking-tight text-primary-300">
           회원가입

@@ -40,10 +40,10 @@ export function AgreementCheckbox({
         className="
           flex h-6 w-6 shrink-0 items-center justify-center
           rounded-[10px] border-2
-          border-[#C9CDD3] bg-white
+          border-gray bg-white
           transition-all duration-200
-          peer-checked:border-[#D98296] peer-checked:bg-[#D98296]
-          peer-focus-visible:ring-2 peer-focus-visible:ring-[#E8B6C2] peer-focus-visible:ring-offset-1
+          peer-checked:border-primary-200 peer-checked:bg-primary-200
+          peer-focus-visible:ring-2 peer-focus-visible:ring-primary-200 peer-focus-visible:ring-offset-1
         "
       >
         <Check
@@ -54,8 +54,8 @@ export function AgreementCheckbox({
         />
       </span>
 
-      <span className="text-[14px] font-semibold tracking-[-0.01em] text-slate-700">
-        <span className="mr-1 text-[#E08A97]">{requiredText}</span>
+      <span className="text-[13px] font-semibold tracking-[-0.01em] text-slate-700">
+        <span className="mr-1 text-primary-200">{requiredText}</span>
         {label}
       </span>
     </label>

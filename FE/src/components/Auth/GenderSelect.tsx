@@ -1,6 +1,6 @@
 import { ChevronDown } from 'lucide-react'
 
-export type Gender = '' | 'M' | 'F'
+export type Gender = '' | 'M' | 'F' | null
 
 type Props = {
   value: Gender
@@ -20,8 +20,8 @@ export function GenderSelect({ value, onChange, onBlur }: Props) {
       <div className="relative">
         <select
           id="gender"
-          value={value}
-          onChange={(e) => onChange(e.target.value as Gender)}
+          value={value ?? ''}
+          onChange={(e) => onChange((e.target.value || null) as Gender)}
           onBlur={onBlur}
           className="h-12 w-full appearance-none rounded-2xl border border-gray-200 bg-white px-4 text-base text-slate-700 outline-none focus:border-primary-200"
         >

@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useMemo, useState } from 'react'
 import { Eye, EyeClosed } from 'lucide-react'
+import { validateField, type FormValues } from '@/lib/Auth/SignUp/signupValidation'
 
 type LabelKind = '아이디' | '비밀번호' | '비밀번호 확인' | '나이'
 
@@ -16,36 +17,28 @@ function validateValue(
   confirmTarget?: string,
 ): string | null {
   const v = value.trim()
-
-  if (label === '아이디') {
-    if (v.length === 0) return '아이디를 입력해 주세요.'
-    if (v.length < 6) return '아이디는 6자 이상이어야 해요.'
-    if (v.length > 20) return '아이디는 20자 이하로 입력해 주세요.'
-    if (!/^[A-Za-z0-9]+$/.test(v))
-      return '아이디는 영문/숫자만 사용할 수 있어요.'
-    return null
+  const form: FormValues = {
+    userId: label === '아이디' ? v : '',
+    password:
+      label === '비밀번호'
+        ? v
+        : label === '비밀번호 확인'
+          ? confirmTarget ?? ''
+          : '',
+    passwordConfirm: label === '비밀번호 확인' ? v : '',
+    age: label === '나이' ? v : '',
+    gender: '',
+    agreed: true,
   }
-
-  if (label === '비밀번호') {
-    if (v.length === 0) return '비밀번호를 입력해 주세요.'
-    if (v.length < 8 || v.length > 16) return '비밀번호는 8~16자여야 해요.'
-    if (!/[A-Za-z]/.test(v)) return '비밀번호에는 영문이 최소 1개 필요해요.'
-    if (!/[0-9]/.test(v)) return '비밀번호에는 숫자가 최소 1개 필요해요.'
-    if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/.test(v))
-      return '비밀번호에는 특수문자가 최소 1개 필요해요.'
-    return null
-  }
-
-  if (label === '나이') {
-    if (v.length === 0) return null // 선택 입력
-    const ok = /^(?:[1-9]|[1-9][0-9]|1[01][0-9])$/.test(v)
-    return ok ? null : '나이는 1~119 사이의 숫자만 입력할 수 있습니다.'
-  }
-
-  if (v.length === 0) return '비밀번호 확인을 입력해 주세요.'
-  if (typeof confirmTarget === 'string' && v !== confirmTarget)
-    return '비밀번호가 일치하지 않습니다.'
-  return null
+  const key =
+    label === '아이디'
+      ? 'userId'
+      : label === '비밀번호'
+        ? 'password'
+        : label === '비밀번호 확인'
+          ? 'passwordConfirm'
+          : 'age'
+  return validateField(key, form) ?? null
 }
 
 function InputPreview({ label, placeholder, confirmTarget }: InputPreviewProps) {

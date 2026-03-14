@@ -129,7 +129,9 @@ export function HairSelector({
                           alt={item.label}
                           className={clsx(
                             'select-none object-contain transition-all duration-300',
-                            selected ? 'h-20 w-20 opacity-40' : 'h-12 w-12 opacity-80',
+                            selected
+                              ? 'h-20 w-20 opacity-40'
+                              : 'h-12 w-12 opacity-80',
                           )}
                           draggable={false}
                         />

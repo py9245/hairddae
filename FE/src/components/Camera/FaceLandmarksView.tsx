@@ -1,7 +1,17 @@
-import { useRouter } from '@tanstack/react-router'
 import { QueryErrorResetBoundary } from '@tanstack/react-query'
+import { useRouter } from '@tanstack/react-router'
 import { Settings, X } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState, Suspense, type RefObject, type ReactNode, Component } from 'react'
+import {
+  Component,
+  type ReactNode,
+  type RefObject,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { HairSelector } from '@/components/Camera/HairSelector'
 import { Modal } from '@/components/Camera/Modal'
 import type { HairRecommendResponse } from '@/lib/Camera/recommend'
@@ -185,7 +195,9 @@ export default function FaceLandmarksView({
           <Suspense
             fallback={
               <div className="grid h-[100dvh] w-full place-items-center bg-neutral-100">
-                <div className="rounded-md border bg-white px-4 py-3 text-sm">로딩 중…</div>
+                <div className="rounded-md border bg-white px-4 py-3 text-sm">
+                  로딩 중…
+                </div>
               </div>
             }
           >
@@ -261,12 +273,19 @@ export default function FaceLandmarksView({
   )
 }
 
-class ErrorBoundary extends Component<{
-  fallback: ReactNode
-  onReset?: () => void
-  children: ReactNode
-}, { hasError: boolean }> {
-  constructor(props: { fallback: ReactNode; onReset?: () => void; children: ReactNode }) {
+class ErrorBoundary extends Component<
+  {
+    fallback: ReactNode
+    onReset?: () => void
+    children: ReactNode
+  },
+  { hasError: boolean }
+> {
+  constructor(props: {
+    fallback: ReactNode
+    onReset?: () => void
+    children: ReactNode
+  }) {
     super(props)
     this.state = { hasError: false }
   }

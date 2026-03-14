@@ -11,10 +11,7 @@ type LoginForm = {
 
 export default function Login() {
   const [showPassword, setShowPassword] = useState(false)
-  const [input, setInput] = useState<LoginForm>({
-    userID: '',
-    password: '',
-  })
+  const [input, setInput] = useState<LoginForm>({ userID: '', password: '' })
 
   const router = useRouter()
   const loginMutation = useLoginMutation()
@@ -23,15 +20,11 @@ export default function Login() {
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
     const { id, value } = e.target
-    setInput((prev) => ({
-      ...prev,
-      [id]: value,
-    }))
+    setInput((prev) => ({ ...prev, [id]: value }))
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-
     if (!isFormValid) return
 
     try {
@@ -39,7 +32,6 @@ export default function Login() {
         userID: input.userID,
         password: input.password,
       })
-
       auth.login()
       await router.navigate({ to: '/main' })
     } catch (error) {

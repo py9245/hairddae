@@ -14,33 +14,15 @@ import {
 } from 'react'
 import { HairSelector } from '@/components/Camera/HairSelector'
 import { Modal } from '@/components/Camera/Modal'
-import type { HairRecommendResponse } from '@/lib/Camera/recommend'
+import { captureCompositedImage } from '@/lib/Camera/capture'
 import { HAIR_ITEMS } from '@/lib/Camera/HairItem'
+import { getVideoCoverLayout } from '@/lib/Camera/layout'
+import type { HairRecommendResponse } from '@/lib/Camera/recommend'
 
 type LandmarkPoint = {
   x: number
   y: number
   z: number
-}
-
-function getVideoCoverLayout(
-  containerWidth: number,
-  containerHeight: number,
-  videoWidth: number,
-  videoHeight: number,
-) {
-  const scale = Math.max(
-    containerWidth / videoWidth,
-    containerHeight / videoHeight,
-  )
-  const drawWidth = videoWidth * scale
-  const drawHeight = videoHeight * scale
-
-  return {
-    scale,
-    offsetX: (containerWidth - drawWidth) / 2,
-    offsetY: (containerHeight - drawHeight) / 2,
-  }
 }
 
 export default function FaceLandmarksView({
@@ -98,6 +80,16 @@ export default function FaceLandmarksView({
   const handleClose = useCallback(() => {
     void router.navigate({ to: '/main' })
   }, [router])
+
+  const handleCapture = useCallback(() => {
+    captureCompositedImage({
+      videoRef,
+      overlayCanvasRef,
+      wrapRef,
+      hairItems: HAIR_ITEMS,
+      selectedHairId: displayHairId,
+    })
+  }, [displayHairId, overlayCanvasRef, videoRef])
 
   useEffect(() => {
     const canvas = overlayCanvasRef.current
@@ -236,6 +228,7 @@ export default function FaceLandmarksView({
                   items={HAIR_ITEMS}
                   selectedId={displayHairId}
                   onSelect={handleHairSelect}
+                  onCapture={handleCapture}
                 />
               </div>
 

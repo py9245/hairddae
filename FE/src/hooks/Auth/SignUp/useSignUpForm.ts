@@ -19,24 +19,24 @@ export function useSignUpForm() {
   const [values, setValues] = useState<FormValues>(initialValues)
   const [errors, setErrors] = useState<FormErrors>({})
 
-function handleChange<K extends keyof FormValues>(
-  key: K,
-  value: FormValues[K],
-) {
-  const nextValues = {
-    ...values,
-    [key]: value,
-  }
+  function handleChange<K extends keyof FormValues>(
+    key: K,
+    value: FormValues[K],
+  ) {
+    const nextValues = {
+      ...values,
+      [key]: value,
+    }
 
-  setValues(nextValues)
+    setValues(nextValues)
 
-  if (key === 'agreed') {
-    setErrors((prev) => ({
-      ...prev,
-      agreed: validateField('agreed', nextValues),
-    }))
+    if (key === 'agreed') {
+      setErrors((prev) => ({
+        ...prev,
+        agreed: validateField('agreed', nextValues),
+      }))
+    }
   }
-}
   function handleBlur<K extends keyof FormValues>(key: K) {
     const message = validateField(key, values)
 

@@ -1,9 +1,9 @@
 import { Link, useRouter } from '@tanstack/react-router'
 import { ChevronDown, Eye, EyeClosed } from 'lucide-react'
 import { useState } from 'react'
+import { AgreementCheckbox } from '@/components/Auth/AgreementCheckbox'
 import { useSignUpForm } from '@/hooks/Auth/SignUp/useSignUpForm'
 import { useSignUpMutation } from '@/hooks/Auth/SignUp/useSignUpMutation'
-import { AgreementCheckbox } from '@/components/Auth/AgreementCheckbox'
 
 export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false)
@@ -222,11 +222,12 @@ export default function SignUp() {
           </div>
 
           <AgreementCheckbox
-          checked={values.agreed}
-          onChange={(checked) => handleChange('agreed', checked)}
-          onBlur={() => handleBlur('agreed')}
-          label="이용약관 및 개인정보수집에 동의합니다."
-        />
+            checked={values.agreed}
+            onChange={(checked) => handleChange('agreed', checked)}
+            onBlur={() => handleBlur('agreed')}
+            label="이용약관 및 개인정보수집에 동의합니다."
+            requiredText="[필수]"
+          />
           {errors.agreed && (
             <p className="text-center text-sm text-red-500">{errors.agreed}</p>
           )}

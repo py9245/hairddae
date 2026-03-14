@@ -13,7 +13,7 @@ function AgreementCheckboxStory({ initialChecked }: StoryProps) {
   return (
     <div className="w-full max-w-md">
       <div className="flex items-center justify-center gap-3 pt-3">
-        <AgreementCheckbox id="agree" checked={checked} onChange={setChecked} />
+        <AgreementCheckbox id="agree" checked={checked} onChange={setChecked} label="" requiredText=''/>
       </div>
     </div>
   )

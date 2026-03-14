@@ -15,7 +15,7 @@ export function AgreementCheckbox({
   onChange,
   onBlur,
   label,
-  requiredText = '[필수]',
+  requiredText,
   id = 'agreement-checkbox',
   disabled = false,
 }: AgreementCheckboxProps) {

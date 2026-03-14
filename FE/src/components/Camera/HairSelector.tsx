@@ -1,4 +1,5 @@
 import clsx from 'clsx'
+import { Download } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 type HairItem = {
@@ -116,7 +117,7 @@ export function HairSelector({
                   >
                     <div
                       className={clsx(
-                        'flex items-center justify-center overflow-hidden rounded-full border bg-white transition-all duration-300',
+                        'relative flex items-center justify-center overflow-hidden rounded-full border bg-white transition-all duration-300',
                         selected
                           ? 'h-24 w-24 border-white shadow-[0_0_0_6px_rgba(255,255,255,0.25)]'
                           : 'h-16 w-16 border-white/40 opacity-85',
@@ -128,10 +129,16 @@ export function HairSelector({
                           alt={item.label}
                           className={clsx(
                             'select-none object-contain transition-all duration-300',
-                            selected ? 'h-20 w-20' : 'h-12 w-12 opacity-80',
+                            selected
+                              ? 'h-20 w-20 opacity-40'
+                              : 'h-12 w-12 opacity-80',
                           )}
                           draggable={false}
                         />
+                      )}
+
+                      {selected && (
+                        <Download className="absolute h-12 w-12 text-slate-700" />
                       )}
                     </div>
                   </button>

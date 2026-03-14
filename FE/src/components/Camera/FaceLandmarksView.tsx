@@ -8,12 +8,11 @@ import {
   Suspense,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react'
 import { HairSelector } from '@/components/Camera/HairSelector'
-import { Modal } from '@/components/Camera/Modal'
+import { ApplyStyleModal } from '@/components/Camera/Modal'
 import { captureCompositedImage } from '@/lib/Camera/capture'
 import { HAIR_ITEMS } from '@/lib/Camera/HairItem'
 import { getVideoCoverLayout } from '@/lib/Camera/layout'
@@ -52,11 +51,6 @@ export default function FaceLandmarksView({
   const [pendingHairId, setPendingHairId] = useState<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const displayHairId = pendingHairId ?? selectedHairId
-
-  const pendingHair = useMemo(() => {
-    if (pendingHairId == null) return null
-    return HAIR_ITEMS.find((item) => item.id === pendingHairId) ?? null
-  }, [pendingHairId])
 
   const handleHairSelect = useCallback(
     (nextId: number) => {
@@ -232,11 +226,14 @@ export default function FaceLandmarksView({
                 />
               </div>
 
-              <Modal
-                open={modalOpen}
-                targetLabel={pendingHair?.label}
-                onComplete={handleModalComplete}
-              />
+              {modalOpen && (
+                <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/20 pb-50">
+                  <ApplyStyleModal
+                    open={modalOpen}
+                    onComplete={handleModalComplete}
+                  />
+                </div>
+              )}
             </div>
           </Suspense>
         </ErrorBoundary>

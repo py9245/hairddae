@@ -16,7 +16,7 @@ function GenderSelectStory({ initialValue }: StoryProps) {
 }
 
 const meta = {
-  title: 'UI/GenderSelect',
+  title: 'UI/Select/GenderSelect',
   component: GenderSelectStory,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],

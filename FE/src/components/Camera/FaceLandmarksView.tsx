@@ -1,269 +1,272 @@
-import type { RefObject } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { HairSelector } from '@/components/Camera/HairSelector'
-import { Modal } from '@/components/Camera/Modal'
+import { QueryErrorResetBoundary } from '@tanstack/react-query'
+import { useRouter } from '@tanstack/react-router'
+import { Settings, X } from 'lucide-react'
 import {
-  type HairFramePayload,
-  useHairWebSocket,
-} from '@/hooks/Camera/useHairWebSocket'
+  Component,
+  type ReactNode,
+  type RefObject,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
+import { HairSelector } from '@/components/Camera/HairSelector'
+import { ApplyStyleModal } from '@/components/Camera/Modal'
+import { captureCompositedImage } from '@/lib/Camera/capture'
+import { HAIR_ITEMS } from '@/lib/Camera/HairItem'
+import { getVideoCoverLayout } from '@/lib/Camera/layout'
+import type { HairRecommendResponse } from '@/lib/Camera/recommend'
 
-type PoseNorm = { x: number; y: number; z: number }
-
-type HairItem = {
-  id: number
-  img: string
-  thumb: string
-  label: string
-  size: { w: number; h: number }
-  anchor: { x: number; y: number }
-  baseEyePx: number
-  offsetPx: { x: number; y: number }
-}
-
-const HAIR_ITEMS: HairItem[] = [
-  {
-    id: 0,
-    img: '',
-    thumb: '',
-    label: '없음',
-    size: { w: 300, h: 300 },
-    anchor: { x: 150, y: 280 },
-    baseEyePx: 220,
-    offsetPx: { x: 0, y: 0 },
-  },
-  {
-    id: 1,
-    img: '/hair/hair.png',
-    thumb: '/hair/hair.png',
-    label: '헤어 1',
-    size: { w: 349, h: 439 },
-    anchor: { x: 169.197, y: 155.962 },
-    baseEyePx: 220,
-    offsetPx: { x: 0, y: 0 },
-  },
-]
-
-function normalizeAngle360(v: number) {
-  const rounded = Math.round(v)
-  return ((rounded % 360) + 360) % 360
-}
-
-function makeAngleHash(poseNorm: PoseNorm) {
-  const x = normalizeAngle360(poseNorm.x)
-  const y = normalizeAngle360(poseNorm.y)
-  const z = normalizeAngle360(poseNorm.z)
-  return x * 360 ** 2 + y * 360 + z
-}
-
-function buildFramePayload(
-  userId: string,
-  frameId: number,
-  videoEl: HTMLVideoElement | null,
-  poseNorm: PoseNorm | null,
-  landmarks: PoseNorm[] | null,
-):
-  | (HairFramePayload & {
-      frame_id: number
-      camera: { w: number; h: number }
-      angle_hash: number
-    })
-  | null {
-  if (!poseNorm || !landmarks || landmarks.length === 0 || !landmarks[10]) {
-    return null
-  }
-
-  const w = videoEl?.videoWidth ?? 0
-  const h = videoEl?.videoHeight ?? 0
-
-  return {
-    user_id: userId,
-    frame_id: frameId,
-    camera: {
-      w,
-      h,
-    },
-    angle_hash: makeAngleHash(poseNorm),
-    angle: {
-      pitch: poseNorm.x,
-      yaw: poseNorm.y,
-      roll: poseNorm.z,
-    },
-    forehead: {
-      x: landmarks[10].x,
-      y: landmarks[10].y,
-      z: landmarks[10].z ?? 0,
-    },
-    landmark: landmarks.map((lm) => ({
-      x: lm.x,
-      y: lm.y,
-      z: lm.z ?? 0,
-    })),
-  }
+type LandmarkPoint = {
+  x: number
+  y: number
+  z: number
 }
 
 export default function FaceLandmarksView({
   videoRef,
   canvasRef,
-  poseNorm,
-  landmarks,
+  overlayCanvasRef,
+  selectedHairId,
+  onHairApplied,
+  recommendation,
+  overlayImage,
+  loading,
+  error,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>
   canvasRef: RefObject<HTMLCanvasElement | null>
-  poseNorm: PoseNorm | null
-  landmarks: PoseNorm[] | null
+  overlayCanvasRef: RefObject<HTMLCanvasElement | null>
+  landmarks: LandmarkPoint[] | null
+  selectedHairId: number
+  onHairApplied: (hairId: number) => void
+  recommendation: HairRecommendResponse | null
+  overlayImage: HTMLImageElement | null
+  loading: boolean
+  error: string | null
 }) {
+  const router = useRouter()
   const wrapRef = useRef<HTMLDivElement | null>(null)
-  const frameIdRef = useRef(0)
-  const userId = 'user-123'
-
-  const [appliedHairId, setAppliedHairId] = useState(0)
   const [pendingHairId, setPendingHairId] = useState<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
-
-  const {
-    isConnected,
-    resultPng,
-    resultJson,
-    error: wsError,
-    sendFrame,
-  } = useHairWebSocket({
-    enabled: true,
-  })
-
-  const displayHairId = pendingHairId ?? appliedHairId
-
-  const selectedHair = useMemo(() => {
-    return HAIR_ITEMS.find((item) => item.id === displayHairId) ?? null
-  }, [displayHairId])
-
-  const pendingHair = useMemo(() => {
-    if (pendingHairId == null) return null
-    return HAIR_ITEMS.find((item) => item.id === pendingHairId) ?? null
-  }, [pendingHairId])
+  const displayHairId = pendingHairId ?? selectedHairId
 
   const handleHairSelect = useCallback(
     (nextId: number) => {
       if (modalOpen) return
-      if (nextId === appliedHairId) return
+      if (nextId === selectedHairId) return
 
       setPendingHairId(nextId)
       setModalOpen(true)
     },
-    [appliedHairId, modalOpen],
+    [modalOpen, selectedHairId],
   )
 
   const handleModalComplete = useCallback(() => {
     if (pendingHairId != null) {
-      setAppliedHairId(pendingHairId)
+      onHairApplied(pendingHairId)
     }
     setPendingHairId(null)
     setModalOpen(false)
-  }, [pendingHairId])
+  }, [onHairApplied, pendingHairId])
+
+  const handleClose = useCallback(() => {
+    void router.navigate({ to: '/main' })
+  }, [router])
+
+  const handleCapture = useCallback(() => {
+    captureCompositedImage({
+      videoRef,
+      overlayCanvasRef,
+      wrapRef,
+      hairItems: HAIR_ITEMS,
+      selectedHairId: displayHairId,
+    })
+  }, [displayHairId, overlayCanvasRef, videoRef])
 
   useEffect(() => {
-    frameIdRef.current += 1
+    const canvas = overlayCanvasRef.current
+    const wrap = wrapRef.current
+    const video = videoRef.current
+    const bbox = recommendation?.asset.hairRgbaBBox
 
-    const payload = buildFramePayload(
-      userId,
-      frameIdRef.current,
-      videoRef.current,
-      poseNorm,
-      landmarks,
+    if (!canvas || !wrap) {
+      return
+    }
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      return
+    }
+
+    const width = wrap.clientWidth
+    const height = wrap.clientHeight
+
+    if (canvas.width !== width) {
+      canvas.width = width
+    }
+    if (canvas.height !== height) {
+      canvas.height = height
+    }
+
+    ctx.clearRect(0, 0, width, height)
+
+    if (!overlayImage || !bbox || !video?.videoWidth || !video.videoHeight) {
+      return
+    }
+
+    const { scale, offsetX, offsetY } = getVideoCoverLayout(
+      width,
+      height,
+      video.videoWidth,
+      video.videoHeight,
     )
 
-    if (!payload) return
-    sendFrame(payload)
-  }, [poseNorm, landmarks, sendFrame, videoRef])
-
-  useEffect(() => {
-    if (resultJson) {
-      console.log('ws json:', resultJson)
-    }
-  }, [resultJson])
-
-  const foreheadPx = useMemo(() => {
-    const wrap = wrapRef.current
-    const forehead = landmarks?.[10]
-
-    if (!wrap || !forehead) return null
-
-    const rect = wrap.getBoundingClientRect()
-
-    return {
-      x: (1 - forehead.x) * rect.width,
-      y: forehead.y * rect.height,
-    }
-  }, [landmarks])
+    ctx.save()
+    ctx.globalAlpha = 0.96
+    ctx.drawImage(
+      overlayImage,
+      bbox.x * scale + offsetX,
+      bbox.y * scale + offsetY,
+      bbox.w * scale,
+      bbox.h * scale,
+    )
+    ctx.restore()
+  }, [overlayCanvasRef, overlayImage, recommendation, videoRef])
 
   return (
-    <div className="app-frame-page grid w-full place-items-center overflow-hidden">
-      <div
-        ref={wrapRef}
-        className="relative h-full w-full overflow-hidden bg-black"
-      >
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="block h-full w-full object-cover -scale-x-100"
-        />
+    <QueryErrorResetBoundary>
+      {({ reset }) => (
+        <ErrorBoundary
+          onReset={reset}
+          fallback={
+            <div className="grid h-[100dvh] w-full place-items-center bg-neutral-100">
+              <div className="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-700">
+                문제가 발생했습니다. 다시 시도해 주세요.
+                <div className="mt-3 text-right">
+                  <button
+                    type="button"
+                    onClick={reset}
+                    className="rounded bg-red-600 px-3 py-1 text-white"
+                  >
+                    다시 시도
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
+        >
+          <Suspense
+            fallback={
+              <div className="grid h-[100dvh] w-full place-items-center bg-neutral-100">
+                <div className="rounded-md border bg-white px-4 py-3 text-sm">
+                  로딩 중…
+                </div>
+              </div>
+            }
+          >
+            <div className="grid h-[100dvh] w-full place-items-center overflow-hidden bg-neutral-100">
+              <div
+                ref={wrapRef}
+                className="relative h-[100dvh] w-[430px] max-w-full overflow-hidden bg-black"
+              >
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="block h-full w-full object-cover -scale-x-100"
+                />
 
-        <canvas
-          ref={canvasRef}
-          className="pointer-events-none absolute inset-0 hidden h-full w-full -scale-x-100"
-        />
+                <canvas
+                  ref={canvasRef}
+                  className="pointer-events-none absolute inset-0 hidden h-full w-full -scale-x-100"
+                />
 
-        {selectedHair?.img &&
-          foreheadPx &&
-          (() => {
-            const flippedAnchorX = selectedHair.size.w - selectedHair.anchor.x
+                <canvas
+                  ref={overlayCanvasRef}
+                  className="pointer-events-none absolute inset-0 z-10 h-full w-full -scale-x-100"
+                />
 
-            return (
-              <img
-                src={selectedHair.img}
-                alt={selectedHair.label}
-                className="pointer-events-none absolute z-10"
-                style={{
-                  width: `${selectedHair.size.w}px`,
-                  height: `${selectedHair.size.h}px`,
-                  left: `${foreheadPx.x - flippedAnchorX - selectedHair.offsetPx.x}px`,
-                  top: `${foreheadPx.y - selectedHair.anchor.y + selectedHair.offsetPx.y}px`,
-                }}
-              />
-            )
-          })()}
+                <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 pb-4 pt-5">
+                  <button
+                    type="button"
+                    aria-label="Go to main"
+                    onClick={handleClose}
+                    className="flex h-11 w-11 items-center justify-center text-white/85 transition hover:text-white"
+                  >
+                    <X className="h-10 w-10" />
+                  </button>
 
-        {resultPng && (
-          <img
-            src={resultPng}
-            alt="ai result"
-            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-          />
-        )}
+                  <button
+                    type="button"
+                    aria-label="Open settings"
+                    className="flex h-11 w-11 items-center justify-center text-white/85 transition hover:text-white"
+                  >
+                    <Settings className="h-10 w-10" />
+                  </button>
+                </div>
 
-        <div className="absolute top-2 left-2 z-20 rounded bg-black/60 px-2 py-1 text-xs text-white">
-          {isConnected ? 'WS connected' : 'WS disconnected'}
-        </div>
+                <div className="absolute top-2 left-2 z-20 rounded bg-black/60 px-2 py-1 text-xs text-white">
+                  {loading ? 'Loading recommendation' : 'Recommendation ready'}
+                </div>
 
-        {wsError && (
-          <div className="absolute top-10 left-2 z-20 rounded bg-red-600/80 px-2 py-1 text-xs text-white">
-            {wsError}
-          </div>
-        )}
+                {error && (
+                  <div className="absolute top-10 left-2 z-20 rounded bg-red-600/80 px-2 py-1 text-xs text-white">
+                    {error}
+                  </div>
+                )}
 
-        <HairSelector
-          items={HAIR_ITEMS}
-          selectedId={displayHairId}
-          onSelect={handleHairSelect}
-        />
-      </div>
+                <HairSelector
+                  items={HAIR_ITEMS}
+                  selectedId={displayHairId}
+                  onSelect={handleHairSelect}
+                  onCapture={handleCapture}
+                />
+              </div>
 
-      <Modal
-        open={modalOpen}
-        targetLabel={pendingHair?.label}
-        onComplete={handleModalComplete}
-      />
-    </div>
+              {modalOpen && (
+                <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/20 pb-50">
+                  <ApplyStyleModal
+                    open={modalOpen}
+                    onComplete={handleModalComplete}
+                  />
+                </div>
+              )}
+            </div>
+          </Suspense>
+        </ErrorBoundary>
+      )}
+    </QueryErrorResetBoundary>
   )
+}
+
+class ErrorBoundary extends Component<
+  {
+    fallback: ReactNode
+    onReset?: () => void
+    children: ReactNode
+  },
+  { hasError: boolean }
+> {
+  constructor(props: {
+    fallback: ReactNode
+    onReset?: () => void
+    children: ReactNode
+  }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback
+    }
+    return this.props.children
+  }
 }

@@ -1,41 +1,38 @@
 import { useEffect, useState } from 'react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Field, FieldLabel } from '@/components/ui/field'
-import { Progress } from '@/components/ui/progress'
 
-function ProgressWithLabel({ value }: { value: number }) {
+type ApplyStyleModalContent = {
+  title: string
+  tips: string[]
+}
+
+const mockModalContent: ApplyStyleModalContent = {
+  title: '선택한 스타일을 적용하고 있어요.',
+  tips: [
+    '얼굴이 길어 보인다면 구레나룻을',
+    '너무 짧게 치지 마세요.',
+    '옆 볼륨이 살아야 시선이 분산됩니다.',
+  ],
+}
+
+function ProgressBar({ value }: { value: number }) {
   return (
-    <Field className="w-full space-y-2">
-      <FieldLabel
-        htmlFor="progress-upload"
-        className="flex items-center text-sm font-medium text-zinc-700"
-      >
-        <span>Apply progress</span>
-        <span className="ml-auto text-zinc-500">{value}%</span>
-      </FieldLabel>
-
-      <Progress
-        value={value}
-        id="progress-upload"
-        className="h-3 rounded-full"
+    <div className="h-3 w-full rounded-full bg-gray-300 p-[2px]">
+      <div
+        className="h-full rounded-full bg-primary-200 transition-all duration-300"
+        style={{ width: `${value}%` }}
       />
-    </Field>
+    </div>
   )
 }
 
-export function Modal({
+export function ApplyStyleModal({
   open,
-  targetLabel,
   onComplete,
+  content = mockModalContent,
 }: {
   open: boolean
-  targetLabel?: string
   onComplete: () => void
+  content?: ApplyStyleModalContent
 }) {
   const [progress, setProgress] = useState(0)
 
@@ -45,7 +42,7 @@ export function Modal({
       return
     }
 
-    const duration = 3000
+    const duration = 1000
     const intervalMs = 50
     const totalSteps = duration / intervalMs
     let currentStep = 0
@@ -64,26 +61,27 @@ export function Modal({
     return () => clearInterval(timer)
   }, [open, onComplete])
 
+  if (!open) return null
+
   return (
-    <Dialog open={open}>
-      <DialogContent className="overflow-hidden rounded-2xl border-0 p-0 shadow-2xl sm:max-w-md [&>button]:hidden">
-        <div className="bg-gradient-to-b from-zinc-50 to-white px-6 py-6">
-          <DialogHeader className="space-y-3 text-left">
-            <DialogTitle className="text-xl font-semibold text-zinc-900">
-              Applying hair style...
-            </DialogTitle>
-          </DialogHeader>
+    <div className="w-[380px] max-w-[calc(100%-32px)] rounded-[24px] bg-white p-0 shadow-none">
+      <div className="px-6 py-6">
+        <div className="space-y-5">
+          <h2 className="text-xl font-bold leading-snug text-black">
+            {content.title}
+          </h2>
 
-          <div className="mt-5 space-y-5">
-            <div className="rounded-2xl bg-zinc-100/80 px-4 py-4 text-sm leading-6 text-zinc-700">
-              <div className="font-medium text-zinc-900">Selected style</div>
-              <div className="mt-1">{targetLabel ?? 'Preparing style...'}</div>
-            </div>
+          <div className="space-y-1 text-sm leading-snug text-gray-500">
+            {content.tips.map((tip) => (
+              <p key={`${tip}`}>{tip}</p>
+            ))}
+          </div>
 
-            <ProgressWithLabel value={progress} />
+          <div className="pt-1">
+            <ProgressBar value={progress} />
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   )
 }

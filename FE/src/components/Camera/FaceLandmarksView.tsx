@@ -8,45 +8,41 @@ import {
   Suspense,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from 'react'
 import { HairSelector } from '@/components/Camera/HairSelector'
-import { Modal } from '@/components/Camera/Modal'
-import type { AssetPackage } from '@/lib/Camera/assetRuntime'
-import {
-  buildOverlayAffine,
-  drawHairOverlayToCanvas,
-} from '@/lib/Camera/overlay'
-import type { HairRecommendResponse } from '@/lib/Camera/recommend'
-import { syncCanvasSize } from '@/lib/Camera/drawLandmarks'
+import { ApplyStyleModal } from '@/components/Camera/Modal'
+import { captureCompositedImage } from '@/lib/Camera/capture'
 import { HAIR_ITEMS } from '@/lib/Camera/HairItem'
-import type { FaceFrame } from '@/lib/Camera/types'
+import { getVideoCoverLayout } from '@/lib/Camera/layout'
+import type { HairRecommendResponse } from '@/lib/Camera/recommend'
+
+type LandmarkPoint = {
+  x: number
+  y: number
+  z: number
+}
 
 export default function FaceLandmarksView({
   videoRef,
   canvasRef,
   overlayCanvasRef,
-  frameRef,
   selectedHairId,
   onHairApplied,
   recommendation,
   overlayImage,
-  activeAsset,
   loading,
   error,
 }: {
   videoRef: RefObject<HTMLVideoElement | null>
   canvasRef: RefObject<HTMLCanvasElement | null>
   overlayCanvasRef: RefObject<HTMLCanvasElement | null>
-  landmarks: Array<{ x: number; y: number; z: number }> | null
-  frameRef: RefObject<FaceFrame | null>
+  landmarks: LandmarkPoint[] | null
   selectedHairId: number
   onHairApplied: (hairId: number) => void
   recommendation: HairRecommendResponse | null
   overlayImage: HTMLImageElement | null
-  activeAsset: AssetPackage | null
   loading: boolean
   error: string | null
 }) {
@@ -55,11 +51,6 @@ export default function FaceLandmarksView({
   const [pendingHairId, setPendingHairId] = useState<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const displayHairId = pendingHairId ?? selectedHairId
-
-  const pendingHair = useMemo(() => {
-    if (pendingHairId == null) return null
-    return HAIR_ITEMS.find((item) => item.id === pendingHairId) ?? null
-  }, [pendingHairId])
 
   const handleHairSelect = useCallback(
     (nextId: number) => {
@@ -84,11 +75,23 @@ export default function FaceLandmarksView({
     void router.navigate({ to: '/main' })
   }, [router])
 
+  const handleCapture = useCallback(() => {
+    captureCompositedImage({
+      videoRef,
+      overlayCanvasRef,
+      wrapRef,
+      hairItems: HAIR_ITEMS,
+      selectedHairId: displayHairId,
+    })
+  }, [displayHairId, overlayCanvasRef, videoRef])
+
   useEffect(() => {
     const canvas = overlayCanvasRef.current
     const wrap = wrapRef.current
     const video = videoRef.current
-    if (!canvas || !wrap || !video) {
+    const bbox = recommendation?.asset.hairRgbaBBox
+
+    if (!canvas || !wrap) {
       return
     }
 
@@ -97,58 +100,40 @@ export default function FaceLandmarksView({
       return
     }
 
-    let rafId: number | null = null
+    const width = wrap.clientWidth
+    const height = wrap.clientHeight
 
-    const render = () => {
-      rafId = requestAnimationFrame(render)
-      syncCanvasSize(canvas)
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-      const frame = frameRef.current
-      if (
-        !frame ||
-        !frame.faceFound ||
-        frame.landmarks.length === 0 ||
-        !activeAsset ||
-        !overlayImage ||
-        video.readyState < 2 ||
-        video.videoWidth <= 0 ||
-        video.videoHeight <= 0
-      ) {
-        return
-      }
-
-      const affine = buildOverlayAffine({
-        metadata: activeAsset.metadata,
-        anchors: activeAsset.anchors,
-        landmarks: frame.landmarks,
-        videoWidth: frame.videoW,
-        videoHeight: frame.videoH,
-        canvasWidth: canvas.width,
-        canvasHeight: canvas.height,
-      })
-
-      if (!affine) {
-        return
-      }
-
-      drawHairOverlayToCanvas({
-        ctx,
-        image: overlayImage,
-        bbox: activeAsset.metadata.hair_rgba_bbox,
-        affine,
-        alpha: 0.96,
-      })
+    if (canvas.width !== width) {
+      canvas.width = width
+    }
+    if (canvas.height !== height) {
+      canvas.height = height
     }
 
-    rafId = requestAnimationFrame(render)
+    ctx.clearRect(0, 0, width, height)
 
-    return () => {
-      if (rafId != null) {
-        cancelAnimationFrame(rafId)
-      }
+    if (!overlayImage || !bbox || !video?.videoWidth || !video.videoHeight) {
+      return
     }
-  }, [activeAsset, frameRef, overlayCanvasRef, overlayImage, recommendation, videoRef])
+
+    const { scale, offsetX, offsetY } = getVideoCoverLayout(
+      width,
+      height,
+      video.videoWidth,
+      video.videoHeight,
+    )
+
+    ctx.save()
+    ctx.globalAlpha = 0.96
+    ctx.drawImage(
+      overlayImage,
+      bbox.x * scale + offsetX,
+      bbox.y * scale + offsetY,
+      bbox.w * scale,
+      bbox.h * scale,
+    )
+    ctx.restore()
+  }, [overlayCanvasRef, overlayImage, recommendation, videoRef])
 
   return (
     <QueryErrorResetBoundary>
@@ -237,14 +222,18 @@ export default function FaceLandmarksView({
                   items={HAIR_ITEMS}
                   selectedId={displayHairId}
                   onSelect={handleHairSelect}
+                  onCapture={handleCapture}
                 />
               </div>
 
-              <Modal
-                open={modalOpen}
-                targetLabel={pendingHair?.label}
-                onComplete={handleModalComplete}
-              />
+              {modalOpen && (
+                <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/20 pb-50">
+                  <ApplyStyleModal
+                    open={modalOpen}
+                    onComplete={handleModalComplete}
+                  />
+                </div>
+              )}
             </div>
           </Suspense>
         </ErrorBoundary>

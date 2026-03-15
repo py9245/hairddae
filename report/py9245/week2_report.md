@@ -75,5 +75,53 @@
   - [레포트 - 3/10 [W2][BE] 웹소켓 기초셋팅 BE](https://drive.google.com/file/d/18RsSK6jBcaYx9aCLEyGXuExhIuXUqck4/view?usp=sharing)
 
 ## 260311
-- [[W2][AI] AI POC 검증 (S14P21M101-631)](https://ssafy.atlassian.net/browse/S14P21M101-631?atlOrigin=eyJpIjoiOTY2NjM5NTFmNWYwNDBiZWE1NTZlYmVlMjNlNjEzYzAiLCJwIjoiaiJ9)
+- [[W2][AI] AI POC 검증 (S14P21M101-628)](https://ssafy.atlassian.net/browse/S14P21M101-631?atlOrigin=eyJpIjoiOTY2NjM5NTFmNWYwNDBiZWE1NTZlYmVlMjNlNjEzYzAiLCJwIjoiaiJ9)
   - [[W2][AI] AI POC 검증](https://docs.google.com/document/d/1G1nc8W5xWt4pYFRFIEunB8RUieKHb0RduFHoYsyMbHU/edit?usp=sharing)
+
+## 260312
+- 메인 기능 POC 완료하였습니다.
+- [[W2][AI] AI POC 검증 (S14P21M101-628)](https://ssafy.atlassian.net/browse/S14P21M101-631?atlOrigin=eyJpIjoiOTY2NjM5NTFmNWYwNDBiZWE1NTZlYmVlMjNlNjEzYzAiLCJwIjoiaiJ9)
+  - [[W2][AI] AI POC 검증](https://drive.google.com/file/d/1EEoGM2StNNqYLIfq8kA9jmVVBZMTwCO0/view?usp=sharing)
+
+## 260313
+- [BE 서버 API TEST (S14P21M101-620)](https://ssafy.atlassian.net/browse/S14P21M101-620?atlOrigin=eyJpIjoiODNkMjhjNjc4MmM2NGIzNmJmMDJiZTIwYTY0ZmY3OTAiLCJwIjoiaiJ9)
+  - [산출물 - 3/13 BE 서버 API TEST](https://drive.google.com/file/d/1e6YJfdDcf3_AsIkJoz4750Wb5GgYKvCc/view?usp=sharing)
+
+- [[W2][Infra] FEBE CORS 테스트 (S14P21M101-517)](https://ssafy.atlassian.net/browse/S14P21M101-517?atlOrigin=eyJpIjoiYmFmMTRhNDQxMTE3NGEwYWE4MjNmOGI2M2Y3Njc5NTkiLCJwIjoiaiJ9)
+  - [산출물 - 3/13 [W2][Infra] FEBE CORS 테스트](https://drive.google.com/file/d/1e6YJfdDcf3_AsIkJoz4750Wb5GgYKvCc/view?usp=sharing)
+
+- [[W2][Infra] BE Jenkins CICD 무중단 배포 테스트 (S14P21M101-519)](https://ssafy.atlassian.net/browse/S14P21M101-519?atlOrigin=eyJpIjoiOWM3NGFiOWFkYWM5NGU4YmE2YzJkNTBjYWI4Y2ExYWMiLCJwIjoiaiJ9)
+  - [산출물 - 3/13 [W2][Infra] BE Jenkins CICD 무중단 배포 테스트](https://drive.google.com/file/d/1e6YJfdDcf3_AsIkJoz4750Wb5GgYKvCc/view?usp=sharing)
+
+- [[W2][BE] 최근 적용 이력 저장/조회 API (S14P21M101-568)](https://ssafy.atlassian.net/browse/S14P21M101-568?atlOrigin=eyJpIjoiMmVhZmMxOGZhMWNjNDQ0M2FhOTdlZmIwZmIxYTJjOTQiLCJwIjoiaiJ9)
+  - [산출물 - 3/13 [W2][BE] 최근 적용 이력 저장/조회 API](https://drive.google.com/file/d/1e6YJfdDcf3_AsIkJoz4750Wb5GgYKvCc/view?usp=sharing)
+
+- [[W2][Infra] AI 배포테스트 (S14P21M101-516)](https://ssafy.atlassian.net/browse/S14P21M101-516?atlOrigin=eyJpIjoiNzk5ZDY0MTlkZDA4NDgxM2E2OTBhZWRjYTNlY2I2ZmUiLCJwIjoiaiJ9)
+  - [산출물 - 3/13 [W2][Infra] AI 배포테스트](https://drive.google.com/file/d/1e6YJfdDcf3_AsIkJoz4750Wb5GgYKvCc/view?usp=sharing)
+
+- [[W2][BE] 좋아요 목록 조회 API (S14P21M101-567)](https://ssafy.atlassian.net/browse/S14P21M101-567?atlOrigin=eyJpIjoiNTczZDU4YWEzY2Q0NDk2ZGFkZDQ1NTU5MWVkY2VkYTYiLCJwIjoiaiJ9)
+  - [산출물 - 3/13 [W2][BE] 좋아요 목록 조회 API](https://drive.google.com/file/d/1e6YJfdDcf3_AsIkJoz4750Wb5GgYKvCc/view?usp=sharing)
+
+- [[W2][BE] 좋아요 등록/취소 API (S14P21M101-566)](https://ssafy.atlassian.net/browse/S14P21M101-566?atlOrigin=eyJpIjoiZjE2NDQwZDY3MGRhNGM3MzlmNTI1ZmI2NjQ1YmY3YjIiLCJwIjoiaiJ9)
+  - [산출물 - 3/13 [W2][BE] 좋아요 등록/취소 API](https://drive.google.com/file/d/1e6YJfdDcf3_AsIkJoz4750Wb5GgYKvCc/view?usp=sharing)
+
+- [[W2][BE] 헤어 추천 API(GET /hairs/recommend) (S14P21M101-565)](https://ssafy.atlassian.net/browse/S14P21M101-565?atlOrigin=eyJpIjoiMjRmOGI1MjU4NTI4NDVmNGE0Y2RhMGZmZjM2OWQ2OWMiLCJwIjoiaiJ9)
+  - [산출물 - 3/13 [W2][BE] 헤어 추천 API(GET /hairs/recommend)](https://drive.google.com/file/d/1e6YJfdDcf3_AsIkJoz4750Wb5GgYKvCc/view?usp=sharing)
+
+- [[W2][BE] 추천/좋아요/이력 API 구현 (S14P21M101-543)](https://ssafy.atlassian.net/browse/S14P21M101-543?atlOrigin=eyJpIjoiNWE3ZGEwY2VjZjYzNDM0MzkzN2Y3ZmFlZWNlMDQ5NGMiLCJwIjoiaiJ9)
+  - [산출물 - 3/13 [W2][BE] 추천/좋아요/이력 API 구현](https://drive.google.com/file/d/1e6YJfdDcf3_AsIkJoz4750Wb5GgYKvCc/view?usp=sharing)
+
+- [[W2][BE] 헤어 상세 조회 API(GET /hairs/{id}) (S14P21M101-564)](https://ssafy.atlassian.net/browse/S14P21M101-564?atlOrigin=eyJpIjoiYjhlMDNmYTE0NjU3NGJmZmJmNjMwM2FkMWUxNTkzNWMiLCJwIjoiaiJ9)
+  - [산출물 - 3/13 [W2][BE] 헤어 상세 조회 API(GET /hairs/{id})](https://drive.google.com/file/d/1e6YJfdDcf3_AsIkJoz4750Wb5GgYKvCc/view?usp=sharing)
+
+- [[W2][BE] 사용자/헤어 조회 API 구현 (S14P21M101-542)](https://ssafy.atlassian.net/browse/S14P21M101-542?atlOrigin=eyJpIjoiYjhjMmM3MDU5MDY2NGQ5MGJlNTI2ZTk3NWQzNWUyM2IiLCJwIjoiaiJ9)
+  - [산출물 - 3/13 [W2][BE] 사용자/헤어 조회 API 구현](https://drive.google.com/file/d/1e6YJfdDcf3_AsIkJoz4750Wb5GgYKvCc/view?usp=sharing)
+
+- [[W2][BE] 데이터 계층 및 보안 기초 구축 (S14P21M101-540)](https://ssafy.atlassian.net/browse/S14P21M101-540?atlOrigin=eyJpIjoiNDlhOGRjZDM1NWMwNGJiYTlhNGM4OWQ2MGFkOTc2OGYiLCJwIjoiaiJ9)
+  - [산출물 - 3/13 [W2][BE] 데이터 계층 및 보안 기초 구축](https://drive.google.com/file/d/1e6YJfdDcf3_AsIkJoz4750Wb5GgYKvCc/view?usp=sharing)
+
+- [E4 Infra 컨벤션별 배포 테스트 (S14P21M101-513)](https://ssafy.atlassian.net/browse/S14P21M101-513?atlOrigin=eyJpIjoiYmUwZWQ2NjgwMGUxNGZjNWI1MmMwOTM4NjFjNGQ3NjMiLCJwIjoiaiJ9)
+  - [산출물 - 3/13 E4 Infra 컨벤션별 배포 테스트](https://drive.google.com/file/d/1e6YJfdDcf3_AsIkJoz4750Wb5GgYKvCc/view?usp=sharing)
+
+- [[W2][BE] Hair 데이터 초기 적재(Seed/Import) (S14P21M101-554)](https://ssafy.atlassian.net/browse/S14P21M101-554?atlOrigin=eyJpIjoiYTU5YWFjMjQ0MzE4NGQ2OWEwODZhODljOGJlMTMxOWUiLCJwIjoiaiJ9)
+  - [산출물 - 3/13 [W2][BE] Hair 데이터 초기 적재(Seed/Import)](https://drive.google.com/file/d/1e6YJfdDcf3_AsIkJoz4750Wb5GgYKvCc/view?usp=sharing)

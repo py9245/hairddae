@@ -210,7 +210,7 @@ export default function SignUp() {
                   onBlur={() => handleBlur('gender')}
                   className="h-12 w-full appearance-none rounded-2xl border border-gray-200 bg-white px-4 text-base text-slate-700 outline-none focus:border-primary-200"
                 >
-                  <option value="">선택안함</option>
+                  <option value="">미선택</option>
                   <option value="M">남성</option>
                   <option value="F">여성</option>
                 </select>
@@ -236,7 +236,7 @@ export default function SignUp() {
             <p className="text-center text-sm text-red-500">
               {signUpMutation.error instanceof Error
                 ? signUpMutation.error.message
-                : '회원가입 중 오류가 발생했습니다.'}
+                : '회원가입 처리 중 오류가 발생했습니다.'}
             </p>
           )}
 

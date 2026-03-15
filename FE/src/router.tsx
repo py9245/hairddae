@@ -136,18 +136,12 @@ function SplashPage() {
           title="Capture starts here."
           description="루트 스플래시는 서비스 진입 허브입니다. 인증 흐름으로 이동하거나, 로그인된 사용자는 핵심 기능으로 바로 들어갈 수 있습니다."
         >
-          <div className="flex flex-wrap gap-3">
-            <Button asChild className="rounded-full">
-              <Link to="/auth/login">로그인으로 이동</Link>
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              className="rounded-full bg-transparent"
-            >
-              <Link to="/auth/signup">회원가입</Link>
-            </Button>
-          </div>
+          <Button
+            asChild
+            className="h-14 w-full rounded-[8px] bg-[#ea7589] px-6 py-4 text-base font-medium leading-[1.4] text-[#f2f2f7] hover:bg-[#e1637b]"
+          >
+            <Link to="/auth/login">헤어 어때 시작하기</Link>
+          </Button>
         </RouteCard>
 
         <section className="grid gap-4">

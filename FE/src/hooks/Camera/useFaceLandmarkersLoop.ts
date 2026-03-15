@@ -30,14 +30,17 @@ export function useFaceLandmarksLoop({
   const [landmarks, setLandmarks] = useState<NormalizedLandmark[] | null>(null)
 
   useEffect(() => {
-    const video = videoRef.current
-    const landmarker = landmarkerRef.current
-
-    if (!enabled || !video || !landmarker) return
+    let active = true
 
     const loop = () => {
+      if (!active) return
+
       rafRef.current = requestAnimationFrame(loop)
 
+      const video = videoRef.current
+      const landmarker = landmarkerRef.current
+
+      if (!enabled || !video || !landmarker) return
       if (video.readyState < 2) return
       if (video.videoWidth <= 0 || video.videoHeight <= 0) return
 
@@ -46,16 +49,19 @@ export function useFaceLandmarksLoop({
       lastDetectRef.current = now
 
       const res = landmarker.detectForVideo(video, now)
-      const lms = res.faceLandmarks?.[0] ?? null
+      const nextLandmarks = res.faceLandmarks?.[0] ?? null
 
       setResult(res)
-      setLandmarks(lms)
+      setLandmarks(nextLandmarks)
     }
 
     rafRef.current = requestAnimationFrame(loop)
 
     return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      active = false
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+      }
       rafRef.current = null
     }
   }, [enabled, videoRef, landmarkerRef])

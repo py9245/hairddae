@@ -16,6 +16,7 @@ import { ProfileCard } from '@/components/profile-card'
 import { RouteCard } from '@/components/route-card'
 import { Button } from '@/components/ui/button'
 import { type AuthStore, auth } from '@/lib/auth'
+import Adsense from './app/Adsense'
 
 type RouterContext = {
   auth: AuthStore
@@ -117,6 +118,7 @@ function createProtectedRoute(
 function RootLayout() {
   return (
     <div className="app-frame-shell">
+      <Adsense/>
       <div className="app-frame">
         <main className="app-frame-content">
           <Outlet />

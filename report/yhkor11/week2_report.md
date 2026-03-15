@@ -19,3 +19,7 @@
 - [AI - 하나의 이미지를 다각도 생성(모델 변경 - FILM)](https://ssafy.atlassian.net/browse/S14P21M101-639)
   - [AI 구현된 POC(asset retrieval 기반)고도화 기획](https://docs.google.com/document/d/1uO4rXZ-ThcP0mZ7Ox_4HY-jUg_m_AJiyDc92GL-7bR8/edit?usp=sharing)
   - [260312_회의록 및 팀미팅 작성](https://docs.google.com/document/d/1zafJeVhfq3EB3RN4Atm7M4rAPg0-RFm1s26OYhyaj_c/edit?usp=sharing)
+
+## 260313
+- [AI - POC(asset retrieval) Smoothing 작업](https://ssafy.atlassian.net/browse/S14P21M101-641)
+  - [260313_회의록 작성](https://docs.google.com/document/d/15-TUZHTjLcy1qTsZooUUOuqvGEMI3cW0XKYZGPJ6onQ/edit?usp=sharing)

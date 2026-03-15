@@ -15,7 +15,7 @@ import { PageShell } from '@/components/page-shell'
 import { ProfileCard } from '@/components/profile-card'
 import { RouteCard } from '@/components/route-card'
 import { Button } from '@/components/ui/button'
-import { type AuthStore, auth, logoutApi } from '@/lib/auth'
+import { type AuthStore, auth } from '@/lib/auth'
 
 type RouterContext = {
   auth: AuthStore
@@ -184,7 +184,6 @@ function AuthLayout() {
 
 function MainPage() {
   async function handleLogout() {
-    await logoutApi()
     auth.logout()
     await router.navigate({ to: '/' })
   }
@@ -225,7 +224,6 @@ function MainPage() {
 
 function MyPage() {
   async function handleLogout() {
-    await logoutApi()
     auth.logout()
     await router.navigate({ to: '/' })
   }

@@ -1,5 +1,4 @@
-const ACCESS_TOKEN_STORAGE_KEY = 'ssafy-access-token'
-const USER_ID_STORAGE_KEY = 'ssafy-user-id'
+const AUTH_STORAGE_KEY = 'ssafy-authenticated'
 
 type AuthListener = () => void
 
@@ -14,34 +13,22 @@ function notifyListeners() {
 
 function readStorage() {
   if (typeof window === 'undefined') {
-    return null
+    return false
   }
 
-  return window.sessionStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
+  return window.localStorage.getItem(AUTH_STORAGE_KEY) === 'true'
 }
 
 export const auth = {
   isAuthenticated() {
-    return Boolean(readStorage())
-  },
-  getAccessToken() {
     return readStorage()
   },
-  getUserId() {
-    if (typeof window === 'undefined') {
-      return null
-    }
-
-    return window.sessionStorage.getItem(USER_ID_STORAGE_KEY)
-  },
-  login(accessToken: string, userId: string) {
-    window.sessionStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken)
-    window.sessionStorage.setItem(USER_ID_STORAGE_KEY, userId)
+  login() {
+    window.localStorage.setItem(AUTH_STORAGE_KEY, 'true')
     notifyListeners()
   },
   logout() {
-    window.sessionStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
-    window.sessionStorage.removeItem(USER_ID_STORAGE_KEY)
+    window.localStorage.removeItem(AUTH_STORAGE_KEY)
     notifyListeners()
   },
   subscribe(listener: AuthListener) {
@@ -59,7 +46,7 @@ export type SignUpRequest = {
   userID: string
   password: string
   passwordCheck: string
-  birthDate?: string
+  age?: number
   gender?: 'M' | 'F'
 }
 
@@ -97,6 +84,7 @@ export type LoginResponse = {
   message: string
   userID: string
   accessToken: string
+  refreshToken: string
 }
 
 export async function loginApi(payload: LoginRequest): Promise<LoginResponse> {
@@ -116,21 +104,4 @@ export async function loginApi(payload: LoginRequest): Promise<LoginResponse> {
   }
 
   return data
-}
-
-export async function logoutApi() {
-  const accessToken = auth.getAccessToken()
-  if (!accessToken) return
-
-  await fetch(`${BaseUrl}/accounts/logout/`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
-    credentials: 'include',
-    body: JSON.stringify({
-      allDevices: false,
-    }),
-  }).catch(() => null)
 }

@@ -10,7 +10,7 @@ const initialValues: FormValues = {
   userId: '',
   password: '',
   passwordConfirm: '',
-  birthDate: '',
+  age: '',
   gender: '',
   agreed: false,
 }
@@ -41,6 +41,11 @@ export function useSignUpForm() {
           }
         : {}),
     }))
+  }
+
+  function handleAgeChange(value: string) {
+    const onlyDigits = value.replace(/\D/g, '')
+    handleChange('age', onlyDigits)
   }
 
   const formErrors = useMemo(() => validateForm(values), [values])
@@ -76,6 +81,7 @@ export function useSignUpForm() {
     isFormValid,
     handleChange,
     handleBlur,
+    handleAgeChange,
     handleSubmit,
   }
 }

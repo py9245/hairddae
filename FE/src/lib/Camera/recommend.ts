@@ -40,14 +40,14 @@ export type HairRecommendResponse = z.infer<typeof HairRecommendResponseSchema>
 export type FetchHairRecommendArgs = {
   baseUrl: string
   hairID: number
-  yaw1deg?: number
-  pitch1deg?: number
-  roll1deg?: number
+  yaw1deg: number
+  pitch1deg: number
+  roll1deg: number
   fetchImpl: typeof fetch
 }
 
 export async function fetchHairRecommend({
-  baseUrl = buildApiUrl('/hairs/recommend'),
+  baseUrl = buildApiUrl('/api/home/hairapply/'),
   hairID,
   yaw1deg,
   pitch1deg,

@@ -30,8 +30,8 @@ public class WebSocketConfig implements WebSocketConfigurer {
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
         WebSocketHandlerRegistration registration = registry.addHandler(
                 hairApplyWebSocketHandler,
-                "/home/hairapply",
-                "/home/hairapply/");
+                "/api/home/hairapply",
+                "/api/home/hairapply/");
         registration.addInterceptors(accessTokenHandshakeInterceptor);
 
         if (appCorsProperties.allowedOrigins().isEmpty()) {

@@ -107,7 +107,7 @@ public class HairApplyWebSocketHandler extends TextWebSocketHandler {
                     "connected",
                     "웹소켓 연결이 완료되었습니다.",
                     200,
-                    new ConnectionData("/api/home/hairapply/"));
+                    new ConnectionData("/home/hairapply/"));
         }
 
         private static ServerMessage pong() {

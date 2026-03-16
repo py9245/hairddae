@@ -81,7 +81,7 @@ pipeline {
               -H 'Sec-WebSocket-Version: 13' \
               -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
               -H 'Origin: https://j14m101.p.ssafy.io' \
-              https://j14m101.p.ssafy.io/api/home/hairapply/ >/dev/null 2>&1 || true
+              https://j14m101.p.ssafy.io/home/hairapply/ >/dev/null 2>&1 || true
             tr -d '\r' < "$ws_headers_file"
             rm -f "$ws_headers_file"
           }

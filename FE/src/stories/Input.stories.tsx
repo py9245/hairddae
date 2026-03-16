@@ -30,6 +30,7 @@ function validateValue(
     gender: '',
     agreed: true,
   }
+
   const key =
     label === '아이디'
       ? 'userId'
@@ -38,6 +39,7 @@ function validateValue(
         : label === '비밀번호 확인'
           ? 'passwordConfirm'
           : 'age'
+
   return validateField(key, form) ?? null
 }
 
@@ -48,6 +50,7 @@ function InputPreview({ label, placeholder, confirmTarget }: InputPreviewProps) 
 
   const isPassword = label === '비밀번호' || label === '비밀번호 확인'
   const isAge = label === '나이'
+
   const derivedPlaceholder =
     placeholder ??
     (label === '비밀번호'
@@ -62,50 +65,62 @@ function InputPreview({ label, placeholder, confirmTarget }: InputPreviewProps) 
     () => validateValue(label, value, confirmTarget),
     [label, value, confirmTarget],
   )
-  const hasError = touched && Boolean(error)
 
+  const hasError = touched && Boolean(error)
   const ariaToggle = label === '비밀번호 확인' ? '비밀번호 확인' : '비밀번호'
 
   return (
-      <div>
-        <label htmlFor="field" className="mb-2 block text-base font-semibold text-slate-700">
-          {label}
-        </label>
-        <div className="relative">
-          <input
-            id="field"
-            type={isPassword && !showPassword ? 'password' : 'text'}
-            value={value}
-            onChange={(e) =>
-              setValue(isAge ? e.target.value.replace(/\D/g, '') : e.target.value)
-            }
-            onBlur={() => setTouched(true)}
-            placeholder={derivedPlaceholder}
-            aria-invalid={hasError || undefined}
-            aria-describedby={hasError ? 'field-error' : undefined}
-            inputMode={isAge ? 'numeric' : undefined}
-            maxLength={isAge ? 3 : undefined}
-            className={`h-12 w-full rounded-2xl border px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
-              hasError ? 'border-red-400 focus:border-red-400' : 'border-gray-200 focus:border-primary-200'
-            }`}
-          />
-          {isPassword && (
-            <button
-              type="button"
-              onClick={() => setShowPassword((prev) => !prev)}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
-              aria-label={showPassword ? `${ariaToggle} 숨기기` : `${ariaToggle} 보기`}
-            >
-              {showPassword ? <Eye className="h-5 w-5" /> : <EyeClosed className="h-5 w-5" />}
-            </button>
-          )}
-        </div>
-        {hasError && (
-          <p id="field-error" className="mt-2 text-sm text-red-500">
-            {error}
-          </p>
+    <div className="w-[320px]">
+      <label
+        htmlFor="field"
+        className="mb-2 block text-base font-semibold text-slate-700"
+      >
+        {label}
+      </label>
+
+      <div className="relative">
+        <input
+          id="field"
+          type={isPassword && !showPassword ? 'password' : 'text'}
+          value={value}
+          onChange={(e) =>
+            setValue(isAge ? e.target.value.replace(/\D/g, '') : e.target.value)
+          }
+          onBlur={() => setTouched(true)}
+          placeholder={derivedPlaceholder}
+          aria-invalid={hasError || undefined}
+          aria-describedby={hasError ? 'field-error' : undefined}
+          inputMode={isAge ? 'numeric' : undefined}
+          maxLength={isAge ? 3 : undefined}
+          className={`h-12 w-full rounded-2xl border px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
+            hasError
+              ? 'border-red-400 focus:border-red-400'
+              : 'border-gray-200 focus:border-primary-200'
+          }`}
+        />
+
+        {isPassword && (
+          <button
+            type="button"
+            onClick={() => setShowPassword((prev) => !prev)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400"
+            aria-label={showPassword ? `${ariaToggle} 숨기기` : `${ariaToggle} 보기`}
+          >
+            {showPassword ? (
+              <Eye className="h-5 w-5" />
+            ) : (
+              <EyeClosed className="h-5 w-5" />
+            )}
+          </button>
         )}
       </div>
+
+      {hasError && (
+        <p id="field-error" className="mt-2 text-sm text-red-500">
+          {error}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -116,25 +131,39 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
-  args: {
-    label: '아이디' as LabelKind,
-  },
   argTypes: {
-    label: {
-      control: { type: 'select' },
-      options: ['아이디', '비밀번호', '비밀번호 확인', '나이'],
-    },
-    placeholder: { control: 'text' },
     confirmTarget: {
       control: 'text',
+      if: { arg: 'label', eq: '비밀번호 확인' },
       description: "라벨이 '비밀번호 확인'일 때 원 비밀번호를 넣어주세요.",
     },
   },
 } satisfies Meta<typeof InputPreview>
-
 export default meta
 
 type Story = StoryObj<typeof meta>
 
-export const Default: Story = {}
+export const UserId: Story = {
+  args: {
+    label: '아이디',
+  },
+}
 
+export const Password: Story = {
+  args: {
+    label: '비밀번호',
+  },
+}
+
+export const PasswordConfirm: Story = {
+  args: {
+    label: '비밀번호 확인',
+    confirmTarget: 'test1234!',
+  },
+}
+
+export const Age: Story = {
+  args: {
+    label: '나이',
+  },
+}

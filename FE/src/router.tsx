@@ -7,9 +7,9 @@ import {
   redirect,
 } from '@tanstack/react-router'
 import { useEffect, useState, type ReactElement } from 'react'
-import Camera from '@/app/Camera'
-import Login from '@/app/Login'
-import SignUp from '@/app/SignUp'
+import Camera from '@/app/camera'
+import Login from '@/app/login'
+import SignUp from '@/app/signup'
 import { BottomNav } from '@/components/bottom-nav'
 import { PageShell } from '@/components/page-shell'
 import { ProfileCard } from '@/components/profile-card'

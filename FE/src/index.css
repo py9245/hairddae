@@ -167,14 +167,16 @@
     width: 100%;
     max-width: var(--app-frame-width);
     min-height: 100dvh;
+    height: 100dvh;
     position: relative;
     flex: 1 1 auto;
     background: var(--background);
-    overflow-x: hidden;
+    overflow: hidden;
   }
 
   .app-frame-content {
     min-height: 100dvh;
+    overflow: hidden;
     padding-bottom: calc(6rem + env(safe-area-inset-bottom));
   }
 

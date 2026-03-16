@@ -6,14 +6,13 @@ import {
   Outlet,
   redirect,
 } from '@tanstack/react-router'
-import type { ReactElement } from 'react'
+import { useEffect, useState, type ReactElement } from 'react'
 import Camera from '@/app/Camera'
 import Login from '@/app/Login'
 import SignUp from '@/app/SignUp'
 import { BottomNav } from '@/components/bottom-nav'
 import { PageShell } from '@/components/page-shell'
 import { ProfileCard } from '@/components/profile-card'
-import { RouteCard } from '@/components/route-card'
 import { Button } from '@/components/ui/button'
 import { type AuthStore, auth } from '@/lib/auth'
 
@@ -128,45 +127,80 @@ function RootLayout() {
 }
 
 function SplashPage() {
-  return (
-    <main className="app-frame-page bg-[linear-gradient(145deg,#e0f2fe_0%,#f8fafc_35%,#fef3c7_100%)] px-6 py-10 text-slate-950">
-      <div className="app-frame-fill mx-auto grid max-w-6xl items-center gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-        <RouteCard
-          eyebrow="Splash"
-          title="Capture starts here."
-          description="루트 스플래시는 서비스 진입 허브입니다. 인증 흐름으로 이동하거나, 로그인된 사용자는 핵심 기능으로 바로 들어갈 수 있습니다."
-        >
-          <div className="flex flex-wrap gap-3">
-            <Button asChild className="rounded-full">
-              <Link to="/auth/login">로그인으로 이동</Link>
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              className="rounded-full bg-transparent"
-            >
-              <Link to="/auth/signup">회원가입</Link>
-            </Button>
-          </div>
-        </RouteCard>
+  const slides = [
+    {
+      title: '내가 원하는 헤어를\n마음껏 착용해 보아요.',
+      imageSrc: '/icon/splash-01.svg',
+      imageAlt: '헤어 가상 착용을 보여주는 카메라 일러스트',
+    },
+    {
+      title: '인기있는 스타일과 함께\n디자이너와 소통해요',
+      imageSrc: '/icon/splash-02.svg',
+      imageAlt: '인기 헤어 스타일과 디자이너 소통을 보여주는 일러스트',
+    },
+    {
+      title: '다양한 종류의 헤어를\n찾아볼 수 있어요',
+      imageSrc: '/icon/splash-03.svg',
+      imageAlt: '다양한 헤어 스타일 탐색을 보여주는 일러스트',
+    },
+  ] as const
 
-        <section className="grid gap-4">
-          <RoutePreview
-            title="Main"
-            body="서비스 피드, 상태, 추천 동선"
-            className="bg-white/70 text-slate-950"
-          />
-          <RoutePreview
-            title="Camera"
-            body="핵심 촬영 경험이 들어갈 보호 페이지"
-            className="bg-slate-950 text-white"
-          />
-          <RoutePreview
-            title="My Page"
-            body="계정, 기록, 개인화 설정"
-            className="bg-amber-100 text-slate-950"
-          />
+  const [activeSlide, setActiveSlide] = useState(0)
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setActiveSlide((prev) => (prev + 1) % slides.length)
+    }, 3000)
+
+    return () => window.clearInterval(intervalId)
+  }, [slides.length])
+
+  const currentSlide = slides[activeSlide]
+
+  return (
+    <main className="app-frame-page flex min-h-dvh flex-col overflow-hidden bg-bg-primary px-3 pt-16 pb-8 text-[#2f2f2f]">
+      <div className="mx-auto flex w-full max-w-[390px] flex-1 flex-col">
+        <section className="flex flex-1 flex-col items-center">
+          <h1 className="whitespace-pre-line px-8 text-center text-[20px] leading-[1.35] font-semibold tracking-[-0.03em] text-[#2f2f2f]">
+            {currentSlide.title}
+          </h1>
+
+          <div className="mt-[92px] flex w-full justify-center px-5">
+            <img
+              src={currentSlide.imageSrc}
+              alt={currentSlide.imageAlt}
+              width={398}
+              height={320}
+              loading="eager"
+              decoding="async"
+              className="h-auto w-full max-w-[398px] object-contain"
+              draggable={false}
+            />
+          </div>
+
+          <div
+            aria-label={`현재 ${activeSlide + 1}번째 온보딩 슬라이드`}
+            className="mt-[30px] flex items-center justify-center gap-[7px]"
+          >
+            {slides.map((slide, index) => (
+              <span
+                key={slide.imageSrc}
+                className={`block size-[10px] rounded-full transition-colors ${
+                  index === activeSlide ? 'bg-[#f39ca6]' : 'bg-[#e3e3e8]'
+                }`}
+              />
+            ))}
+          </div>
         </section>
+
+        <div className="pt-10">
+          <Button
+            asChild
+            className="h-14 w-full rounded-[8px] bg-[#ea7589] px-6 py-4 text-base font-medium leading-[1.4] text-[#f2f2f7] hover:bg-[#e1637b]"
+          >
+            <Link to="/auth/login">헤어 어때 시작하기</Link>
+          </Button>
+        </div>
       </div>
     </main>
   )
@@ -252,25 +286,6 @@ function MyPage() {
         </div>
       </div>
     </PageShell>
-  )
-}
-
-function RoutePreview({
-  title,
-  body,
-  className,
-}: {
-  title: string
-  body: string
-  className: string
-}) {
-  return (
-    <div
-      className={`rounded-[1.75rem] border border-slate-200 p-6 shadow-sm ${className}`}
-    >
-      <p className="text-sm font-semibold">{title}</p>
-      <p className="mt-2 text-lg font-medium">{body}</p>
-    </div>
   )
 }
 

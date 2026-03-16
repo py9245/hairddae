@@ -11,6 +11,7 @@ import Camera from '@/app/Camera'
 import Login from '@/app/Login'
 import SignUp from '@/app/SignUp'
 import { BottomNav } from '@/components/bottom-nav'
+import { NotFoundPage } from '@/components/not-found-page'
 import { PageShell } from '@/components/page-shell'
 import { ProfileCard } from '@/components/profile-card'
 import { Button } from '@/components/ui/button'
@@ -71,19 +72,7 @@ export const router = createRouter({
     auth,
   },
   defaultPreload: 'intent',
-  defaultNotFoundComponent: () => (
-    <main className="app-frame-page flex items-center justify-center bg-slate-950 px-6 text-white">
-      <div className="w-full max-w-md rounded-[1.75rem] border border-white/15 bg-white/10 p-8 text-center backdrop-blur">
-        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-sky-300">
-          404
-        </p>
-        <h1 className="mt-4 text-3xl font-semibold">Page not found</h1>
-        <p className="mt-3 text-sm text-white/70">
-          The route does not exist or is no longer available.
-        </p>
-      </div>
-    </main>
-  ),
+  defaultNotFoundComponent: NotFoundPage,
 })
 
 declare module '@tanstack/react-router' {
@@ -158,9 +147,9 @@ function SplashPage() {
   const currentSlide = slides[activeSlide]
 
   return (
-    <main className="app-frame-page flex min-h-dvh flex-col overflow-hidden bg-bg-primary px-3 pt-16 pb-8 text-[#2f2f2f]">
+    <main className="app-frame-page flex h-dvh flex-col overflow-hidden bg-bg-primary px-3 pt-16 pb-8 text-[#2f2f2f]">
       <div className="mx-auto flex w-full max-w-[390px] flex-1 flex-col">
-        <section className="flex flex-1 flex-col items-center">
+        <section className="flex flex-col items-center">
           <h1 className="whitespace-pre-line px-8 text-center text-[20px] leading-[1.35] font-semibold tracking-[-0.03em] text-[#2f2f2f]">
             {currentSlide.title}
           </h1>
@@ -178,10 +167,7 @@ function SplashPage() {
             />
           </div>
 
-          <div
-            aria-label={`현재 ${activeSlide + 1}번째 온보딩 슬라이드`}
-            className="mt-[30px] flex items-center justify-center gap-[7px]"
-          >
+          <div className="mt-[30px] flex items-center justify-center gap-[7px]">
             {slides.map((slide, index) => (
               <span
                 key={slide.imageSrc}
@@ -193,7 +179,9 @@ function SplashPage() {
           </div>
         </section>
 
-        <div className="pt-10">
+        <div className="flex-1" />
+
+        <div>
           <Button
             asChild
             className="h-14 w-full rounded-[8px] bg-[#ea7589] px-6 py-4 text-base font-medium leading-[1.4] text-[#f2f2f7] hover:bg-[#e1637b]"

@@ -14,7 +14,7 @@ type Pose = {
 
 export type HairFramePayload = {
   user_id: string
-  apply_session_id: string
+  applySessionId: string
   frame_id: number
   camera: {
     w: number
@@ -77,77 +77,89 @@ export function useHairWebSocket({
   )
   const [error, setError] = useState<string | null>(null)
 
-useEffect(() => {
-  if (!enabled) return
-  if (!applySessionId) return
+  useEffect(() => {
+    if (!enabled) return
 
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const wsUrl = `${protocol}//${window.location.host}/home/hairapply/${applySessionId}/`
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${protocol}//${window.location.host}/home/hairapply/`
 
-  console.log('WS_URL:', wsUrl)
+    console.log('WS_URL:', wsUrl)
 
-  const ws = new WebSocket(wsUrl)
-  wsRef.current = ws
+    const ws = new WebSocket(wsUrl)
+    wsRef.current = ws
 
-  ws.onopen = () => {
-    console.log('웹소켓 연결 성공')
-    setIsConnected(true)
-    setError(null)
-  }
-
-  ws.onmessage = (event) => {
-    try {
-      const parsed = JSON.parse(event.data) as HairWsMessage
-      setLastMessage(parsed)
-
-      if ('message' in parsed && parsed.message) {
-        setError(parsed.message)
-      }
-
-      if ('png' in parsed && parsed.png) {
-        setResultPng(parsed.png)
-      }
-
-      if ('json' in parsed && parsed.json) {
-        setResultJson(parsed.json)
-      }
-    } catch (err) {
-      console.error('ws message parse failed:', err)
+    ws.onopen = () => {
+      console.log('웹소켓 연결 성공')
+      setIsConnected(true)
+      setError(null)
     }
-  }
 
-  ws.onerror = (event) => {
-    console.error('websocket error:', event)
-    setError('websocket error')
-  }
+    ws.onmessage = (event) => {
+      try {
+        console.log('ws raw message:', event.data)
 
-  ws.onclose = (event) => {
-    console.log('웹소켓 종료:', event.code, event.reason)
-    setIsConnected(false)
-    wsRef.current = null
-  }
+        const parsed = JSON.parse(event.data) as HairWsMessage
+        console.log('ws parsed message:', parsed)
 
-  return () => {
-    ws.close()
-    wsRef.current = null
-    setIsConnected(false)
-  }
-}, [enabled, applySessionId])
+        setLastMessage(parsed)
 
+        if ('message' in parsed && parsed.message) {
+          setError(parsed.message)
+        }
+
+        if ('png' in parsed && parsed.png) {
+          setResultPng(parsed.png)
+        }
+
+        if ('json' in parsed && parsed.json) {
+          setResultJson(parsed.json)
+        }
+      } catch (err) {
+        console.error('ws message parse failed:', err)
+      }
+    }
+
+    ws.onerror = (event) => {
+      console.error('websocket error:', event)
+      setError('websocket error')
+    }
+
+    ws.onclose = (event) => {
+      console.log('웹소켓 종료:', event.code, event.reason)
+      setIsConnected(false)
+      wsRef.current = null
+    }
+
+    return () => {
+      if (
+        ws.readyState === WebSocket.OPEN ||
+        ws.readyState === WebSocket.CONNECTING
+      ) {
+        ws.close()
+      }
+      wsRef.current = null
+      setIsConnected(false)
+    }
+  }, [enabled])
 
   const sendFrame = useCallback(
-    (payload: Omit<HairFramePayload, 'apply_session_id'>) => {
+    (payload: Omit<HairFramePayload, 'applySessionId'>) => {
       const ws = wsRef.current
+
       if (!ws || ws.readyState !== WebSocket.OPEN) {
         console.log('ws not open')
         return false
       }
-      if (!applySessionId) return false
+
+      if (!applySessionId) {
+        console.log('applySessionId 없음')
+        return false
+      }
 
       try {
         const message: HairFramePayload = {
           ...payload,
-          apply_session_id: applySessionId,
+          applySessionId,
         }
 
         console.log('WS PAYLOAD:', message)

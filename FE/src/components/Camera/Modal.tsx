@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 type ApplyStyleModalContent = {
   title: string
@@ -18,7 +18,7 @@ function ProgressBar({ value }: { value: number }) {
   return (
     <div className="h-3 w-full rounded-full bg-gray-300 p-[2px]">
       <div
-        className="h-full rounded-full bg-primary-200 transition-all duration-300"
+        className="h-full rounded-full bg-rose-200 transition-all duration-300"
         style={{ width: `${value}%` }}
       />
     </div>
@@ -35,6 +35,11 @@ export function ApplyStyleModal({
   content?: ApplyStyleModalContent
 }) {
   const [progress, setProgress] = useState(0)
+  const onCompleteRef = useRef(onComplete)
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+  }, [onComplete])
 
   useEffect(() => {
     if (!open) {
@@ -42,7 +47,7 @@ export function ApplyStyleModal({
       return
     }
 
-    const duration = 1000
+    const duration = 100
     const intervalMs = 50
     const totalSteps = duration / intervalMs
     let currentStep = 0
@@ -54,12 +59,12 @@ export function ApplyStyleModal({
 
       if (next >= 100) {
         clearInterval(timer)
-        onComplete()
+        onCompleteRef.current()
       }
     }, intervalMs)
 
     return () => clearInterval(timer)
-  }, [open, onComplete])
+  }, [open])
 
   if (!open) return null
 
@@ -73,7 +78,7 @@ export function ApplyStyleModal({
 
           <div className="space-y-1 text-sm leading-snug text-gray-500">
             {content.tips.map((tip) => (
-              <p key={`${tip}`}>{tip}</p>
+              <p key={tip}>{tip}</p>
             ))}
           </div>
 

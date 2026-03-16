@@ -81,7 +81,7 @@ export function useHairWebSocket({
     if (!enabled) return
     if (!applySessionId) return
 
-    const wsUrl = `$/home/hairapply/`
+    const wsUrl = `/home/hairapply/`
     console.log('WS_URL:', wsUrl)
 
     const ws = new WebSocket(wsUrl)

@@ -8,6 +8,7 @@ pipeline {
 
   environment {
     DEPLOY_DIR = '/home/ubuntu/S14P21M101/BE/nginx/html'
+    VITE_WS_BASE_URL = 'wss://j14m101.p.ssafy.io/'
   }
 
   stages {

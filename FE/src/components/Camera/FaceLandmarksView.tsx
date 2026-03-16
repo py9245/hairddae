@@ -1,22 +1,14 @@
-import { QueryErrorResetBoundary } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { Settings, X } from 'lucide-react'
-import {
-  Component,
-  type ReactNode,
-  type RefObject,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react'
+import { type RefObject, useCallback, useRef, useState } from 'react'
+
 import { HairSelector } from '@/components/Camera/HairSelector'
 import { ApplyStyleModal } from '@/components/Camera/Modal'
+import { useHairWebSocket } from '@/hooks/Camera/useHairWebSocket'
 import { captureCompositedImage } from '@/lib/Camera/capture'
 import { HAIR_ITEMS } from '@/lib/Camera/HairItem'
-import { getVideoCoverLayout } from '@/lib/Camera/layout'
-import type { HairRecommendResponse } from '@/lib/Camera/recommend'
+import { postHairApplyStart } from '@/lib/Camera/hairApply'
 
 type LandmarkPoint = {
   x: number
@@ -24,56 +16,75 @@ type LandmarkPoint = {
   z: number
 }
 
-export default function FaceLandmarksView({
-  videoRef,
-  canvasRef,
-  overlayCanvasRef,
-  selectedHairId,
-  onHairApplied,
-  recommendation,
-  overlayImage,
-  loading,
-  error,
-}: {
+type Pose = {
+  yaw: number
+  pitch: number
+  roll: number
+}
+
+type FaceLandmarksViewProps = {
   videoRef: RefObject<HTMLVideoElement | null>
   canvasRef: RefObject<HTMLCanvasElement | null>
   overlayCanvasRef: RefObject<HTMLCanvasElement | null>
   landmarks: LandmarkPoint[] | null
-  selectedHairId: number
-  onHairApplied: (hairId: number) => void
-  recommendation: HairRecommendResponse | null
-  overlayImage: HTMLImageElement | null
-  loading: boolean
-  error: string | null
-}) {
+  pose: Pose | null
+}
+
+export default function FaceLandmarksView({
+  videoRef,
+  canvasRef,
+  overlayCanvasRef,
+  landmarks,
+  pose,
+}: FaceLandmarksViewProps) {
   const router = useRouter()
   const wrapRef = useRef<HTMLDivElement | null>(null)
+
+  const [selectedHairId, setSelectedHairId] = useState(0)
   const [pendingHairId, setPendingHairId] = useState<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [applySessionId, setApplySessionId] = useState<string | null>(null)
+
   const displayHairId = pendingHairId ?? selectedHairId
 
-  const handleHairSelect = useCallback(
-    (nextId: number) => {
-      if (modalOpen) return
-      if (nextId === selectedHairId) return
+  const hairApplyMutation = useMutation({
+    mutationFn: postHairApplyStart,
+  })
 
-      setPendingHairId(nextId)
-      setModalOpen(true)
-    },
-    [modalOpen, selectedHairId],
-  )
+  const hairWs = useHairWebSocket({
+    enabled: !!applySessionId,
+    applySessionId,
+    pose,
+    landmarks,
+    selectedHairId: displayHairId,
+  })
+
+  const handleHairSelect = useCallback((hairId: number) => {
+    setPendingHairId(hairId)
+    setModalOpen(true)
+  }, [])
 
   const handleModalComplete = useCallback(() => {
-    if (pendingHairId != null) {
-      onHairApplied(pendingHairId)
+    if (pendingHairId == null) {
+      setModalOpen(false)
+      return
     }
+
+    const nextHairId = pendingHairId
+
+    hairApplyMutation.mutate(nextHairId, {
+      onSuccess: (data) => {
+        setSelectedHairId(nextHairId)
+        setApplySessionId(data?.applySessionId ?? null)
+      },
+      onError: (error) => {
+        console.error('헤어 적용 시작 실패', error)
+      },
+    })
+
     setPendingHairId(null)
     setModalOpen(false)
-  }, [onHairApplied, pendingHairId])
-
-  const handleClose = useCallback(() => {
-    void router.navigate({ to: '/main' })
-  }, [router])
+  }, [pendingHairId, hairApplyMutation])
 
   const handleCapture = useCallback(() => {
     captureCompositedImage({
@@ -85,188 +96,63 @@ export default function FaceLandmarksView({
     })
   }, [displayHairId, overlayCanvasRef, videoRef])
 
-  useEffect(() => {
-    const canvas = overlayCanvasRef.current
-    const wrap = wrapRef.current
-    const video = videoRef.current
-    const bbox = recommendation?.asset.hairRgbaBBox
-
-    if (!canvas || !wrap) {
-      return
-    }
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) {
-      return
-    }
-
-    const width = wrap.clientWidth
-    const height = wrap.clientHeight
-
-    if (canvas.width !== width) {
-      canvas.width = width
-    }
-    if (canvas.height !== height) {
-      canvas.height = height
-    }
-
-    ctx.clearRect(0, 0, width, height)
-
-    if (!overlayImage || !bbox || !video?.videoWidth || !video.videoHeight) {
-      return
-    }
-
-    const { scale, offsetX, offsetY } = getVideoCoverLayout(
-      width,
-      height,
-      video.videoWidth,
-      video.videoHeight,
-    )
-
-    ctx.save()
-    ctx.globalAlpha = 0.96
-    ctx.drawImage(
-      overlayImage,
-      bbox.x * scale + offsetX,
-      bbox.y * scale + offsetY,
-      bbox.w * scale,
-      bbox.h * scale,
-    )
-    ctx.restore()
-  }, [overlayCanvasRef, overlayImage, recommendation, videoRef])
+  const handleClose = useCallback(() => {
+    void router.navigate({ to: '/main' })
+  }, [router])
 
   return (
-    <QueryErrorResetBoundary>
-      {({ reset }) => (
-        <ErrorBoundary
-          onReset={reset}
-          fallback={
-            <div className="grid h-[100dvh] w-full place-items-center bg-neutral-100">
-              <div className="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-700">
-                문제가 발생했습니다. 다시 시도해 주세요.
-                <div className="mt-3 text-right">
-                  <button
-                    type="button"
-                    onClick={reset}
-                    className="rounded bg-red-600 px-3 py-1 text-white"
-                  >
-                    다시 시도
-                  </button>
-                </div>
-              </div>
-            </div>
-          }
-        >
-          <Suspense
-            fallback={
-              <div className="grid h-[100dvh] w-full place-items-center bg-neutral-100">
-                <div className="rounded-md border bg-white px-4 py-3 text-sm">
-                  로딩 중…
-                </div>
-              </div>
-            }
-          >
-            <div className="grid h-[100dvh] w-full place-items-center overflow-hidden bg-neutral-100">
-              <div
-                ref={wrapRef}
-                className="relative h-[100dvh] w-[430px] max-w-full overflow-hidden bg-black"
-              >
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="block h-full w-full object-cover -scale-x-100"
-                />
+    <div className="grid h-[100dvh] w-full place-items-center bg-neutral-100">
+      <div
+        ref={wrapRef}
+        className="relative h-[100dvh] w-[430px] max-w-full overflow-hidden bg-black"
+      >
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className="block h-full w-full object-cover -scale-x-100"
+        />
 
-                <canvas
-                  ref={canvasRef}
-                  className="pointer-events-none absolute inset-0 hidden h-full w-full -scale-x-100"
-                />
+        <canvas
+          ref={canvasRef}
+          className="pointer-events-none absolute inset-0 hidden h-full w-full -scale-x-100"
+        />
 
-                <canvas
-                  ref={overlayCanvasRef}
-                  className="pointer-events-none absolute inset-0 z-10 h-full w-full -scale-x-100"
-                />
+        <canvas
+          ref={overlayCanvasRef}
+          className="pointer-events-none absolute inset-0 z-10 h-full w-full -scale-x-100"
+        />
 
-                <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 pb-4 pt-5">
-                  <button
-                    type="button"
-                    aria-label="Go to main"
-                    onClick={handleClose}
-                    className="flex h-11 w-11 items-center justify-center text-white/85 transition hover:text-white"
-                  >
-                    <X className="h-10 w-10" />
-                  </button>
+        <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 pt-5">
+          <button type="button" onClick={handleClose}>
+            <X className="h-10 w-10 text-white" />
+          </button>
 
-                  <button
-                    type="button"
-                    aria-label="Open settings"
-                    className="flex h-11 w-11 items-center justify-center text-white/85 transition hover:text-white"
-                  >
-                    <Settings className="h-10 w-10" />
-                  </button>
-                </div>
+          <Settings className="h-10 w-10 text-white" />
+        </div>
 
-                <div className="absolute top-2 left-2 z-20 rounded bg-black/60 px-2 py-1 text-xs text-white">
-                  {loading ? 'Loading recommendation' : 'Recommendation ready'}
-                </div>
+        <div className="absolute top-2 left-2 z-20 rounded bg-black/60 px-2 py-1 text-xs text-white">
+          {hairApplyMutation.isPending
+            ? '헤어 적용 중'
+            : hairWs.isConnected
+              ? '소켓 연결됨'
+              : '준비 완료'}
+        </div>
 
-                {error && (
-                  <div className="absolute top-10 left-2 z-20 rounded bg-red-600/80 px-2 py-1 text-xs text-white">
-                    {error}
-                  </div>
-                )}
+        <HairSelector
+          items={HAIR_ITEMS}
+          selectedId={displayHairId}
+          onSelect={handleHairSelect}
+          onCapture={handleCapture}
+        />
+      </div>
 
-                <HairSelector
-                  items={HAIR_ITEMS}
-                  selectedId={displayHairId}
-                  onSelect={handleHairSelect}
-                  onCapture={handleCapture}
-                />
-              </div>
-
-              {modalOpen && (
-                <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/20 pb-50">
-                  <ApplyStyleModal
-                    open={modalOpen}
-                    onComplete={handleModalComplete}
-                  />
-                </div>
-              )}
-            </div>
-          </Suspense>
-        </ErrorBoundary>
+      {modalOpen && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/20 pb-50">
+          <ApplyStyleModal open={modalOpen} onComplete={handleModalComplete} />
+        </div>
       )}
-    </QueryErrorResetBoundary>
+    </div>
   )
-}
-
-class ErrorBoundary extends Component<
-  {
-    fallback: ReactNode
-    onReset?: () => void
-    children: ReactNode
-  },
-  { hasError: boolean }
-> {
-  constructor(props: {
-    fallback: ReactNode
-    onReset?: () => void
-    children: ReactNode
-  }) {
-    super(props)
-    this.state = { hasError: false }
-  }
-
-  static getDerivedStateFromError() {
-    return { hasError: true }
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return this.props.fallback
-    }
-    return this.props.children
-  }
 }

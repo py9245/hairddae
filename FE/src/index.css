@@ -41,6 +41,8 @@
   --bg-primary: #f5f5f5;
   --labels-primary: #000;
   --labels-secondary: #737373;
+  /* Brand */
+  --brand: #ea7589;
 }
 
 .dark {
@@ -76,6 +78,8 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  /* Brand (dark) */
+  --brand: #ea7589;
 }
 
 @theme inline {
@@ -118,6 +122,12 @@
   --color-bg-primary: var(--bg-primary);
   --color-labels-primary: var(--labels-primary);
   --color-labels-secondary: var(--labels-secondary);
+  /* Custom */
+  --color-brand: var(--brand);
+  /* Primary scale */
+  --color-primary-100: #ffdbdb;
+  --color-primary-200: #f18b90;
+  --color-primary-300: #ea7589;
   --font-sans:
     "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
 }
@@ -157,14 +167,16 @@
     width: 100%;
     max-width: var(--app-frame-width);
     min-height: 100dvh;
+    height: 100dvh;
     position: relative;
     flex: 1 1 auto;
     background: var(--background);
-    overflow-x: hidden;
+    overflow: hidden;
   }
 
   .app-frame-content {
     min-height: 100dvh;
+    overflow: hidden;
     padding-bottom: calc(6rem + env(safe-area-inset-bottom));
   }
 

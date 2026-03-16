@@ -53,7 +53,7 @@ type UseHairWebSocketArgs = {
   selectedHairId?: number
 }
 
-const WS_BASE_URL = 'home/hairapply/'
+const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL
 
 function makeAngleHash(pose: Pose) {
   return Number(
@@ -84,24 +84,29 @@ export function useHairWebSocket({
     if (!applySessionId) return
 
     if (!WS_BASE_URL) {
-      setError('VITE_WS_URL이 설정되지 않았습니다.')
+      setError('VITE_WS_BASE_URL이 설정되지 않았습니다.')
       return
     }
 
-    const wsUrl = `${WS_BASE_URL}${applySessionId}/`
+    const wsUrl = `${WS_BASE_URL}/home/hairapply`
     console.log('WS_URL:', wsUrl)
 
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
     ws.onopen = () => {
+      console.log('웹소켓 연결 성공')
       setIsConnected(true)
       setError(null)
     }
 
     ws.onmessage = (event) => {
       try {
+        console.log('ws raw message:', event.data)
+
         const parsed = JSON.parse(event.data) as HairWsMessage
+        console.log('ws parsed message:', parsed)
+
         setLastMessage(parsed)
 
         if ('message' in parsed && parsed.message) {
@@ -120,11 +125,13 @@ export function useHairWebSocket({
       }
     }
 
-    ws.onerror = () => {
+    ws.onerror = (event) => {
+      console.error('websocket error:', event)
       setError('websocket error')
     }
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
+      console.log('웹소켓 종료:', event)
       setIsConnected(false)
       wsRef.current = null
     }
@@ -139,16 +146,20 @@ export function useHairWebSocket({
   const sendFrame = useCallback(
     (payload: Omit<HairFramePayload, 'apply_session_id'>) => {
       const ws = wsRef.current
-      if (!ws || ws.readyState !== WebSocket.OPEN) return false
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        console.log('ws not open')
+        return false
+      }
       if (!applySessionId) return false
 
       try {
-        ws.send(
-          JSON.stringify({
-            ...payload,
-            apply_session_id: applySessionId,
-          }),
-        )
+        const message: HairFramePayload = {
+          ...payload,
+          apply_session_id: applySessionId,
+        }
+
+        console.log('WS PAYLOAD:', message)
+        ws.send(JSON.stringify(message))
         return true
       } catch (err) {
         console.error('frame 전송 실패:', err)

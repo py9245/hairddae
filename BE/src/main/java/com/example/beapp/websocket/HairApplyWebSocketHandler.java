@@ -1,6 +1,7 @@
 package com.example.beapp.websocket;
 
 import java.io.IOException;
+import java.time.Instant;
 
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -12,7 +13,6 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 import com.example.beapp.api.dto.home.HairApplyStatusResponse;
 import com.example.beapp.common.exception.ApiException;
 import com.example.beapp.common.exception.ErrorCode;
-import com.example.beapp.security.JwtTokenService;
 import com.example.beapp.service.HomeService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -21,15 +21,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class HairApplyWebSocketHandler extends TextWebSocketHandler {
 
     private final ObjectMapper objectMapper;
-    private final JwtTokenService jwtTokenService;
     private final HomeService homeService;
 
     public HairApplyWebSocketHandler(
             ObjectMapper objectMapper,
-            JwtTokenService jwtTokenService,
             HomeService homeService) {
         this.objectMapper = objectMapper;
-        this.jwtTokenService = jwtTokenService;
         this.homeService = homeService;
     }
 
@@ -60,13 +57,13 @@ public class HairApplyWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        if (!StringUtils.hasText(request.accessToken()) || !StringUtils.hasText(request.applySessionId())) {
-            sendMessage(session, ServerMessage.error(ErrorCode.INVALID_REQUEST, "accessToken과 applySessionId가 필요합니다."));
+        if (!StringUtils.hasText(request.applySessionId())) {
+            sendMessage(session, ServerMessage.error(ErrorCode.INVALID_REQUEST, "applySessionId가 필요합니다."));
             return;
         }
 
         try {
-            String userId = jwtTokenService.validateAccessToken(request.accessToken()).userId();
+            String userId = resolveAuthenticatedUserId(session);
             HairApplyStatusResponse statusResponse = homeService.getHairApplyStatus(userId, request.applySessionId());
             sendMessage(session, ServerMessage.status(statusResponse));
         } catch (ApiException exception) {
@@ -95,7 +92,6 @@ public class HairApplyWebSocketHandler extends TextWebSocketHandler {
 
     private record HairApplyWebSocketRequest(
             String type,
-            String accessToken,
             String applySessionId
     ) {
     }
@@ -128,5 +124,19 @@ public class HairApplyWebSocketHandler extends TextWebSocketHandler {
     }
 
     private record ConnectionData(String endpoint) {
+    }
+
+    private String resolveAuthenticatedUserId(WebSocketSession session) {
+        Object userId = session.getAttributes().get(AccessTokenHandshakeInterceptor.ATTR_USER_ID);
+        if (!(userId instanceof String authenticatedUserId) || !StringUtils.hasText(authenticatedUserId)) {
+            throw new ApiException(ErrorCode.UNAUTHORIZED, "웹소켓 인증이 필요합니다.");
+        }
+
+        Object expiresAt = session.getAttributes().get(AccessTokenHandshakeInterceptor.ATTR_ACCESS_TOKEN_EXPIRES_AT);
+        if (expiresAt instanceof Instant accessTokenExpiresAt && accessTokenExpiresAt.isBefore(Instant.now())) {
+            throw new ApiException(ErrorCode.INVALID_TOKEN, "액세스 토큰이 만료되었습니다.");
+        }
+
+        return authenticatedUserId;
     }
 }

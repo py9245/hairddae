@@ -7,7 +7,6 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -59,9 +58,9 @@ public class HomeController {
 
     @PostMapping("/hairapplystart")
     public ResponseEntity<HairApplyResponse> hairApplyStart(
-            @RequestHeader(name = "Authorization", required = false) String authorization,
+            Authentication authentication,
             @Valid @RequestBody HairApplyRequest request) {
-        return ResponseEntity.ok(homeService.startHairApply(request, authorization));
+        return ResponseEntity.ok(homeService.startHairApply(request, authentication.getName()));
     }
 
     @GetMapping("/hairapplystatus/{applySessionId}")
@@ -73,8 +72,8 @@ public class HomeController {
 
     @PostMapping("/recodehair")
     public ResponseEntity<RecodeHairResponse> recodeHair(
-            @RequestHeader(name = "Authorization", required = false) String authorization,
+            Authentication authentication,
             @Valid @RequestBody RecodeHairRequest request) {
-        return ResponseEntity.ok(homeService.recordHair(request, authorization));
+        return ResponseEntity.ok(homeService.recordHair(request, authentication.getName()));
     }
 }

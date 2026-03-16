@@ -20,7 +20,6 @@ import com.example.beapp.model.UserAccount;
 import com.example.beapp.repository.HairApplyJobRepository;
 import com.example.beapp.repository.SampleHairRepository;
 import com.example.beapp.repository.UserAccountRepository;
-import com.example.beapp.security.JwtTokenService;
 
 @Service
 public class HomeService {
@@ -28,19 +27,16 @@ public class HomeService {
     private final UserAccountRepository userAccountRepository;
     private final SampleHairRepository sampleHairRepository;
     private final HairApplyJobRepository hairApplyJobRepository;
-    private final JwtTokenService jwtTokenService;
     private final HairCatalogService hairCatalogService;
 
     public HomeService(
             UserAccountRepository userAccountRepository,
             SampleHairRepository sampleHairRepository,
             HairApplyJobRepository hairApplyJobRepository,
-            JwtTokenService jwtTokenService,
             ObjectProvider<HairCatalogService> hairCatalogServiceProvider) {
         this.userAccountRepository = userAccountRepository;
         this.sampleHairRepository = sampleHairRepository;
         this.hairApplyJobRepository = hairApplyJobRepository;
-        this.jwtTokenService = jwtTokenService;
         this.hairCatalogService = hairCatalogServiceProvider.getIfAvailable();
     }
 
@@ -70,10 +66,7 @@ public class HomeService {
                         : sampleHairRepository.findNormalRankItems());
     }
 
-    public HairApplyResponse startHairApply(HairApplyRequest request, String authorizationHeader) {
-        String bearerToken = jwtTokenService.extractBearerToken(authorizationHeader);
-        String accessToken = StringUtils.hasText(bearerToken) ? bearerToken : request.accessToken();
-        String userId = jwtTokenService.validateAccessToken(accessToken).userId();
+    public HairApplyResponse startHairApply(HairApplyRequest request, String userId) {
         HairApplyJobRepository.HairApplyJobSnapshot jobSnapshot = hairApplyJobRepository.createPending(userId, request.hairID());
         return HairApplyResponse.started(jobSnapshot.id().toString());
     }
@@ -95,11 +88,10 @@ public class HomeService {
                 jobSnapshot.completedAt());
     }
 
-    public RecodeHairResponse recordHair(RecodeHairRequest request, String authorizationHeader) {
+    public RecodeHairResponse recordHair(RecodeHairRequest request, String userId) {
         if (hairCatalogService == null) {
             return RecodeHairResponse.ok();
         }
-        String userId = resolveUserId(authorizationHeader, request.accessToken());
         hairCatalogService.recordHistory(userId, request.hairID(), request.viewSec());
         return RecodeHairResponse.ok();
     }
@@ -128,11 +120,5 @@ public class HomeService {
         } catch (IllegalArgumentException exception) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "작업 ID 형식이 올바르지 않습니다.");
         }
-    }
-
-    private String resolveUserId(String authorizationHeader, String accessTokenFromBody) {
-        String bearerToken = jwtTokenService.extractBearerToken(authorizationHeader);
-        String accessToken = StringUtils.hasText(bearerToken) ? bearerToken : accessTokenFromBody;
-        return jwtTokenService.validateAccessToken(accessToken).userId();
     }
 }

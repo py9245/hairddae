@@ -6,6 +6,7 @@ import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistration;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
 
+import com.example.beapp.websocket.AccessTokenHandshakeInterceptor;
 import com.example.beapp.websocket.HairApplyWebSocketHandler;
 
 @Configuration
@@ -14,12 +15,15 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     private final HairApplyWebSocketHandler hairApplyWebSocketHandler;
     private final AppCorsProperties appCorsProperties;
+    private final AccessTokenHandshakeInterceptor accessTokenHandshakeInterceptor;
 
     public WebSocketConfig(
             HairApplyWebSocketHandler hairApplyWebSocketHandler,
-            AppCorsProperties appCorsProperties) {
+            AppCorsProperties appCorsProperties,
+            AccessTokenHandshakeInterceptor accessTokenHandshakeInterceptor) {
         this.hairApplyWebSocketHandler = hairApplyWebSocketHandler;
         this.appCorsProperties = appCorsProperties;
+        this.accessTokenHandshakeInterceptor = accessTokenHandshakeInterceptor;
     }
 
     @Override
@@ -28,6 +32,7 @@ public class WebSocketConfig implements WebSocketConfigurer {
                 hairApplyWebSocketHandler,
                 "/home/hairapply",
                 "/home/hairapply/");
+        registration.addInterceptors(accessTokenHandshakeInterceptor);
 
         if (appCorsProperties.allowedOrigins().isEmpty()) {
             registration.setAllowedOriginPatterns("*");

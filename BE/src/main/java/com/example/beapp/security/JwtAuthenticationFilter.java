@@ -26,10 +26,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenService jwtTokenService;
     private final ObjectMapper objectMapper;
+    private final AuthCookieManager authCookieManager;
 
-    public JwtAuthenticationFilter(JwtTokenService jwtTokenService, ObjectMapper objectMapper) {
+    public JwtAuthenticationFilter(
+            JwtTokenService jwtTokenService,
+            ObjectMapper objectMapper,
+            AuthCookieManager authCookieManager) {
         this.jwtTokenService = jwtTokenService;
         this.objectMapper = objectMapper;
+        this.authCookieManager = authCookieManager;
     }
 
     @Override
@@ -39,17 +44,20 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             FilterChain filterChain) throws ServletException, IOException {
         String authorizationHeader = request.getHeader("Authorization");
         String bearerToken = jwtTokenService.extractBearerToken(authorizationHeader);
+        String accessToken = StringUtils.hasText(bearerToken)
+                ? bearerToken
+                : authCookieManager.getCookieValue(request, AuthCookieManager.ACCESS_TOKEN_COOKIE);
 
-        if (!StringUtils.hasText(bearerToken)) {
+        if (!StringUtils.hasText(accessToken)) {
             filterChain.doFilter(request, response);
             return;
         }
 
         try {
-            JwtTokenService.TokenPrincipal tokenPrincipal = jwtTokenService.validateAccessToken(bearerToken);
+            JwtTokenService.TokenPrincipal tokenPrincipal = jwtTokenService.validateAccessToken(accessToken);
             UsernamePasswordAuthenticationToken authentication = UsernamePasswordAuthenticationToken.authenticated(
                     tokenPrincipal.userId(),
-                    bearerToken,
+                    accessToken,
                     List.of(new SimpleGrantedAuthority("ROLE_USER")));
             SecurityContextHolder.getContext().setAuthentication(authentication);
             filterChain.doFilter(request, response);

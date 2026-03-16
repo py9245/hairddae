@@ -16,7 +16,7 @@ export async function postHairApplyStart(
       'Content-Type': 'application/json',
     },
     credentials: 'include',
-    body: JSON.stringify({ hairId }),
+    body: JSON.stringify({ hairID: hairId }),
   })
 
   if (!res.ok) {

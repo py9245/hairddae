@@ -6,7 +6,7 @@ import {
   Outlet,
   redirect,
 } from '@tanstack/react-router'
-import { useEffect, useState, type ReactElement } from 'react'
+import { type ReactElement, useEffect, useState } from 'react'
 import Camera from '@/app/Camera'
 import Login from '@/app/Login'
 import SignUp from '@/app/SignUp'

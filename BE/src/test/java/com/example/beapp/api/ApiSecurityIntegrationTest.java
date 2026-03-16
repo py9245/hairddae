@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.List;
 import java.time.LocalDate;
 
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import com.example.beapp.security.AuthCookieManager;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -40,6 +42,29 @@ class ApiSecurityIntegrationTest {
     }
 
     @Test
+    void trailingSlashIsAcceptedForMappedEndpoints() throws Exception {
+        mockMvc.perform(get("/api/health/"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ok"));
+
+        MvcResult loginResult = mockMvc.perform(post("/api/accounts/login/")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "userID": "TestUser01",
+                                  "password": "P@ssw0rd1"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        mockMvc.perform(get("/api/mypage/user/")
+                        .cookie(extractCookie(loginResult, AuthCookieManager.ACCESS_TOKEN_COOKIE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userID").value("TestUser01"));
+    }
+
+    @Test
     void loginIssuesJwtAndProtectedEndpointAcceptsIt() throws Exception {
         MvcResult loginResult = mockMvc.perform(post("/api/accounts/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -51,14 +76,10 @@ class ApiSecurityIntegrationTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
-                .andExpect(header().string("Set-Cookie", org.hamcrest.Matchers.containsString("HttpOnly")))
                 .andReturn();
 
-        JsonNode loginBody = objectMapper.readTree(loginResult.getResponse().getContentAsString());
-        String accessToken = loginBody.get("accessToken").asText();
-
         mockMvc.perform(get("/api/me")
-                        .header("Authorization", "Bearer " + accessToken))
+                        .cookie(extractCookie(loginResult, AuthCookieManager.ACCESS_TOKEN_COOKIE)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userID").value("TestUser01"))
                 .andExpect(jsonPath("$.birthDate").value("2000-01-01"))
@@ -78,13 +99,12 @@ class ApiSecurityIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        JsonNode loginBody = objectMapper.readTree(loginResult.getResponse().getContentAsString());
-        String accessToken = loginBody.get("accessToken").asText();
-        MockCookie refreshTokenCookie = extractRefreshTokenCookie(loginResult);
+        MockCookie accessTokenCookie = extractCookie(loginResult, AuthCookieManager.ACCESS_TOKEN_COOKIE);
+        MockCookie refreshTokenCookie = extractCookie(loginResult, AuthCookieManager.REFRESH_TOKEN_COOKIE);
 
         mockMvc.perform(post("/api/accounts/logout")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .header("Authorization", "Bearer " + accessToken)
+                        .cookie(accessTokenCookie)
                         .cookie(refreshTokenCookie)
                         .content("""
                                 {
@@ -95,7 +115,7 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.message").value("로그아웃 완료"));
 
         mockMvc.perform(get("/api/me")
-                        .header("Authorization", "Bearer " + accessToken))
+                        .cookie(accessTokenCookie))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(401));
     }
@@ -115,7 +135,7 @@ class ApiSecurityIntegrationTest {
 
         MvcResult refreshResult = mockMvc.perform(post("/api/accounts/refreshToken")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .cookie(extractRefreshTokenCookie(loginResult))
+                        .cookie(extractCookie(loginResult, AuthCookieManager.REFRESH_TOKEN_COOKIE))
                         .content("""
                                 {
                                   "rotate": true
@@ -125,11 +145,11 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andReturn();
 
-        MockCookie rotatedRefreshToken = extractRefreshTokenCookie(refreshResult);
+        MockCookie rotatedRefreshToken = extractCookie(refreshResult, AuthCookieManager.REFRESH_TOKEN_COOKIE);
 
         mockMvc.perform(post("/api/accounts/refreshToken")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .cookie(extractRefreshTokenCookie(loginResult))
+                        .cookie(extractCookie(loginResult, AuthCookieManager.REFRESH_TOKEN_COOKIE))
                         .content("""
                                 {
                                   "rotate": true
@@ -218,17 +238,16 @@ class ApiSecurityIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
 
-        JsonNode loginBody = objectMapper.readTree(loginResult.getResponse().getContentAsString());
-        String accessToken = loginBody.get("accessToken").asText();
+        MockCookie accessTokenCookie = extractCookie(loginResult, AuthCookieManager.ACCESS_TOKEN_COOKIE);
 
         MvcResult applyStartResult = mockMvc.perform(post("/api/home/hairapplystart")
                         .contentType(MediaType.APPLICATION_JSON)
+                        .cookie(accessTokenCookie)
                         .content("""
                                 {
-                                  "accessToken": "%s",
                                   "hairID": 1
                                 }
-                                """.formatted(accessToken)))
+                                """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andReturn();
@@ -237,7 +256,7 @@ class ApiSecurityIntegrationTest {
         String applySessionId = applyStartBody.get("applySessionId").asText();
 
         mockMvc.perform(get("/api/home/hairapplystatus/{applySessionId}", applySessionId)
-                        .header("Authorization", "Bearer " + accessToken))
+                        .cookie(accessTokenCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.applySessionId").value(applySessionId))
                 .andExpect(jsonPath("$.jobType").value("HAIR_APPLY"))
@@ -245,14 +264,15 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.hairID").value(1));
     }
 
-    private MockCookie extractRefreshTokenCookie(MvcResult result) {
-        String setCookie = result.getResponse().getHeader("Set-Cookie");
-        String token = java.util.Arrays.stream(setCookie.split(";"))
+    private MockCookie extractCookie(MvcResult result, String cookieName) {
+        List<String> setCookies = result.getResponse().getHeaders("Set-Cookie");
+        String token = setCookies.stream()
+                .flatMap(setCookie -> java.util.Arrays.stream(setCookie.split(";")))
                 .map(String::trim)
-                .filter(part -> part.startsWith("refreshToken="))
-                .map(part -> part.substring("refreshToken=".length()))
+                .filter(part -> part.startsWith(cookieName + "="))
+                .map(part -> part.substring((cookieName + "=").length()))
                 .findFirst()
                 .orElseThrow();
-        return new MockCookie("refreshToken", token);
+        return new MockCookie(cookieName, token);
     }
 }

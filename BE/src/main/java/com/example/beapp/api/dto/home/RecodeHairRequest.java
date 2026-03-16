@@ -7,7 +7,6 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 public record RecodeHairRequest(
-        @Size(max = 1024) String accessToken,
         @NotNull @Min(1) Integer hairID,
         @Min(0) Integer viewSec,
         OffsetDateTime clientTimestamp,

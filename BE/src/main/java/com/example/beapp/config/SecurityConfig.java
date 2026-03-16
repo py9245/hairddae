@@ -69,11 +69,7 @@ public class SecurityConfig {
                                 "/api/accounts/signout",
                                 "/api/accounts/signout/",
                                 "/api/accounts/refreshToken",
-                                "/api/accounts/refreshToken/",
-                                "/api/home/hairapplystart",
-                                "/api/home/hairapplystart/",
-                                "/api/home/recodehair",
-                                "/api/home/recodehair/").permitAll()
+                                "/api/accounts/refreshToken/").permitAll()
                         .requestMatchers(
                                 "/api/me",
                                 "/api/me/",
@@ -83,8 +79,13 @@ public class SecurityConfig {
                                 "/api/home/nomalrank",
                                 "/api/home/nomalrank/",
                                 "/api/mypage/**").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/hairs/*/likes").authenticated()
-                        .requestMatchers(HttpMethod.DELETE, "/api/hairs/*/likes").authenticated()
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/home/hairapplystart",
+                                "/api/home/hairapplystart/",
+                                "/api/home/recodehair",
+                                "/api/home/recodehair/").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/hairs/*/likes", "/api/hairs/*/likes/").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/hairs/*/likes", "/api/hairs/*/likes/").authenticated()
                         .anyRequest().permitAll())
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(authenticationEntryPoint())

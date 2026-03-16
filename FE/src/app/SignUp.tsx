@@ -1,9 +1,10 @@
 import { Link, useRouter } from '@tanstack/react-router'
-import { ChevronDown, Eye, EyeClosed } from 'lucide-react'
+import { Eye, EyeClosed } from 'lucide-react'
 import { useState } from 'react'
 import { AgreementCheckbox } from '@/components/Auth/AgreementCheckbox'
 import { useSignUpForm } from '@/hooks/Auth/SignUp/useSignUpForm'
 import { useSignUpMutation } from '@/hooks/Auth/SignUp/useSignUpMutation'
+import { GenderSelect, type Gender } from '@/components/Auth/GenderSelect'
 
 export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false)
@@ -190,35 +191,22 @@ export default function SignUp() {
               )}
             </div>
 
-            <div>
-              <label
-                htmlFor="gender"
-                className="mb-2 block text-base font-semibold text-slate-700"
-              >
-                성별{' '}
-                <span className="text-sm font-medium text-gray-400">
-                  (선택)
-                </span>
-              </label>
-              <div className="relative">
-                <select
-                  id="gender"
-                  value={values.gender}
-                  onChange={(e) =>
-                    handleChange('gender', e.target.value as '' | 'M' | 'F')
-                  }
-                  onBlur={() => handleBlur('gender')}
-                  className="h-12 w-full appearance-none rounded-2xl border border-gray-200 bg-white px-4 text-base text-slate-700 outline-none focus:border-primary-200"
-                >
-                  <option value="">미선택</option>
-                  <option value="M">남성</option>
-                  <option value="F">여성</option>
-                </select>
-                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
-                  <ChevronDown />
-                </div>
-              </div>
-            </div>
+        <div>
+          <label
+            htmlFor="gender"
+            className="mb-2 block text-base font-semibold text-slate-700"
+          >
+            성별{' '}
+            <span className="text-sm font-medium text-gray-400">(선택)</span>
+          </label>
+
+          <GenderSelect
+            value={values.gender as Gender}
+            onChange={(value) => handleChange('gender', value)}
+            onBlur={() => handleBlur('gender')}
+            error={Boolean(errors.gender)}
+          />
+        </div>
           </div>
 
           <AgreementCheckbox

@@ -53,8 +53,6 @@ type UseHairWebSocketArgs = {
   selectedHairId?: number
 }
 
-const WS_BASE_URL = import.meta.env.VITE_WS_BASE_URL
-
 function makeAngleHash(pose: Pose) {
   return Number(
     `${Math.round(pose.pitch)}${Math.round(pose.yaw)}${Math.round(pose.roll)}`,
@@ -83,12 +81,7 @@ export function useHairWebSocket({
     if (!enabled) return
     if (!applySessionId) return
 
-    if (!WS_BASE_URL) {
-      setError('VITE_WS_BASE_URL이 설정되지 않았습니다.')
-      return
-    }
-
-    const wsUrl = `${WS_BASE_URL}/home/hairapply`
+    const wsUrl = `$/home/hairapply/`
     console.log('WS_URL:', wsUrl)
 
     const ws = new WebSocket(wsUrl)

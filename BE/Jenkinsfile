@@ -8,6 +8,7 @@ pipeline {
 
   environment {
     APP_IMAGE = 'be-app:local'
+    INFERENCE_IMAGE = 'inference-app:local'
     DEPLOY_ROOT = '/home/ubuntu/S14P21M101/BE'
     STATIC_ROOT = '/home/ubuntu/S14P21M101/static'
     COMPOSE_FILE = '/home/ubuntu/S14P21M101/BE/docker-compose.yml'
@@ -20,11 +21,12 @@ pipeline {
       }
     }
 
-    stage('Build App Image') {
+    stage('Build Images') {
       steps {
         sh '''
           set -eu
           docker build -t "$APP_IMAGE" -f "$WORKSPACE/BE/Dockerfile" "$WORKSPACE/BE"
+          docker build -t "$INFERENCE_IMAGE" -f "$WORKSPACE/Inference/Dockerfile" "$WORKSPACE/Inference"
         '''
       }
     }
@@ -59,6 +61,7 @@ pipeline {
           docker compose -f "$COMPOSE_FILE" config >/dev/null
 
           docker compose -f "$COMPOSE_FILE" up -d postgres redis
+          docker compose -f "$COMPOSE_FILE" up -d --no-deps inference
           docker compose -f "$COMPOSE_FILE" up -d --no-deps app
           docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate nginx
         '''
@@ -98,6 +101,12 @@ pipeline {
               https://j14m101.p.ssafy.io/static/0001/hair_rgba/base_pose_bank__yaw+00_pitch+01_roll-01_frame000922.png | tr -d '\r'
           }
 
+          inference_health() {
+            curl -fsS \
+              --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
+              https://j14m101.p.ssafy.io/ws/inference/healthz
+          }
+
           for i in $(seq 1 20); do
             READY_LABEL=""
             if curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/api/health >/dev/null 2>&1; then
@@ -110,13 +119,15 @@ pipeline {
               WEBSOCKET_HEADERS="$(websocket_headers)"
               STATIC_MANIFEST_HEADERS="$(static_manifest_headers)"
               STATIC_IMAGE_HEADERS="$(static_image_headers)"
+              INFERENCE_HEALTH="$(inference_health || true)"
 
               if printf '%s\n' "$WEBSOCKET_HEADERS" | grep -q '^HTTP/1.1 101' \
                 && printf '%s\n' "$STATIC_MANIFEST_HEADERS" | grep -q '^HTTP/2 200\\|^HTTP/1.1 200' \
                 && printf '%s\n' "$STATIC_MANIFEST_HEADERS" | grep -Fq 'cache-control: public, max-age=60' \
                 && printf '%s\n' "$STATIC_IMAGE_HEADERS" | grep -q '^HTTP/2 200\\|^HTTP/1.1 200' \
-                && printf '%s\n' "$STATIC_IMAGE_HEADERS" | grep -Fq 'cache-control: public, max-age=31536000, immutable'; then
-                echo "health check passed: $READY_LABEL, websocket, static-manifest, static-image"
+                && printf '%s\n' "$STATIC_IMAGE_HEADERS" | grep -Fq 'cache-control: public, max-age=31536000, immutable' \
+                && printf '%s\n' "$INFERENCE_HEALTH" | grep -Fq '"status":"ok"'; then
+                echo "health check passed: $READY_LABEL, websocket, static-manifest, static-image, inference-health"
                 exit 0
               fi
             fi

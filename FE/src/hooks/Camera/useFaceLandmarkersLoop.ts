@@ -12,7 +12,8 @@ export type LandmarkerLike = {
   detectForVideo: (video: HTMLVideoElement, ts: number) => DetectForVideoResult
 }
 
-const FRAME_INTERVAL = 1000 / 30
+const TARGET_FPS = 15
+const FRAME_INTERVAL_MS = 1000 / TARGET_FPS
 
 export function useFaceLandmarksLoop({
   videoRef,
@@ -45,7 +46,7 @@ export function useFaceLandmarksLoop({
       if (video.videoWidth <= 0 || video.videoHeight <= 0) return
 
       const now = performance.now()
-      if (now - lastDetectRef.current < FRAME_INTERVAL) return
+      if (now - lastDetectRef.current < FRAME_INTERVAL_MS) return
       lastDetectRef.current = now
 
       const res = landmarker.detectForVideo(video, now)

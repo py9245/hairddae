@@ -9,3 +9,5 @@ logs
 static/0001/
 
 .codex
+
+!Inference/.env.example

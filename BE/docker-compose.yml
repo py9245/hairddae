@@ -7,6 +7,9 @@ services:
     environment:
       APP_HAIR_STATIC_ROOT_PATH: /opt/be-static
       APP_HAIR_STATIC_BASE_URL: /static
+      APP_INFERENCE_WS_BASE_URL: ${APP_INFERENCE_WS_BASE_URL:-wss://j14m101.p.ssafy.io/ws/inference/apply}
+      APP_INFERENCE_WS_AUTH_TRANSPORT: ${APP_INFERENCE_WS_AUTH_TRANSPORT:-sec-websocket-protocol.v1}
+      APP_INFERENCE_NODE_ID: ${APP_INFERENCE_NODE_ID:-infer-a-01}
     depends_on:
       postgres:
         condition: service_healthy
@@ -19,6 +22,32 @@ services:
     networks:
       - app-net
 
+  inference:
+    image: ${INFERENCE_IMAGE:-inference-app:local}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      INFERENCE_STATIC_ROOT: /opt/be-static
+      INFERENCE_STATIC_BASE_URL: /static
+      INFERENCE_JWT_SECRET: ${APP_SECURITY_JWT_SECRET:-hairddae-local-jwt-secret-key-for-dev-only-2026}
+      INFERENCE_JWT_ISSUER: ${APP_SECURITY_JWT_ISSUER:-hairddae}
+      INFERENCE_NODE_ID: ${APP_INFERENCE_NODE_ID:-infer-a-01}
+      INFERENCE_HYSTERESIS_MARGIN: ${INFERENCE_HYSTERESIS_MARGIN:-4.0}
+      INFERENCE_MIN_HOLD_MS: ${INFERENCE_MIN_HOLD_MS:-400}
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../static:/opt/be-static:ro
+    expose:
+      - "8090"
+    networks:
+      - app-net
+
   nginx:
     image: nginx:1.25-alpine
     restart: unless-stopped
@@ -26,6 +55,7 @@ services:
       - .env
     depends_on:
       - app
+      - inference
     ports:
       - "80:80"
       - "443:443"

@@ -55,6 +55,19 @@ app:
   hair:
     static-root-path: ${APP_HAIR_STATIC_ROOT_PATH:/opt/be-static}
     static-base-url: ${APP_HAIR_STATIC_BASE_URL:/static}
+  inference:
+    ws-base-url: ${APP_INFERENCE_WS_BASE_URL:wss://j14m101.p.ssafy.io/ws/inference/apply}
+    ws-auth-transport: ${APP_INFERENCE_WS_AUTH_TRANSPORT:sec-websocket-protocol.v1}
+    ws-protocol: ${APP_INFERENCE_WS_PROTOCOL:hairapply.v2}
+    audience: ${APP_INFERENCE_AUDIENCE:inference}
+    node-id: ${APP_INFERENCE_NODE_ID:infer-a-01}
+    connect-ticket-expiry-seconds: ${APP_INFERENCE_CONNECT_TICKET_EXPIRY_SECONDS:30}
+    processed-timeout-ms: ${APP_INFERENCE_PROCESSED_TIMEOUT_MS:250}
+    heartbeat-interval-ms: ${APP_INFERENCE_HEARTBEAT_INTERVAL_MS:5000}
+    idle-ttl-ms: ${APP_INFERENCE_IDLE_TTL_MS:30000}
+    feature-schema-version: ${APP_INFERENCE_FEATURE_SCHEMA_VERSION:2}
+    asset-bundle-schema-version: ${APP_INFERENCE_ASSET_BUNDLE_SCHEMA_VERSION:1}
+    transform-version: ${APP_INFERENCE_TRANSFORM_VERSION:affine_v1}
   security:
     cors:
       allowed-origins: ${APP_SECURITY_CORS_ALLOWED_ORIGINS:https://j14m101.p.ssafy.io,https://localhost,https://127.0.0.1,https://localhost:8443,https://127.0.0.1:8443,http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000}

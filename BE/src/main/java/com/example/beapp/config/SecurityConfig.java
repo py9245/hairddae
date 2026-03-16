@@ -32,7 +32,7 @@ import jakarta.servlet.http.HttpServletResponse;
 
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties({AppSecurityProperties.class, AppCorsProperties.class, AppHairProperties.class})
+@EnableConfigurationProperties({AppSecurityProperties.class, AppCorsProperties.class, AppHairProperties.class, AppInferenceProperties.class})
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -82,6 +82,14 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST,
                                 "/api/home/hairapplystart",
                                 "/api/home/hairapplystart/",
+                                "/api/home/hairapplybootstrap",
+                                "/api/home/hairapplybootstrap/",
+                                "/api/home/hairapplystart-v2",
+                                "/api/home/hairapplystart-v2/",
+                                "/api/home/hairapplyresume",
+                                "/api/home/hairapplyresume/",
+                                "/api/home/hairapplyresume-v2",
+                                "/api/home/hairapplyresume-v2/",
                                 "/api/home/recodehair",
                                 "/api/home/recodehair/").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/hairs/*/likes", "/api/hairs/*/likes/").authenticated()

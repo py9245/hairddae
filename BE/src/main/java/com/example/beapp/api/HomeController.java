@@ -14,7 +14,10 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.beapp.api.dto.home.CustomRankResponse;
 import com.example.beapp.api.dto.home.HairApplyRequest;
 import com.example.beapp.api.dto.home.HairApplyResponse;
+import com.example.beapp.api.dto.home.HairApplyResumeV2Request;
 import com.example.beapp.api.dto.home.HairApplyStatusResponse;
+import com.example.beapp.api.dto.home.HairApplyStartV2Request;
+import com.example.beapp.api.dto.home.HairApplyV2Response;
 import com.example.beapp.api.dto.home.NormalRankResponse;
 import com.example.beapp.api.dto.home.RecodeHairRequest;
 import com.example.beapp.api.dto.home.RecodeHairResponse;
@@ -61,6 +64,20 @@ public class HomeController {
             Authentication authentication,
             @Valid @RequestBody HairApplyRequest request) {
         return ResponseEntity.ok(homeService.startHairApply(request, authentication.getName()));
+    }
+
+    @PostMapping({"/hairapplybootstrap", "/hairapplybootstrap/", "/hairapplystart-v2", "/hairapplystart-v2/"})
+    public ResponseEntity<HairApplyV2Response> hairApplyBootstrap(
+            Authentication authentication,
+            @Valid @RequestBody HairApplyStartV2Request request) {
+        return ResponseEntity.ok(homeService.startHairApplyV2(request, authentication.getName()));
+    }
+
+    @PostMapping({"/hairapplyresume", "/hairapplyresume/", "/hairapplyresume-v2", "/hairapplyresume-v2/"})
+    public ResponseEntity<HairApplyV2Response> hairApplyResume(
+            Authentication authentication,
+            @Valid @RequestBody HairApplyResumeV2Request request) {
+        return ResponseEntity.ok(homeService.resumeHairApplyV2(request, authentication.getName()));
     }
 
     @GetMapping("/hairapplystatus/{applySessionId}")

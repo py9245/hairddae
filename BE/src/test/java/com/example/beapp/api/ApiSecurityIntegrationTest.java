@@ -264,6 +264,48 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.hairID").value(1));
     }
 
+    @Test
+    void hairApplyBootstrapReturnsInferenceBootstrapPayload() throws Exception {
+        MvcResult loginResult = mockMvc.perform(post("/api/accounts/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "userID": "TestUser01",
+                                  "password": "P@ssw0rd1"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        MockCookie accessTokenCookie = extractCookie(loginResult, AuthCookieManager.ACCESS_TOKEN_COOKIE);
+
+        mockMvc.perform(post("/api/home/hairapplybootstrap")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .cookie(accessTokenCookie)
+                        .content("""
+                                {
+                                  "hair_id": 1,
+                                  "device_id": "browser-test-device",
+                                  "client_capabilities": {
+                                    "feature_schema_version": 2,
+                                    "transform_version": "affine_v1"
+                                  }
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.apply_session_id").isString())
+                .andExpect(jsonPath("$.feature_schema_version").value(2))
+                .andExpect(jsonPath("$.transform_version").value("affine_v1"))
+                .andExpect(jsonPath("$.inference.ws_url").isString())
+                .andExpect(jsonPath("$.inference.ws_url").value(org.hamcrest.Matchers.containsString("/ws/inference/apply")))
+                .andExpect(jsonPath("$.inference.ws_auth_transport").value("sec-websocket-protocol.v1"))
+                .andExpect(jsonPath("$.inference.connect_ticket").isString())
+                .andExpect(jsonPath("$.static.dataset_code").value("0001"))
+                .andExpect(jsonPath("$.static.asset_bundle_schema_version").value(1))
+                .andExpect(jsonPath("$.static.preload_asset_ids").isArray());
+    }
+
     private MockCookie extractCookie(MvcResult result, String cookieName) {
         List<String> setCookies = result.getResponse().getHeaders("Set-Cookie");
         String token = setCookies.stream()

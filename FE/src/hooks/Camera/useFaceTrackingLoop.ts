@@ -15,6 +15,10 @@ import { isFaceInsideGuide } from '@/lib/Camera/guide'
 import { classifyPose } from '@/lib/Camera/pose'
 import type { FaceFrame, PoseStatus } from '@/lib/Camera/types'
 
+const TARGET_FPS = 15
+const FRAME_INTERVAL_MS = 1000 / TARGET_FPS
+const LOST_FACE_RESET_MS = FRAME_INTERVAL_MS * 2
+
 export function useFaceTrackingLoop({
   videoRef,
   canvasRef,
@@ -95,14 +99,14 @@ export function useFaceTrackingLoop({
       if (lms) {
         const guideOk = isFaceInsideGuide(lms)
 
-        if (now - lastUpdateRef.current > 120) {
+        if (now - lastUpdateRef.current > FRAME_INTERVAL_MS) {
           setInGuide(guideOk)
           setStatus(guideOk && f && p ? classifyPose(p) : 'none')
           setLandmarksState(lms)
           lastUpdateRef.current = now
         }
       } else {
-        if (now - lastUpdateRef.current > 200) {
+        if (now - lastUpdateRef.current > LOST_FACE_RESET_MS) {
           setInGuide(false)
           setStatus('none')
           setLandmarksState(null)

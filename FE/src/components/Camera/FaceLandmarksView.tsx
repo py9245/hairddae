@@ -1,20 +1,14 @@
-import { useMutation } from '@tanstack/react-query'
+import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 import { useRouter } from '@tanstack/react-router'
 import { Settings, X } from 'lucide-react'
 import { type RefObject, useCallback, useRef, useState } from 'react'
 
 import { HairSelector } from '@/components/Camera/HairSelector'
 import { ApplyStyleModal } from '@/components/Camera/Modal'
-import { useHairWebSocket } from '@/hooks/Camera/useHairWebSocket'
+import { useHairInferenceSession } from '@/hooks/Camera/useHairInferenceSession'
+import { useHairOverlayCanvas } from '@/hooks/Camera/useHairOverlayCanvas'
 import { captureCompositedImage } from '@/lib/Camera/capture'
 import { HAIR_ITEMS } from '@/lib/Camera/HairItem'
-import { postHairApplyStart } from '@/lib/Camera/hairApply'
-
-type LandmarkPoint = {
-  x: number
-  y: number
-  z: number
-}
 
 type Pose = {
   yaw: number
@@ -26,16 +20,16 @@ type FaceLandmarksViewProps = {
   videoRef: RefObject<HTMLVideoElement | null>
   canvasRef: RefObject<HTMLCanvasElement | null>
   overlayCanvasRef: RefObject<HTMLCanvasElement | null>
-  landmarks: LandmarkPoint[] | null
   pose: Pose | null
+  landmarks: NormalizedLandmark[] | null
 }
 
 export default function FaceLandmarksView({
   videoRef,
   canvasRef,
   overlayCanvasRef,
-  landmarks,
   pose,
+  landmarks,
 }: FaceLandmarksViewProps) {
   const router = useRouter()
   const wrapRef = useRef<HTMLDivElement | null>(null)
@@ -43,23 +37,32 @@ export default function FaceLandmarksView({
   const [selectedHairId, setSelectedHairId] = useState(0)
   const [pendingHairId, setPendingHairId] = useState<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
-  const [applySessionId, setApplySessionId] = useState<string | null>(null)
 
   const displayHairId = pendingHairId ?? selectedHairId
 
-  const hairApplyMutation = useMutation({
-    mutationFn: postHairApplyStart,
-  })
-
-  const hairWs = useHairWebSocket({
-    enabled: !!applySessionId,
-    applySessionId,
+  const hairInference = useHairInferenceSession({
+    enabled: displayHairId > 0,
+    hairId: displayHairId,
     pose,
     landmarks,
-    selectedHairId: displayHairId,
+    videoRef,
+  })
+
+  const overlayMetrics = useHairOverlayCanvas({
+    canvasRef: overlayCanvasRef,
+    videoRef,
+    landmarks,
+    asset: hairInference.asset,
   })
 
   const handleHairSelect = useCallback((hairId: number) => {
+    if (hairId === 0) {
+      setPendingHairId(null)
+      setSelectedHairId(0)
+      setModalOpen(false)
+      return
+    }
+
     setPendingHairId(hairId)
     setModalOpen(true)
   }, [])
@@ -72,19 +75,10 @@ export default function FaceLandmarksView({
 
     const nextHairId = pendingHairId
 
-    hairApplyMutation.mutate(nextHairId, {
-      onSuccess: (data) => {
-        setSelectedHairId(nextHairId)
-        setApplySessionId(data?.applySessionId ?? null)
-      },
-      onError: (error) => {
-        console.error('헤어 적용 시작 실패', error)
-      },
-    })
-
+    setSelectedHairId(nextHairId)
     setPendingHairId(null)
     setModalOpen(false)
-  }, [pendingHairId, hairApplyMutation])
+  }, [pendingHairId])
 
   const handleCapture = useCallback(() => {
     captureCompositedImage({
@@ -133,11 +127,45 @@ export default function FaceLandmarksView({
         </div>
 
         <div className="absolute top-2 left-2 z-20 rounded bg-black/60 px-2 py-1 text-xs text-white">
-          {hairApplyMutation.isPending
-            ? '헤어 적용 중'
-            : hairWs.isConnected
+          {hairInference.error
+            ? hairInference.error
+            : hairInference.isConnected
               ? '소켓 연결됨'
-              : '준비 완료'}
+              : displayHairId > 0
+                ? '소켓 연결 중'
+                : '헤어 선택 전'}
+        </div>
+
+        <div className="absolute top-10 left-2 z-20 rounded bg-black/60 px-2 py-1 text-[10px] text-white">
+          {hairInference.asset
+            ? `asset ${hairInference.asset.poseKey}`
+            : '준비 완료'}
+        </div>
+
+        <div className="absolute top-[4.5rem] left-2 z-20 rounded bg-black/60 px-2 py-1 text-[10px] text-white">
+          {`draw ${
+            overlayMetrics.drawFps == null
+              ? '-'
+              : overlayMetrics.drawFps.toFixed(1)
+          } fps / rtt ${
+            hairInference.metrics.inferenceRttMs == null
+              ? '-'
+              : `${Math.round(hairInference.metrics.inferenceRttMs)}ms`
+          }`}
+        </div>
+
+        <div className="absolute top-[6rem] left-2 z-20 rounded bg-black/60 px-2 py-1 text-[10px] text-white">
+          {`proc ${
+            hairInference.metrics.processedFps == null
+              ? '-'
+              : hairInference.metrics.processedFps.toFixed(1)
+          } fps / bundle ${
+            overlayMetrics.bundleReady
+              ? overlayMetrics.bundleLoadMs == null
+                ? 'ready'
+                : `${Math.round(overlayMetrics.bundleLoadMs)}ms`
+              : 'loading'
+          }`}
         </div>
 
         <HairSelector

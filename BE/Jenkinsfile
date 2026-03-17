@@ -104,7 +104,7 @@ pipeline {
               https://j14m101.p.ssafy.io/ws/inference/healthz
           }
 
-          for i in $(seq 1 20); do
+          for i in $(seq 1 40); do
             READY_LABEL=""
             if curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/api/health >/dev/null 2>&1; then
               READY_LABEL="api"

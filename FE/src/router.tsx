@@ -16,7 +16,7 @@ import { PageShell } from '@/components/page-shell'
 import { ProfileCard } from '@/components/profile-card'
 import { Button } from '@/components/ui/button'
 import { type AuthStore, auth } from '@/lib/auth'
-import Adsense from './app/Adsense'
+import Adsense from '@/app/Adsense'
 
 type RouterContext = {
   auth: AuthStore
@@ -106,8 +106,8 @@ function createProtectedRoute(
 
 function RootLayout() {
   return (
-    <div className="app-frame-shell">
-      <Adsense/>
+    <div className="app-frame-shell flex justify-center gap-10">
+      <Adsense />
       <div className="app-frame">
         <div className="app-frame-content">
           <Outlet />

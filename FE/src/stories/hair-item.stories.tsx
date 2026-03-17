@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { HairSelector } from '@/components/Camera/HairSelector'
+import { HairSelector } from '@/components/Camera/hair-selector'
 import { HAIR_ITEMS } from '../lib/Camera/HairItem'
 
 function HairSelectorStory() {
@@ -19,7 +19,7 @@ function HairSelectorStory() {
 }
 
 const meta = {
-  title: 'UI/HairSelector',
+  title: 'UI/Selector/HairSelector',
   component: HairSelectorStory,
   parameters: {
     layout: 'fullscreen',

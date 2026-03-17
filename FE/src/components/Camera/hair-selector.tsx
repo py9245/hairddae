@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { HairSelectorItem } from '@/components/ui/HairSelectorItem'
+import { HairSelectorItem } from '@/components/ui/hair-selector-item'
 import type { HairItem } from '@/lib/Camera/HairItem'
 
 function clamp(value: number, min: number, max: number) {

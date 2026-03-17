@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { HairStyleCard } from '@/components/ui/hair-style-card'
 
 const meta = {
-  title: 'UI/HairStyleCard',
+  title: 'UI/Card/HairStyleCard',
   component: HairStyleCard,
   parameters: {
     layout: 'centered',

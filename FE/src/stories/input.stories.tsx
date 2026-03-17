@@ -2,8 +2,9 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useMemo, useState } from 'react'
 import { Eye, EyeClosed } from 'lucide-react'
 import { validateField, type FormValues } from '@/lib/Auth/SignUp/signupValidation'
+import { userEvent, within } from 'storybook/test'
 
-type LabelKind = '아이디' | '비밀번호' | '비밀번호 확인' | '나이'
+type LabelKind = '아이디' | '비밀번호' | '비밀번호 확인'
 
 type InputPreviewProps = {
   label: LabelKind
@@ -26,7 +27,7 @@ function validateValue(
           ? confirmTarget ?? ''
           : '',
     passwordConfirm: label === '비밀번호 확인' ? v : '',
-    birthDate: label === '나이' ? v : '',
+    birthDate: '2026-03-17',
     gender: '',
     agreed: true,
   }
@@ -53,9 +54,7 @@ function InputPreview({ label, placeholder, confirmTarget }: InputPreviewProps) 
       ? '비밀번호를 입력하세요'
       : label === '비밀번호 확인'
         ? '비밀번호를 다시 입력하세요'
-        : label === '나이'
-          ? '1999-01-01'
-          : '아이디를 입력하세요')
+        : '아이디를 입력하세요')
 
   const error = useMemo(
     () => validateValue(label, value, confirmTarget),
@@ -132,4 +131,41 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {}
+
+export const Password: Story = {
+  args: { label: '비밀번호' },
+}
+
+export const PasswordConfirm: Story = {
+  args: { label: '비밀번호 확인', confirmTarget: 'Password1!' },
+}
+
+export const UserIdError: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const input = canvas.getByRole('textbox')
+    await userEvent.type(input, 'abc!')
+    await userEvent.tab()
+  },
+}
+
+export const PasswordError: Story = {
+  args: { label: '비밀번호' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const input = canvas.getByLabelText('비밀번호') 
+    await userEvent.type(input, 'password')
+    await userEvent.tab()
+  },
+}
+
+export const PasswordConfirmError: Story = {
+  args: { label: '비밀번호 확인', confirmTarget: 'Password1!' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement)
+    const input = canvas.getByLabelText('비밀번호 확인') 
+    await userEvent.type(input, 'wrong')
+    await userEvent.tab()
+  },
+}
 

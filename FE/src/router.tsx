@@ -23,6 +23,7 @@ type RouterContext = {
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
+  notFoundComponent: NotFoundPage,
 })
 
 const splashRoute = createRoute({
@@ -35,6 +36,7 @@ const authRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'auth',
   component: AuthLayout,
+  notFoundComponent: NotFoundPage,
 })
 
 const loginRoute = createRoute({
@@ -72,7 +74,6 @@ export const router = createRouter({
     auth,
   },
   defaultPreload: 'intent',
-  defaultNotFoundComponent: NotFoundPage,
 })
 
 declare module '@tanstack/react-router' {
@@ -106,9 +107,9 @@ function RootLayout() {
   return (
     <div className="app-frame-shell">
       <div className="app-frame">
-        <main className="app-frame-content">
+        <div className="app-frame-content">
           <Outlet />
-        </main>
+        </div>
         <BottomNav />
       </div>
     </div>
@@ -147,7 +148,7 @@ function SplashPage() {
   const currentSlide = slides[activeSlide]
 
   return (
-    <main className="app-frame-page flex h-dvh flex-col overflow-hidden bg-bg-primary px-3 pt-16 pb-8 text-[#2f2f2f]">
+    <main className="app-frame-page flex flex-col overflow-hidden bg-bg-primary px-6 pt-16 text-[#2f2f2f]">
       <div className="mx-auto flex w-full max-w-[390px] flex-1 flex-col">
         <section className="flex flex-col items-center">
           <h1 className="whitespace-pre-line px-8 text-center text-[20px] leading-[1.35] font-semibold tracking-[-0.03em] text-[#2f2f2f]">
@@ -179,9 +180,7 @@ function SplashPage() {
           </div>
         </section>
 
-        <div className="flex-1" />
-
-        <div>
+        <div className="mt-auto">
           <Button
             asChild
             className="h-14 w-full rounded-[8px] bg-[#ea7589] px-6 py-4 text-base font-medium leading-[1.4] text-[#f2f2f7] hover:bg-[#e1637b]"
@@ -195,13 +194,7 @@ function SplashPage() {
 }
 
 function AuthLayout() {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-primary-100 px-6 py-10">
-      <div className="w-full max-w-md">
-        <Outlet />
-      </div>
-    </main>
-  )
+  return <Outlet />
 }
 
 function MainPage() {

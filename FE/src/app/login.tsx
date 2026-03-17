@@ -39,9 +39,9 @@ export default function Login() {
   }
 
   return (
-    <div className="rounded-3xl bg-white px-5 py-8 shadow-sm">
-      <div className="mx-auto w-full max-w-md">
-        <h1 className="mt-4 text-center text-3xl font-extrabold tracking-tight text-rose-300">
+    <main className="app-frame-page flex flex-col items-center justify-center bg-bg-primary px-6 py-10">
+      <div className="w-full max-w-md">
+        <h1 className="mt-4 text-center text-3xl font-extrabold tracking-tight text-primary-300">
           로그인
         </h1>
 
@@ -59,7 +59,7 @@ export default function Login() {
               value={input.userID}
               onChange={handleChange}
               placeholder="아이디를 입력하세요"
-              className="h-12 w-full rounded-2xl border border-gray-200 px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-rose-200"
+              className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
             />
           </div>
 
@@ -77,7 +77,7 @@ export default function Login() {
                 value={input.password}
                 onChange={handleChange}
                 placeholder="비밀번호를 입력하세요"
-                className="h-12 w-full rounded-2xl border border-gray-200 px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-rose-200"
+                className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
               />
               <button
                 type="button"
@@ -105,8 +105,8 @@ export default function Login() {
             disabled={!isFormValid || loginMutation.isPending}
             className={`mt-4 h-12 w-full rounded-2xl text-lg font-bold text-white transition ${
               !isFormValid || loginMutation.isPending
-                ? 'cursor-not-allowed bg-rose-200'
-                : 'cursor-pointer bg-rose-400 hover:bg-rose-500'
+                ? 'cursor-not-allowed bg-primary-100'
+                : 'cursor-pointer bg-primary-300 hover:bg-primary-200'
             }`}
           >
             {loginMutation.isPending ? '로그인 중...' : '로그인'}
@@ -115,11 +115,14 @@ export default function Login() {
 
         <p className="mt-10 text-center text-sm font-medium text-slate-500">
           아직 계정이 없으신가요?{' '}
-          <Link to="/auth/signup" className="text-sm font-bold text-rose-300">
+          <Link
+            to="/auth/signup"
+            className="text-sm font-bold text-primary-300"
+          >
             회원가입
           </Link>
         </p>
       </div>
-    </div>
+    </main>
   )
 }

@@ -40,9 +40,7 @@ const items: BottomNavItem[] = [
 ]
 
 function shouldHideBottomNav(pathname: string) {
-  return (
-    pathname === '/' || pathname === '/camera' || pathname.startsWith('/auth')
-  )
+  return !pathname.startsWith('/main') && !pathname.startsWith('/mypage')
 }
 
 function BottomNavLink({

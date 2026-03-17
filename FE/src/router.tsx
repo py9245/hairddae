@@ -2,18 +2,18 @@ import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
-  Link,
   Outlet,
   redirect,
 } from '@tanstack/react-router'
-import type { ReactElement } from 'react'
-import Camera from '@/app/Camera'
-import Login from '@/app/Login'
-import SignUp from '@/app/SignUp'
+import { type ReactElement } from 'react'
+import Camera from '@/app/camera'
+import Login from '@/app/login'
+import SignUp from '@/app/sign-up'
+import Splash from '@/app/splash'
 import { BottomNav } from '@/components/bottom-nav'
+import { NotFoundPage } from '@/components/not-found-page'
 import { PageShell } from '@/components/page-shell'
 import { ProfileCard } from '@/components/profile-card'
-import { RouteCard } from '@/components/route-card'
 import { Button } from '@/components/ui/button'
 import { type AuthStore, auth } from '@/lib/auth'
 import Adsense from './app/Adsense'
@@ -24,18 +24,20 @@ type RouterContext = {
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
+  notFoundComponent: NotFoundPage,
 })
 
 const splashRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  component: SplashPage,
+  component: Splash,
 })
 
 const authRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'auth',
   component: AuthLayout,
+  notFoundComponent: NotFoundPage,
 })
 
 const loginRoute = createRoute({
@@ -73,19 +75,6 @@ export const router = createRouter({
     auth,
   },
   defaultPreload: 'intent',
-  defaultNotFoundComponent: () => (
-    <main className="app-frame-page flex items-center justify-center bg-slate-950 px-6 text-white">
-      <div className="w-full max-w-md rounded-[1.75rem] border border-white/15 bg-white/10 p-8 text-center backdrop-blur">
-        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-sky-300">
-          404
-        </p>
-        <h1 className="mt-4 text-3xl font-semibold">Page not found</h1>
-        <p className="mt-3 text-sm text-white/70">
-          The route does not exist or is no longer available.
-        </p>
-      </div>
-    </main>
-  ),
 })
 
 declare module '@tanstack/react-router' {
@@ -120,68 +109,17 @@ function RootLayout() {
     <div className="app-frame-shell">
       <Adsense/>
       <div className="app-frame">
-        <main className="app-frame-content">
+        <div className="app-frame-content">
           <Outlet />
-        </main>
+        </div>
         <BottomNav />
       </div>
     </div>
   )
 }
 
-function SplashPage() {
-  return (
-    <main className="app-frame-page bg-[linear-gradient(145deg,#e0f2fe_0%,#f8fafc_35%,#fef3c7_100%)] px-6 py-10 text-slate-950">
-      <div className="app-frame-fill mx-auto grid max-w-6xl items-center gap-8 lg:grid-cols-[1.15fr_0.85fr]">
-        <RouteCard
-          eyebrow="Splash"
-          title="Capture starts here."
-          description="루트 스플래시는 서비스 진입 허브입니다. 인증 흐름으로 이동하거나, 로그인된 사용자는 핵심 기능으로 바로 들어갈 수 있습니다."
-        >
-          <div className="flex flex-wrap gap-3">
-            <Button asChild className="rounded-full">
-              <Link to="/auth/login">로그인으로 이동</Link>
-            </Button>
-            <Button
-              asChild
-              variant="outline"
-              className="rounded-full bg-transparent"
-            >
-              <Link to="/auth/signup">회원가입</Link>
-            </Button>
-          </div>
-        </RouteCard>
-
-        <section className="grid gap-4">
-          <RoutePreview
-            title="Main"
-            body="서비스 피드, 상태, 추천 동선"
-            className="bg-white/70 text-slate-950"
-          />
-          <RoutePreview
-            title="Camera"
-            body="핵심 촬영 경험이 들어갈 보호 페이지"
-            className="bg-slate-950 text-white"
-          />
-          <RoutePreview
-            title="My Page"
-            body="계정, 기록, 개인화 설정"
-            className="bg-amber-100 text-slate-950"
-          />
-        </section>
-      </div>
-    </main>
-  )
-}
-
 function AuthLayout() {
-  return (
-    <main className="flex min-h-screen items-center justify-center bg-rose-50 px-6 py-10">
-      <div className="w-full max-w-md">
-        <Outlet />
-      </div>
-    </main>
-  )
+  return <Outlet />
 }
 
 function MainPage() {
@@ -254,25 +192,6 @@ function MyPage() {
         </div>
       </div>
     </PageShell>
-  )
-}
-
-function RoutePreview({
-  title,
-  body,
-  className,
-}: {
-  title: string
-  body: string
-  className: string
-}) {
-  return (
-    <div
-      className={`rounded-[1.75rem] border border-slate-200 p-6 shadow-sm ${className}`}
-    >
-      <p className="text-sm font-semibold">{title}</p>
-      <p className="mt-2 text-lg font-medium">{body}</p>
-    </div>
   )
 }
 

@@ -50,6 +50,23 @@ export function useFaceTrackingLoop({
     yawSign,
   })
 
+  // Keep latest rapidly changing values in refs to avoid re-creating the rAF loop
+  const landmarksRef = useRef<NormalizedLandmark[] | null>(null)
+  const poseRef = useRef<typeof pose>(null)
+  const ftmRef = useRef<typeof ftm>(null)
+
+  useEffect(() => {
+    landmarksRef.current = landmarks
+  }, [landmarks])
+
+  useEffect(() => {
+    poseRef.current = pose
+  }, [pose])
+
+  useEffect(() => {
+    ftmRef.current = ftm
+  }, [ftm])
+
   useEffect(() => {
     const video = videoRef.current
     const canvas = canvasRef.current
@@ -69,15 +86,19 @@ export function useFaceTrackingLoop({
 
       const now = performance.now()
 
-      updateFrameRef(frameRef, now, videoW, videoH, landmarks, pose)
+      const lms = landmarksRef.current
+      const p = poseRef.current
+      const f = ftmRef.current
 
-      if (landmarks) {
-        const guideOk = isFaceInsideGuide(landmarks)
+      updateFrameRef(frameRef, now, videoW, videoH, lms, p)
+
+      if (lms) {
+        const guideOk = isFaceInsideGuide(lms)
 
         if (now - lastUpdateRef.current > 120) {
           setInGuide(guideOk)
-          setStatus(guideOk && ftm && pose ? classifyPose(pose) : 'none')
-          setLandmarksState(landmarks)
+          setStatus(guideOk && f && p ? classifyPose(p) : 'none')
+          setLandmarksState(lms)
           lastUpdateRef.current = now
         }
       } else {
@@ -89,10 +110,10 @@ export function useFaceTrackingLoop({
         }
       }
 
-      drawLandmarksCover(canvas, landmarks ?? [], videoW, videoH)
+      drawLandmarksCover(canvas, lms ?? [], videoW, videoH)
 
-      if (landmarks) {
-        drawRedPointsCover(canvas, landmarks, [10], videoW, videoH)
+      if (lms) {
+        drawRedPointsCover(canvas, lms, [10], videoW, videoH)
       }
     }
 
@@ -102,7 +123,7 @@ export function useFaceTrackingLoop({
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       rafRef.current = null
     }
-  }, [enabled, videoRef, canvasRef, landmarks, ftm, pose, frameRef])
+  }, [enabled, videoRef, canvasRef, frameRef])
 
   return { status, inGuide, pose, poseNorm, landmarks: landmarksState }
 }

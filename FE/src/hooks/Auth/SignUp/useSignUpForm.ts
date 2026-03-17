@@ -10,7 +10,7 @@ const initialValues: FormValues = {
   userId: '',
   password: '',
   passwordConfirm: '',
-  age: '',
+  birthDate: '',
   gender: '',
   agreed: false,
 }
@@ -23,12 +23,20 @@ export function useSignUpForm() {
     key: K,
     value: FormValues[K],
   ) {
-    setValues((prev) => ({
-      ...prev,
+    const nextValues = {
+      ...values,
       [key]: value,
-    }))
-  }
+    }
 
+    setValues(nextValues)
+
+    if (key === 'agreed') {
+      setErrors((prev) => ({
+        ...prev,
+        agreed: validateField('agreed', nextValues),
+      }))
+    }
+  }
   function handleBlur<K extends keyof FormValues>(key: K) {
     const message = validateField(key, values)
 
@@ -41,11 +49,6 @@ export function useSignUpForm() {
           }
         : {}),
     }))
-  }
-
-  function handleAgeChange(value: string) {
-    const onlyDigits = value.replace(/\D/g, '')
-    handleChange('age', onlyDigits)
   }
 
   const formErrors = useMemo(() => validateForm(values), [values])
@@ -81,7 +84,6 @@ export function useSignUpForm() {
     isFormValid,
     handleChange,
     handleBlur,
-    handleAgeChange,
     handleSubmit,
   }
 }

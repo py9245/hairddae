@@ -1,9 +1,10 @@
 import { ChevronDown } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
-export type Gender = '' | 'M' | 'F'
+export type Gender = 'M' | 'F' | null
 
 type GenderSelectProps = {
+  id?: string
   value: Gender
   onChange: (value: Gender) => void
   onBlur?: () => void
@@ -11,12 +12,13 @@ type GenderSelectProps = {
 }
 
 const OPTIONS: Array<{ value: Gender; label: string }> = [
-  { value: '', label: '선택안함' },
+  { value: null, label: '선택안함' },
   { value: 'M', label: '남성' },
   { value: 'F', label: '여성' },
 ]
 
 export function GenderSelect({
+  id,
   value,
   onChange,
   onBlur,
@@ -51,6 +53,7 @@ export function GenderSelect({
   return (
     <div ref={rootRef} className="relative">
       <button
+        id={id}
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -75,7 +78,7 @@ export function GenderSelect({
       </button>
 
       {open && (
-        <ul
+        <div
           role="listbox"
           className="absolute z-20 w-full overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg"
         >
@@ -83,23 +86,24 @@ export function GenderSelect({
             const isSelected = option.value === value
 
             return (
-              <li key={option.value} role="option" aria-selected={isSelected}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => handleSelect(option.value)}
-                  className={`w-full px-4 py-3 text-left text-base transition ${
-                    isSelected
-                      ? 'bg-primary-50 font-semibold text-primary-300'
-                      : 'text-slate-700 hover:bg-gray-50'
-                  }`}
-                >
-                  {option.label}
-                </button>
-              </li>
+              <button
+                key={option.value ?? 'none'}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => handleSelect(option.value)}
+                className={`w-full px-4 py-3 text-left text-base transition ${
+                  isSelected
+                    ? 'bg-primary-50 font-semibold text-primary-300'
+                    : 'text-slate-700 hover:bg-gray-50'
+                }`}
+              >
+                {option.label}
+              </button>
             )
           })}
-        </ul>
+        </div>
       )}
     </div>
   )

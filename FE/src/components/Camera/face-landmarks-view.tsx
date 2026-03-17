@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { Settings, X } from 'lucide-react'
-import { type RefObject, useCallback, useRef, useState } from 'react'
+import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 
 import { HairSelector } from '@/components/Camera/hair-selector'
 import { ApplyStyleModal } from '@/components/Camera/modal'
@@ -44,6 +44,7 @@ export default function FaceLandmarksView({
   const [pendingHairId, setPendingHairId] = useState<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
   const [applySessionId, setApplySessionId] = useState<string | null>(null)
+  const [isFrameFrozen, setIsFrameFrozen] = useState(false)
 
   const displayHairId = pendingHairId ?? selectedHairId
 
@@ -51,15 +52,27 @@ export default function FaceLandmarksView({
     mutationFn: postHairApplyStart,
   })
 
-  const hairWs = useHairWebSocket({
-    enabled: !!applySessionId,
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    if (isFrameFrozen) {
+      video.pause()
+    } else {
+      void video.play().catch(() => {})
+    }
+  }, [isFrameFrozen, videoRef])
+
+  useHairWebSocket({
+    enabled: !!applySessionId && !isFrameFrozen,
     applySessionId,
-    pose,
-    landmarks,
+    pose: isFrameFrozen ? null : pose,
+    landmarks: isFrameFrozen ? null : landmarks,
     selectedHairId: displayHairId,
   })
 
   const handleHairSelect = useCallback((hairId: number) => {
+    setIsFrameFrozen(false)
     setPendingHairId(hairId)
     setModalOpen(true)
   }, [])
@@ -94,11 +107,18 @@ export default function FaceLandmarksView({
       hairItems: HAIR_ITEMS,
       selectedHairId: displayHairId,
     })
+
+    setIsFrameFrozen(false)
   }, [displayHairId, overlayCanvasRef, videoRef])
 
-  const handleClose = useCallback(() => {
+  const handleTopLeftAction = useCallback(() => {
+    if (isFrameFrozen) {
+      setIsFrameFrozen(false)
+      return
+    }
+
     void router.navigate({ to: '/main' })
-  }, [router])
+  }, [isFrameFrozen, router])
 
   return (
     <div className="grid h-[100dvh] w-full place-items-center bg-neutral-100">
@@ -125,26 +145,24 @@ export default function FaceLandmarksView({
         />
 
         <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 pt-5">
-          <button type="button" onClick={handleClose}>
+          <button
+            type="button"
+            onClick={handleTopLeftAction}
+            aria-label={isFrameFrozen ? '캡처 취소' : '닫기'}
+          >
             <X className="h-10 w-10 text-white" />
           </button>
 
           <Settings className="h-10 w-10 text-white" />
         </div>
 
-        <div className="absolute top-2 left-2 z-20 rounded bg-black/60 px-2 py-1 text-xs text-white">
-          {hairApplyMutation.isPending
-            ? '헤어 적용 중'
-            : hairWs.isConnected
-              ? '소켓 연결됨'
-              : '준비 완료'}
-        </div>
-
         <HairSelector
           items={HAIR_ITEMS}
           selectedId={displayHairId}
+          frozen={isFrameFrozen}
           onSelect={handleHairSelect}
           onCapture={handleCapture}
+          onFreezeChange={setIsFrameFrozen}
         />
       </div>
 

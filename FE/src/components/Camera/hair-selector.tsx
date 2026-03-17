@@ -1,3 +1,4 @@
+import { Download } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { HairSelectorItem } from '@/components/ui/hair-selector-item'
 import type { HairItem } from '@/lib/Camera/HairItem'
@@ -9,15 +10,19 @@ function clamp(value: number, min: number, max: number) {
 type HairSelectorProps = {
   items: HairItem[]
   selectedId: number
+  frozen?: boolean
   onSelect: (id: number) => void
   onCapture?: () => void
+  onFreezeChange?: (frozen: boolean) => void
 }
 
 export function HairSelector({
   items,
   selectedId,
+  frozen = false,
   onSelect,
   onCapture,
+  onFreezeChange,
 }: HairSelectorProps) {
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const [viewportWidth, setViewportWidth] = useState(0)
@@ -52,7 +57,7 @@ export function HairSelector({
       : 0
 
   const moveByOne = (direction: -1 | 1) => {
-    if (selectedIndex < 0) return
+    if (selectedIndex < 0 || frozen) return
 
     const nextIndex = clamp(selectedIndex + direction, 0, items.length - 1)
 
@@ -62,12 +67,15 @@ export function HairSelector({
   }
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (frozen) return
+
     pointerStartXRef.current = e.clientX
     pointerCurrentXRef.current = e.clientX
     isDraggingRef.current = false
   }
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (frozen) return
     if (pointerStartXRef.current == null) return
 
     pointerCurrentXRef.current = e.clientX
@@ -79,6 +87,8 @@ export function HairSelector({
   }
 
   const handlePointerEnd = () => {
+    if (frozen) return
+
     const startX = pointerStartXRef.current
     const endX = pointerCurrentXRef.current
 
@@ -105,6 +115,23 @@ export function HairSelector({
     }, 0)
   }
 
+  function handleItemClick(itemId: number) {
+    if (isDraggingRef.current) return
+    if (frozen) return
+
+    if (itemId !== selectedId) {
+      onSelect(itemId)
+      return
+    }
+
+    onFreezeChange?.(true)
+  }
+
+  function handleDownloadClick() {
+    onCapture?.()
+    onFreezeChange?.(false)
+  }
+
   return (
     <div className="absolute bottom-0 left-0 right-0 z-30">
       <div className="bg-gradient-to-t from-black/80 via-black/45 to-transparent px-4 pb-6 pt-16">
@@ -119,32 +146,38 @@ export function HairSelector({
         >
           <div className="pointer-events-none absolute inset-y-0 left-1/2 z-10 w-24 -translate-x-1/2 rounded-full border border-white/30" />
 
-          <div
-            className="flex items-center transition-transform duration-300 ease-out"
-            style={{ transform: `translateX(${translateX}px)` }}
-          >
-            {items.map((item) => {
-              const selected = item.id === selectedId
+          {frozen ? (
+            <div className="flex items-center justify-center">
+              <button
+                type="button"
+                onClick={handleDownloadClick}
+                aria-label="캡처 다운로드"
+                className="flex items-center justify-center"
+              >
+                <div className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-white bg-white shadow-[0_0_0_6px_rgba(255,255,255,0.25)] transition-all duration-300">
+                  <Download className="h-10 w-10 text-slate-700" />
+                </div>
+              </button>
+            </div>
+          ) : (
+            <div
+              className="flex items-center transition-transform duration-300 ease-out"
+              style={{ transform: `translateX(${translateX}px)` }}
+            >
+              {items.map((item) => {
+                const selected = item.id === selectedId
 
-              return (
-                <HairSelectorItem
-                  key={item.id}
-                  item={item}
-                  selected={selected}
-                  onClick={() => {
-                    if (isDraggingRef.current) return
-
-                    if (item.id === selectedId && onCapture) {
-                      onCapture()
-                      return
-                    }
-
-                    onSelect(item.id)
-                  }}
-                />
-              )
-            })}
-          </div>
+                return (
+                  <HairSelectorItem
+                    key={item.id}
+                    item={item}
+                    selected={selected}
+                    onClick={() => handleItemClick(item.id)}
+                  />
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>

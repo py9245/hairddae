@@ -3,9 +3,9 @@ import { Eye, EyeClosed } from 'lucide-react'
 import { useState } from 'react'
 import { AgreementCheckbox } from '@/components/Auth/agreement-checkbox'
 import { BirthDatePicker } from '@/components/Auth/birth-date-picker'
+import { GenderSelect } from '@/components/Auth/gender-select'
 import { useSignUpForm } from '@/hooks/Auth/SignUp/useSignUpForm'
 import { useSignUpMutation } from '@/hooks/Auth/SignUp/useSignUpMutation'
-import { GenderSelect, type Gender } from '@/components/Auth/GenderSelect'
 
 export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false)
@@ -39,7 +39,7 @@ export default function SignUp() {
                 password: formValues.password,
                 passwordCheck: formValues.passwordConfirm,
                 birthDate: formValues.birthDate || undefined,
-                gender: formValues.gender || undefined,
+                gender: formValues.gender ?? undefined,
               })
 
               await router.navigate({ to: '/auth/login' })
@@ -61,10 +61,11 @@ export default function SignUp() {
               onChange={(e) => handleChange('userId', e.target.value)}
               onBlur={() => handleBlur('userId')}
               placeholder="사용하실 아이디를 입력하세요"
-              className={`h-12 w-full rounded-2xl border bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${errors.userId
-                ? 'border-red-400 focus:border-red-400'
-                : 'border-gray-200 focus:border-primary-200'
-                }`}
+              className={`h-12 w-full rounded-2xl border bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
+                errors.userId
+                  ? 'border-red-400 focus:border-red-400'
+                  : 'border-gray-200 focus:border-primary-200'
+              }`}
             />
             {errors.userId && (
               <p className="mt-2 text-sm text-red-500">{errors.userId}</p>
@@ -87,10 +88,11 @@ export default function SignUp() {
                 onChange={(e) => handleChange('password', e.target.value)}
                 onBlur={() => handleBlur('password')}
                 placeholder="비밀번호 입력"
-                className={`h-12 w-full rounded-2xl border bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${errors.password
-                  ? 'border-red-400 focus:border-red-400'
-                  : 'border-gray-200 focus:border-primary-200'
-                  }`}
+                className={`h-12 w-full rounded-2xl border bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
+                  errors.password
+                    ? 'border-red-400 focus:border-red-400'
+                    : 'border-gray-200 focus:border-primary-200'
+                }`}
               />
               <button
                 type="button"
@@ -128,10 +130,11 @@ export default function SignUp() {
                 }
                 onBlur={() => handleBlur('passwordConfirm')}
                 placeholder="비밀번호 재입력"
-                className={`h-12 w-full rounded-2xl border bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${errors.passwordConfirm
-                  ? 'border-red-400 focus:border-red-400'
-                  : 'border-gray-200 focus:border-primary-200'
-                  }`}
+                className={`h-12 w-full rounded-2xl border bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
+                  errors.passwordConfirm
+                    ? 'border-red-400 focus:border-red-400'
+                    : 'border-gray-200 focus:border-primary-200'
+                }`}
               />
               <button
                 type="button"
@@ -179,22 +182,29 @@ export default function SignUp() {
               )}
             </div>
 
-        <div>
-          <label
-            htmlFor="gender"
-            className="mb-2 block text-base font-semibold text-slate-700"
-          >
-            성별{' '}
-            <span className="text-sm font-medium text-gray-400">(선택)</span>
-          </label>
+            <div className="space-y-2">
+              <label
+                htmlFor="gender"
+                className="block text-base font-semibold text-slate-700"
+              >
+                성별{' '}
+                <span className="text-sm font-medium text-gray-400">
+                  (선택)
+                </span>
+              </label>
 
-          <GenderSelect
-            value={values.gender as Gender}
-            onChange={(value) => handleChange('gender', value)}
-            onBlur={() => handleBlur('gender')}
-            error={Boolean(errors.gender)}
-          />
-        </div>
+              <GenderSelect
+                id="gender"
+                value={values.gender}
+                onChange={(value) => handleChange('gender', value)}
+                onBlur={() => handleBlur('gender')}
+                error={Boolean(errors.gender)}
+              />
+
+              {errors.gender ? (
+                <p className="text-sm text-red-500">{errors.gender}</p>
+              ) : null}
+            </div>
           </div>
 
           <AgreementCheckbox
@@ -219,10 +229,11 @@ export default function SignUp() {
           <button
             type="submit"
             disabled={!isFormValid || signUpMutation.isPending}
-            className={`mt-4 h-12 w-full rounded-2xl text-lg font-bold text-white transition ${!isFormValid || signUpMutation.isPending
-              ? 'bg-primary-100 cursor-not-allowed'
-              : 'bg-primary-300 hover:bg-primary-200 cursor-pointer'
-              }`}
+            className={`mt-4 h-12 w-full rounded-2xl text-lg font-bold text-white transition ${
+              !isFormValid || signUpMutation.isPending
+                ? 'cursor-not-allowed bg-primary-100'
+                : 'cursor-pointer bg-primary-300 hover:bg-primary-200'
+            }`}
           >
             {signUpMutation.isPending ? '가입 중...' : '가입하기'}
           </button>

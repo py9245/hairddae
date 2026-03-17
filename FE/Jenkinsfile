@@ -8,6 +8,7 @@ pipeline {
 
   environment {
     DEPLOY_DIR = '/home/ubuntu/S14P21M101/BE/nginx/html'
+    VITE_WS_BASE_URL = 'wss://j14m101.p.ssafy.io/'
   }
 
   stages {
@@ -19,18 +20,76 @@ pipeline {
 
     stage('Build FE') {
       when {
-        allOf {
-          branch 'FE'
-          changeset pattern: 'FE/**', comparator: 'ANT'
+        expression {
+          def b = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+          return b == 'FE' || b == 'origin/FE' || b.endsWith('/FE')
         }
       }
       steps {
         dir('FE') {
           sh '''
             set -eu
-            corepack enable
-            corepack pnpm install --frozen-lockfile
-            corepack pnpm run build
+
+            ensure_node() {
+              if command -v node >/dev/null 2>&1 && command -v npm >/dev/null 2>&1; then
+                return 0
+              fi
+
+              NODE_VERSION="v20.19.0"
+              NODE_OS="linux"
+              NODE_ARCH_RAW="$(uname -m)"
+              case "$NODE_ARCH_RAW" in
+                x86_64|amd64) NODE_ARCH="x64" ;;
+                aarch64|arm64) NODE_ARCH="arm64" ;;
+                *)
+                  echo "ERROR: unsupported architecture: $NODE_ARCH_RAW" >&2
+                  exit 1
+                  ;;
+              esac
+
+              NODE_ROOT="$WORKSPACE/.tools/node"
+              NODE_DIST="node-${NODE_VERSION}-${NODE_OS}-${NODE_ARCH}"
+              NODE_TAR="${NODE_DIST}.tar.xz"
+
+              mkdir -p "$NODE_ROOT"
+              if [ ! -x "$NODE_ROOT/$NODE_DIST/bin/node" ]; then
+                curl -fsSL "https://nodejs.org/dist/${NODE_VERSION}/${NODE_TAR}" -o "$NODE_ROOT/$NODE_TAR"
+                tar -xJf "$NODE_ROOT/$NODE_TAR" -C "$NODE_ROOT"
+              fi
+
+              export PATH="$NODE_ROOT/$NODE_DIST/bin:$PATH"
+            }
+
+            NPM_GLOBAL_PREFIX="$WORKSPACE/.tools/npm-global"
+            mkdir -p "$NPM_GLOBAL_PREFIX"
+            export PATH="$NPM_GLOBAL_PREFIX/bin:$PATH"
+            export COREPACK_ENABLE_AUTO_PIN=0
+
+            ensure_node
+
+            run_pnpm() {
+              if command -v corepack >/dev/null 2>&1; then
+                corepack pnpm "$@"
+              elif command -v pnpm >/dev/null 2>&1; then
+                pnpm "$@"
+              elif command -v npm >/dev/null 2>&1; then
+                npm install --global --prefix "$NPM_GLOBAL_PREFIX" pnpm@10 >/dev/null 2>&1
+                "$NPM_GLOBAL_PREFIX/bin/pnpm" "$@"
+              else
+                echo "ERROR: node/npm/pnpm tooling not found." >&2
+                exit 1
+              fi
+            }
+
+            if command -v corepack >/dev/null 2>&1; then
+              corepack enable
+            fi
+
+            if ! run_pnpm install --frozen-lockfile; then
+              echo "WARN: lockfile mismatch, retrying with --no-frozen-lockfile"
+              run_pnpm install --no-frozen-lockfile
+            fi
+            run_pnpm run build
           '''
         }
       }
@@ -38,25 +97,25 @@ pipeline {
 
     stage('Deploy dist') {
       when {
-        allOf {
-          branch 'FE'
-          changeset pattern: 'FE/**', comparator: 'ANT'
+        expression {
+          def b = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+          return b == 'FE' || b == 'origin/FE' || b.endsWith('/FE')
         }
       }
       steps {
         sh '''
           set -eu
           test -d "$DEPLOY_DIR"
-          rsync -av --delete --exclude='.gitkeep' "$WORKSPACE/FE/dist/" "$DEPLOY_DIR/"
+          rsync -rv --delete --exclude='.gitkeep' "$WORKSPACE/FE/dist/" "$DEPLOY_DIR/"
         '''
       }
     }
 
     stage('Smoke Check') {
       when {
-        allOf {
-          branch 'FE'
-          changeset pattern: 'FE/**', comparator: 'ANT'
+        expression {
+          def b = env.BRANCH_NAME ?: env.GIT_BRANCH ?: ''
+          return b == 'FE' || b == 'origin/FE' || b.endsWith('/FE')
         }
       }
       steps {

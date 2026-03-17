@@ -7,7 +7,9 @@ pipeline {
   }
 
   environment {
-    IMAGE_TAG = 'be-app:local'
+    APP_IMAGE = 'be-app:local'
+    DEPLOY_ROOT = '/home/ubuntu/S14P21M101/BE'
+    STATIC_ROOT = '/home/ubuntu/S14P21M101/static'
     COMPOSE_FILE = '/home/ubuntu/S14P21M101/BE/docker-compose.yml'
   }
 
@@ -18,11 +20,33 @@ pipeline {
       }
     }
 
-    stage('Build App Image') {
+    stage('Build Images') {
       steps {
         sh '''
           set -eu
-          docker build -t "$IMAGE_TAG" -f "$WORKSPACE/BE/Dockerfile" "$WORKSPACE/BE"
+          docker build -t "$APP_IMAGE" -f "$WORKSPACE/BE/Dockerfile" "$WORKSPACE/BE"
+        '''
+      }
+    }
+
+    stage('Sync Deploy Files') {
+      steps {
+        sh '''
+          set -eu
+          mkdir -p "$DEPLOY_ROOT/nginx"
+          cp -f "$WORKSPACE/BE/docker-compose.yml" "$COMPOSE_FILE"
+          cp -f "$WORKSPACE/BE/nginx/default.conf" "$DEPLOY_ROOT/nginx/default.conf"
+        '''
+      }
+    }
+
+    stage('Verify Static Dataset') {
+      steps {
+        sh '''
+          set -eu
+          test -d "$STATIC_ROOT"
+          test -f "$STATIC_ROOT/0001/manifests/asset_index_v0.json"
+          test -d "$STATIC_ROOT/0001/hair_rgba"
         '''
       }
     }
@@ -32,10 +56,34 @@ pipeline {
         sh '''
           set -eu
           test -f "$COMPOSE_FILE"
+          docker compose -f "$COMPOSE_FILE" config >/dev/null
+
+          wait_for_service_health() {
+            service_name="$1"
+            container_id="$(docker compose -f "$COMPOSE_FILE" ps -q "$service_name")"
+            if [ -z "$container_id" ]; then
+              echo "container not found for service: $service_name"
+              exit 1
+            fi
+
+            for i in $(seq 1 30); do
+              status="$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id" 2>/dev/null || true)"
+              if [ "$status" = "healthy" ]; then
+                return 0
+              fi
+              sleep 2
+            done
+
+            echo "service did not become healthy: $service_name"
+            docker compose -f "$COMPOSE_FILE" logs "$service_name" --tail 100 || true
+            exit 1
+          }
 
           docker compose -f "$COMPOSE_FILE" up -d postgres redis
-          docker compose -f "$COMPOSE_FILE" up -d --no-deps --no-build app
-          docker compose -f "$COMPOSE_FILE" up -d --no-deps --no-build nginx
+          wait_for_service_health postgres
+          wait_for_service_health redis
+          docker compose -f "$COMPOSE_FILE" up -d --no-deps app
+          docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate --remove-orphans nginx
         '''
       }
     }
@@ -44,22 +92,82 @@ pipeline {
       steps {
         sh '''
           set -eu
-          for i in $(seq 1 20); do
+
+          websocket_headers() {
+            ws_headers_file="$(mktemp)"
+            curl -sS --http1.1 -o /dev/null -D "$ws_headers_file" \
+              --connect-timeout 2 \
+              --max-time 2 \
+              --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
+              -H 'Connection: Upgrade' \
+              -H 'Upgrade: websocket' \
+              -H 'Sec-WebSocket-Version: 13' \
+              -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+              -H 'Origin: https://j14m101.p.ssafy.io' \
+              https://j14m101.p.ssafy.io/home/hairapply/ >/dev/null 2>&1 || true
+            tr -d '\r' < "$ws_headers_file"
+            rm -f "$ws_headers_file"
+          }
+
+          static_manifest_headers() {
+            curl -fsSI \
+              --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
+              https://j14m101.p.ssafy.io/static/0001/manifests/asset_index_v0.json | tr -d '\r'
+          }
+
+          static_image_headers() {
+            curl -fsSI \
+              --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
+              https://j14m101.p.ssafy.io/static/0001/hair_rgba/base_pose_bank__yaw+00_pitch+01_roll-01_frame000922.png | tr -d '\r'
+          }
+
+          inference_health() {
+            curl -fsS \
+              --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
+              https://j14m101.p.ssafy.io/ws/inference/healthz
+          }
+
+          dump_diagnostics() {
+            docker compose -f "$COMPOSE_FILE" ps || true
+            docker compose -f "$COMPOSE_FILE" logs app --tail 200 || true
+            docker compose -f "$COMPOSE_FILE" logs nginx --tail 100 || true
+            curl -vk --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
+              https://j14m101.p.ssafy.io/api/health || true
+            curl -vk --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
+              https://j14m101.p.ssafy.io/actuator/health || true
+          }
+
+          for i in $(seq 1 40); do
+            READY_LABEL=""
             if curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/api/health >/dev/null 2>&1; then
-              echo "health check passed: /api/health"
-              exit 0
+              READY_LABEL="api"
+            elif curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/actuator/health >/dev/null 2>&1; then
+              READY_LABEL="actuator"
             fi
 
-            if curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/actuator/health >/dev/null 2>&1; then
-              echo "health check passed: /actuator/health"
-              exit 0
+            if [ -n "$READY_LABEL" ]; then
+              WEBSOCKET_HEADERS="$(websocket_headers)"
+              STATIC_MANIFEST_HEADERS="$(static_manifest_headers)"
+              STATIC_IMAGE_HEADERS="$(static_image_headers)"
+              INFERENCE_HEALTH="$(inference_health || true)"
+
+              if printf '%s\n' "$WEBSOCKET_HEADERS" | grep -q '^HTTP/1.1 101' \
+                && printf '%s\n' "$STATIC_MANIFEST_HEADERS" | grep -q '^HTTP/2 200\\|^HTTP/1.1 200' \
+                && printf '%s\n' "$STATIC_MANIFEST_HEADERS" | grep -Fq 'cache-control: public, max-age=60' \
+                && printf '%s\n' "$STATIC_IMAGE_HEADERS" | grep -q '^HTTP/2 200\\|^HTTP/1.1 200' \
+                && printf '%s\n' "$STATIC_IMAGE_HEADERS" | grep -Fq 'cache-control: public, max-age=31536000, immutable' \
+                && printf '%s\n' "$INFERENCE_HEALTH" | grep -Fq '"status":"ok"'; then
+                echo "health check passed: $READY_LABEL, websocket, static-manifest, static-image, inference-health"
+                exit 0
+              fi
             fi
 
-            echo "health check retry $i/20"
+            echo "health check retry $i/40"
             sleep 3
           done
 
           echo "health check failed after retries"
+          dump_diagnostics
           exit 1
         '''
       }

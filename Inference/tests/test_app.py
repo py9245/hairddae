@@ -6,6 +6,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 import jwt
+import numpy as np
 from PIL import Image
 import pytest
 from starlette.websockets import WebSocketDisconnect
@@ -13,6 +14,7 @@ from starlette.websockets import WebSocketDisconnect
 from app.catalog import AssetBundle
 from app.main import create_app
 from app.models import FeatureMessageModel
+from app.face_tracking import TrackingResult
 
 
 def make_ticket(
@@ -278,8 +280,11 @@ def test_http_runtime_frame_returns_render_headers(monkeypatch: pytest.MonkeyPat
 
         monkeypatch.setattr(
             client.app.state.face_tracker,
-            "extract_feature_from_rgb",
-            lambda *args, **kwargs: feature,
+            "extract_tracking_result_from_rgb",
+            lambda *args, **kwargs: TrackingResult(
+                feature=feature,
+                landmarks_px=np.zeros((500, 2), dtype=np.int32),
+            ),
         )
         monkeypatch.setattr(
             client.app.state.catalog,

@@ -52,6 +52,7 @@ class Settings:
     ws_protocol: str
     static_root: Path
     face_landmarker_model_path: Path
+    hair_segmenter_model_path: Path
     static_base_url: str
     processed_timeout_ms: int
     heartbeat_interval_ms: int
@@ -64,6 +65,7 @@ class Settings:
     http_test_enabled: bool
     http_test_default_dataset_code: str
     http_test_jpeg_quality: int
+    bald_preprocess_enabled: bool
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -105,6 +107,12 @@ class Settings:
                     "/opt/inference-models/face_landmarker.task",
                 )
             ).resolve(),
+            hair_segmenter_model_path=Path(
+                _env_str(
+                    "INFERENCE_HAIR_SEGMENTER_MODEL_PATH",
+                    "/opt/inference-models/hair_segmenter.tflite",
+                )
+            ).resolve(),
             static_base_url=_env_str("INFERENCE_STATIC_BASE_URL", "/static").rstrip("/"),
             processed_timeout_ms=_env_int("INFERENCE_PROCESSED_TIMEOUT_MS", 250),
             heartbeat_interval_ms=_env_int("INFERENCE_HEARTBEAT_INTERVAL_MS", 5000),
@@ -120,4 +128,5 @@ class Settings:
             http_test_enabled=_env_bool("INFERENCE_HTTP_TEST_ENABLED", False),
             http_test_default_dataset_code=_env_str("INFERENCE_HTTP_TEST_DEFAULT_DATASET_CODE", "0001"),
             http_test_jpeg_quality=_env_int("INFERENCE_HTTP_TEST_JPEG_QUALITY", 88),
+            bald_preprocess_enabled=_env_bool("INFERENCE_BALD_PREPROCESS_ENABLED", False),
         )

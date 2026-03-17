@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from app.auth import ReplayStore, TicketClaims, TicketValidationError, build_replay_store, validate_connect_ticket
+from app.bald import BaldPreprocessor
 from app.catalog import AssetBundle, AssetCatalog
 from app.config import Settings
 from app.face_tracking import ServerFaceTracker
@@ -206,6 +207,11 @@ def create_app() -> FastAPI:
     replay_store = build_replay_store(settings)
     catalog = AssetCatalog(settings)
     face_tracker = ServerFaceTracker(settings.face_landmarker_model_path)
+    bald_processor = (
+        BaldPreprocessor(settings.hair_segmenter_model_path)
+        if settings.bald_preprocess_enabled
+        else None
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -214,6 +220,8 @@ def create_app() -> FastAPI:
         finally:
             for peer_connection in list(getattr(app.state, "rtc_peer_connections", set())):
                 await peer_connection.close()
+            if bald_processor is not None:
+                bald_processor.close()
             face_tracker.close()
             await replay_store.close()
 
@@ -223,6 +231,7 @@ def create_app() -> FastAPI:
     app.state.replay_store = replay_store
     app.state.catalog = catalog
     app.state.face_tracker = face_tracker
+    app.state.bald_processor = bald_processor
     attach_rtc_routes(app)
     attach_http_runtime_routes(app)
 

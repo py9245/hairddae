@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 import json
 import logging
 import numpy as np
+from PIL import Image
 from statistics import median
 import time
 from typing import Any
@@ -14,6 +15,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from app.auth import TicketValidationError, validate_connect_ticket
+from app.bald import BaldPreprocessor
 from app.catalog import AssetBundle, AssetCatalog
 from app.config import Settings
 from app.face_tracking import ServerFaceTracker
@@ -293,6 +295,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         settings: Settings,
         catalog: AssetCatalog,
         face_tracker: ServerFaceTracker,
+        bald_processor: BaldPreprocessor | None,
     ) -> None:
         super().__init__()
         self._source_track = source_track
@@ -301,6 +304,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         self._settings = settings
         self._catalog = catalog
         self._face_tracker = face_tracker
+        self._bald_processor = bald_processor
 
     def _emit_channel_payload(self, payload: dict[str, object]) -> None:
         channel = self._state.data_channel
@@ -314,16 +318,17 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         frame_rgb = np.asarray(image.convert("RGB"))
 
         next_seq = self._state.server_processed_seq + 1
-        feature = await asyncio.to_thread(
-            self._face_tracker.extract_feature_from_rgb,
+        tracking_result = await asyncio.to_thread(
+            self._face_tracker.extract_tracking_result_from_rgb,
             frame_rgb,
             claims=self._claims,
             settings=self._settings,
             seq=next_seq,
             ts_ms=_now_ms(),
         )
-        if feature is None:
+        if tracking_result is None:
             return frame
+        feature = tracking_result.feature
 
         self._state.server_processed_seq = next_seq
         selection_feature = _build_selection_feature(self._state, feature)
@@ -389,8 +394,14 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             }
         )
 
+        render_input = image
+        if self._bald_processor is not None:
+            render_input = Image.fromarray(
+                self._bald_processor.apply(frame_rgb, tracking_result.landmarks_px),
+                mode="RGB",
+            )
         rendered = compose_bundle_frame(
-            image,
+            render_input,
             selected,
             reference_width=feature.image_size.width,
             reference_height=feature.image_size.height,
@@ -603,6 +614,7 @@ def attach_rtc_routes(app: FastAPI) -> None:
                     settings=settings,
                     catalog=app.state.catalog,
                     face_tracker=app.state.face_tracker,
+                    bald_processor=getattr(app.state, "bald_processor", None),
                 )
             )
 

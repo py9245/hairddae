@@ -1,10 +1,10 @@
 import { useMemo, useRef } from 'react'
-import FaceLandmarksView from '@/components/Camera/FaceLandmarksView'
 import { useFaceLandmarker } from '@/hooks/Camera/useFaceLandmarker'
 import { useFaceTrackingLoop } from '@/hooks/Camera/useFaceTrackingLoop'
 import { useUserMedia } from '@/hooks/Camera/useUserMedia'
+import FaceLandmarksView from './face-landmarks-view'
 
-export default function Camera() {
+export default function FaceTrackingCamera() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null)

@@ -1,7 +1,8 @@
 import { Link, useRouter } from '@tanstack/react-router'
 import { Eye, EyeClosed } from 'lucide-react'
 import { useState } from 'react'
-import { AgreementCheckbox } from '@/components/Auth/AgreementCheckbox'
+import { AgreementCheckbox } from '@/components/Auth/agreement-checkbox'
+import { BirthDatePicker } from '@/components/Auth/birth-date-picker'
 import { useSignUpForm } from '@/hooks/Auth/SignUp/useSignUpForm'
 import { useSignUpMutation } from '@/hooks/Auth/SignUp/useSignUpMutation'
 import { GenderSelect, type Gender } from '@/components/Auth/GenderSelect'
@@ -19,13 +20,12 @@ export default function SignUp() {
     isFormValid,
     handleChange,
     handleBlur,
-    handleAgeChange,
     handleSubmit,
   } = useSignUpForm()
 
   return (
-    <div className="rounded-3xl bg-white px-9 py-8 shadow-sm">
-      <div className="mx-auto w-full max-w-md">
+    <main className="app-frame-page flex flex-col items-center justify-center bg-bg-primary px-6 py-10">
+      <div className="w-full max-w-md">
         <h1 className="mt-4 text-center text-3xl font-extrabold tracking-tight text-primary-300">
           회원가입
         </h1>
@@ -38,7 +38,7 @@ export default function SignUp() {
                 userID: formValues.userId,
                 password: formValues.password,
                 passwordCheck: formValues.passwordConfirm,
-                age: formValues.age ? Number(formValues.age) : undefined,
+                birthDate: formValues.birthDate || undefined,
                 gender: formValues.gender || undefined,
               })
 
@@ -61,11 +61,10 @@ export default function SignUp() {
               onChange={(e) => handleChange('userId', e.target.value)}
               onBlur={() => handleBlur('userId')}
               placeholder="사용하실 아이디를 입력하세요"
-              className={`h-12 w-full rounded-2xl border px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
-                errors.userId
-                  ? 'border-red-400 focus:border-red-400'
-                  : 'border-gray-200 focus:border-primary-200'
-              }`}
+              className={`h-12 w-full rounded-2xl border bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${errors.userId
+                ? 'border-red-400 focus:border-red-400'
+                : 'border-gray-200 focus:border-primary-200'
+                }`}
             />
             {errors.userId && (
               <p className="mt-2 text-sm text-red-500">{errors.userId}</p>
@@ -88,11 +87,10 @@ export default function SignUp() {
                 onChange={(e) => handleChange('password', e.target.value)}
                 onBlur={() => handleBlur('password')}
                 placeholder="비밀번호 입력"
-                className={`h-12 w-full rounded-2xl border px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
-                  errors.password
-                    ? 'border-red-400 focus:border-red-400'
-                    : 'border-gray-200 focus:border-primary-200'
-                }`}
+                className={`h-12 w-full rounded-2xl border bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${errors.password
+                  ? 'border-red-400 focus:border-red-400'
+                  : 'border-gray-200 focus:border-primary-200'
+                  }`}
               />
               <button
                 type="button"
@@ -130,11 +128,10 @@ export default function SignUp() {
                 }
                 onBlur={() => handleBlur('passwordConfirm')}
                 placeholder="비밀번호 재입력"
-                className={`h-12 w-full rounded-2xl border px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
-                  errors.passwordConfirm
-                    ? 'border-red-400 focus:border-red-400'
-                    : 'border-gray-200 focus:border-primary-200'
-                }`}
+                className={`h-12 w-full rounded-2xl border bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${errors.passwordConfirm
+                  ? 'border-red-400 focus:border-red-400'
+                  : 'border-gray-200 focus:border-primary-200'
+                  }`}
               />
               <button
                 type="button"
@@ -163,31 +160,22 @@ export default function SignUp() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label
-                htmlFor="age"
+                htmlFor="birthDate"
                 className="mb-2 block text-base font-semibold text-slate-700"
               >
-                나이{' '}
+                생년월일{' '}
                 <span className="text-sm font-medium text-gray-400">
                   (선택)
                 </span>
               </label>
-              <input
-                id="age"
-                type="text"
-                inputMode="numeric"
-                value={values.age}
-                onChange={(e) => handleAgeChange(e.target.value)}
-                onBlur={() => handleBlur('age')}
-                maxLength={3}
-                placeholder="ex. 25"
-                className={`h-12 w-full rounded-2xl border px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
-                  errors.age
-                    ? 'border-red-400 focus:border-red-400'
-                    : 'border-gray-200 focus:border-primary-200'
-                }`}
+              <BirthDatePicker
+                value={values.birthDate}
+                onChange={(v) => handleChange('birthDate', v)}
+                onBlur={() => handleBlur('birthDate')}
+                hasError={!!errors.birthDate}
               />
-              {errors.age && (
-                <p className="mt-2 text-sm text-red-500">{errors.age}</p>
+              {errors.birthDate && (
+                <p className="mt-2 text-sm text-red-500">{errors.birthDate}</p>
               )}
             </div>
 
@@ -231,11 +219,10 @@ export default function SignUp() {
           <button
             type="submit"
             disabled={!isFormValid || signUpMutation.isPending}
-            className={`mt-4 h-12 w-full rounded-2xl text-lg font-bold text-white transition ${
-              !isFormValid || signUpMutation.isPending
-                ? 'bg-primary-100 cursor-not-allowed'
-                : 'bg-primary-300 hover:bg-primary-200 cursor-pointer'
-            }`}
+            className={`mt-4 h-12 w-full rounded-2xl text-lg font-bold text-white transition ${!isFormValid || signUpMutation.isPending
+              ? 'bg-primary-100 cursor-not-allowed'
+              : 'bg-primary-300 hover:bg-primary-200 cursor-pointer'
+              }`}
           >
             {signUpMutation.isPending ? '가입 중...' : '가입하기'}
           </button>
@@ -248,6 +235,6 @@ export default function SignUp() {
           </Link>
         </p>
       </div>
-    </div>
+    </main>
   )
 }

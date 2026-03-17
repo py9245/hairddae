@@ -1,7 +1,7 @@
 import { Link, useRouter } from '@tanstack/react-router'
 import { ChevronDown, Eye, EyeClosed } from 'lucide-react'
 import { useState } from 'react'
-import { AgreementCheckbox } from '@/components/Auth/AgreementCheckbox'
+import { AgreementCheckbox } from '@/components/Auth/agreement-checkbox'
 import { BirthDatePicker } from '@/components/Auth/birth-date-picker'
 import { useSignUpForm } from '@/hooks/Auth/SignUp/useSignUpForm'
 import { useSignUpMutation } from '@/hooks/Auth/SignUp/useSignUpMutation'

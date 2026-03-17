@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
-import { GenderSelect, type Gender } from '@/components/Auth/GenderSelect'
+import { GenderSelect, type Gender } from '@/components/Auth/gender-select'
 
 type StoryProps = {
   initialValue: Gender

@@ -1,5 +1,5 @@
 import { useMemo, useRef } from 'react'
-import FaceLandmarksView from '@/components/Camera/FaceLandmarksView'
+import FaceLandmarksView from '@/components/Camera/face-landmarks-view'
 import { useFaceLandmarker } from '@/hooks/Camera/useFaceLandmarker'
 import { useFaceTrackingLoop } from '@/hooks/Camera/useFaceTrackingLoop'
 import { useUserMedia } from '@/hooks/Camera/useUserMedia'

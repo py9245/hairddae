@@ -1,6 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
-import { ApplyStyleModal } from '@/components/Camera/Modal'
+import { ApplyStyleModal } from '@/components/Camera/modal'
 
 const meta = {
   title: 'Modal/HairChangeModal',
@@ -31,26 +30,5 @@ export const CustomContent: Story = {
       title: '선택하신 스타일을 적용 중이에요',
       tips: ['얼굴 윤곽을 살려보세요', '앞머리는 너무 짧지 않게', '볼륨은 자연스럽게 분산'],
     },
-  },
-}
-
-export const Interactive: Story = {
-  args: {
-    onComplete: () => {},
-  },
-  render: (args) => {
-    function Demo() {
-      const [open, setOpen] = useState(false)
-      return (
-          <ApplyStyleModal
-            {...args}
-            open={open}
-            onComplete={() => {
-              setOpen(false)
-            }}
-          />
-      )
-    }
-    return <Demo />
   },
 }

@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { BottomNavBase } from '@/components/bottom-nav'
 
 function BottomNavOnly({
@@ -16,13 +16,11 @@ function BottomNavOnly({
   }, [pathname])
 
   return (
-    <div className="relative min-h-dvh bg-transparent">
-      <BottomNavBase
-        interactive={false}
-        pathname={currentPathname}
-        onNavigate={interactive ? setCurrentPathname : undefined}
-      />
-    </div>
+    <BottomNavBase
+      interactive={false}
+      pathname={currentPathname}
+      onNavigate={interactive ? setCurrentPathname : undefined}
+    />
   )
 }
 
@@ -30,8 +28,15 @@ const meta = {
   title: 'Navigation/BottomNav',
   component: BottomNavBase,
   parameters: {
-    layout: 'fullscreen',
+    layout: 'centered',
   },
+  decorators: [
+    (Story: () => React.ReactNode) => (
+      <div className="relative h-[120px] w-[390px] overflow-hidden bg-white">
+        <Story />
+      </div>
+    ),
+  ],
   tags: ['autodocs'],
   args: {
     interactive: true,
@@ -57,20 +62,6 @@ export default meta
 
 type Story = StoryObj<typeof meta>
 
-
-
-export const AllInactive: Story = {
-  args: {
-    interactive: true,
-    pathname: '/unknown',
-  },
-  render: (args) => (
-    <BottomNavOnly
-      interactive={args.interactive ?? true}
-      pathname={args.pathname ?? '/unknown'}
-    />
-  ),
-}
 
 export const HomeActive: Story = {}
 

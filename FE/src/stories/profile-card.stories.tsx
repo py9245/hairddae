@@ -9,7 +9,7 @@ const mockProfile = {
 }
 
 const meta = {
-  title: 'Components/ProfileCard',
+  title: 'UI/Card/ProfileCard',
   component: ProfileCard,
   parameters: {
     layout: 'centered',

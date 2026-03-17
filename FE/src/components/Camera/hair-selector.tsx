@@ -10,15 +10,36 @@ function clamp(value: number, min: number, max: number) {
 type HairSelectorProps = {
   items: HairItem[]
   selectedId: number
+  loading?: boolean
   frozen?: boolean
   onSelect: (id: number) => void
   onCapture?: () => void
   onFreezeChange?: (frozen: boolean) => void
 }
 
+type SkeletonItemProps = {
+  selected?: boolean
+}
+
+function HairSelectorSkeletonItem({ selected = false }: SkeletonItemProps) {
+  return (
+    <div className="flex w-24 shrink-0 flex-col items-center justify-start">
+      <div
+        className={[
+          'animate-pulse rounded-full border bg-white/20',
+          selected
+            ? 'h-24 w-24 border-white/35 shadow-[0_0_0_6px_rgba(255,255,255,0.10)]'
+            : 'mt-3 h-16 w-16 border-white/20 opacity-80',
+        ].join(' ')}
+      />
+    </div>
+  )
+}
+
 export function HairSelector({
   items,
   selectedId,
+  loading = false,
   frozen = false,
   onSelect,
   onCapture,
@@ -50,6 +71,7 @@ export function HairSelector({
 
   const SLOT_WIDTH = 96
   const swipeThreshold = 40
+  const showSkeleton = loading || items.length === 0
 
   const translateX =
     viewportWidth > 0
@@ -57,7 +79,7 @@ export function HairSelector({
       : 0
 
   const moveByOne = (direction: -1 | 1) => {
-    if (selectedIndex < 0 || frozen) return
+    if (showSkeleton || selectedIndex < 0 || frozen) return
 
     const nextIndex = clamp(selectedIndex + direction, 0, items.length - 1)
 
@@ -67,7 +89,7 @@ export function HairSelector({
   }
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (frozen) return
+    if (showSkeleton || frozen) return
 
     pointerStartXRef.current = e.clientX
     pointerCurrentXRef.current = e.clientX
@@ -75,7 +97,7 @@ export function HairSelector({
   }
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (frozen) return
+    if (showSkeleton || frozen) return
     if (pointerStartXRef.current == null) return
 
     pointerCurrentXRef.current = e.clientX
@@ -87,7 +109,7 @@ export function HairSelector({
   }
 
   const handlePointerEnd = () => {
-    if (frozen) return
+    if (showSkeleton || frozen) return
 
     const startX = pointerStartXRef.current
     const endX = pointerCurrentXRef.current
@@ -116,6 +138,7 @@ export function HairSelector({
   }
 
   function handleItemClick(itemId: number) {
+    if (showSkeleton) return
     if (isDraggingRef.current) return
     if (frozen) return
 
@@ -158,6 +181,14 @@ export function HairSelector({
                   <Download className="h-10 w-10 text-slate-700" />
                 </div>
               </button>
+            </div>
+          ) : showSkeleton ? (
+            <div className="flex items-start justify-center">
+              <HairSelectorSkeletonItem />
+              <HairSelectorSkeletonItem />
+              <HairSelectorSkeletonItem selected />
+              <HairSelectorSkeletonItem />
+              <HairSelectorSkeletonItem />
             </div>
           ) : (
             <div

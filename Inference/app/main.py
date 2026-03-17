@@ -14,6 +14,7 @@ from app.auth import ReplayStore, TicketClaims, TicketValidationError, build_rep
 from app.catalog import AssetBundle, AssetCatalog
 from app.config import Settings
 from app.face_tracking import ServerFaceTracker
+from app.http_runtime import attach_http_runtime_routes
 from app.models import FeatureMessageModel, HeartbeatMessageModel
 from app.rtc import attach_rtc_routes
 
@@ -223,6 +224,7 @@ def create_app() -> FastAPI:
     app.state.catalog = catalog
     app.state.face_tracker = face_tracker
     attach_rtc_routes(app)
+    attach_http_runtime_routes(app)
 
     @app.get("/healthz")
     async def healthz() -> JSONResponse:

@@ -23,6 +23,7 @@ from app.server_render import compose_bundle_frame
 try:
     from aiortc import (
         RTCConfiguration,
+        RTCIceGatherer,
         RTCIceServer,
         RTCPeerConnection,
         RTCSessionDescription,
@@ -32,6 +33,7 @@ try:
     from av import VideoFrame
 except ImportError:  # pragma: no cover - runtime guarded
     RTCConfiguration = None
+    RTCIceGatherer = None
     RTCIceServer = None
     RTCPeerConnection = None
     RTCSessionDescription = None
@@ -407,14 +409,32 @@ def _normalize_ice_urls(raw_urls: Any) -> list[str]:
     return []
 
 
+def _ice_server_urls_for_log(ice_servers: tuple[dict[str, object], ...]) -> list[list[str]]:
+    return [urls for payload in ice_servers if (urls := _normalize_ice_urls(payload.get("urls")))]
+
+
+def _sdp_candidate_lines(description: Any) -> list[str]:
+    sdp = getattr(description, "sdp", None)
+    if not isinstance(sdp, str):
+        return []
+    return [line for line in sdp.splitlines() if line.startswith("a=candidate:")]
+
+
 def _create_peer_connection(settings: Settings) -> Any:
     if RTCPeerConnection is None:
         return None
-    if RTCConfiguration is None or RTCIceServer is None or not settings.rtc_ice_servers:
+    if RTCConfiguration is None or RTCIceServer is None:
         return RTCPeerConnection()
 
+    configured_ice_servers = (
+        settings.rtc_internal_ice_servers
+        if settings.rtc_internal_ice_servers
+        else settings.rtc_ice_servers
+    )
+    logger.info("rtc configured ice servers: %s", _ice_server_urls_for_log(configured_ice_servers))
+
     ice_servers = []
-    for payload in settings.rtc_ice_servers:
+    for payload in configured_ice_servers:
         urls = _normalize_ice_urls(payload.get("urls"))
         if not urls:
             continue
@@ -428,6 +448,21 @@ def _create_peer_connection(settings: Settings) -> Any:
                 credential=credential if isinstance(credential, str) and credential else None,
             )
         )
+
+    if not ice_servers and RTCIceGatherer is not None:
+        try:
+            default_servers = RTCIceGatherer.getDefaultIceServers()
+        except Exception:  # pragma: no cover - aiortc runtime variation
+            default_servers = []
+        if default_servers:
+            logger.info(
+                "rtc using aiortc default ice servers: %s",
+                [
+                    getattr(server, "urls", None)
+                    for server in default_servers
+                ],
+            )
+            ice_servers.extend(default_servers)
 
     if not ice_servers:
         return RTCPeerConnection()
@@ -503,6 +538,14 @@ def attach_rtc_routes(app: FastAPI) -> None:
             await peer_connection.close()
             app.state.rtc_peer_connections.discard(peer_connection)
 
+        @peer_connection.on("iceconnectionstatechange")
+        async def _on_iceconnectionstatechange() -> None:
+            logger.info("rtc ice connection state changed: %s", peer_connection.iceConnectionState)
+
+        @peer_connection.on("icegatheringstatechange")
+        async def _on_icegatheringstatechange() -> None:
+            logger.info("rtc ice gathering state changed: %s", peer_connection.iceGatheringState)
+
         @peer_connection.on("datachannel")
         def _on_datachannel(channel: Any) -> None:
             logger.info("rtc data channel opened: label=%s", getattr(channel, "label", "unknown"))
@@ -566,6 +609,10 @@ def attach_rtc_routes(app: FastAPI) -> None:
         await peer_connection.setRemoteDescription(
             RTCSessionDescription(sdp=payload.sdp, type=payload.type)
         )
+        logger.info(
+            "rtc remote candidates: %s",
+            _sdp_candidate_lines(peer_connection.remoteDescription),
+        )
         answer = await peer_connection.createAnswer()
         await peer_connection.setLocalDescription(answer)
         await _wait_for_ice_gathering_complete(peer_connection)
@@ -573,6 +620,11 @@ def attach_rtc_routes(app: FastAPI) -> None:
         local_description = peer_connection.localDescription
         if local_description is None:
             raise HTTPException(status_code=500, detail="failed to create RTC answer")
+
+        logger.info(
+            "rtc local candidates: %s",
+            _sdp_candidate_lines(local_description),
+        )
 
         return {
             "sdp": local_description.sdp,

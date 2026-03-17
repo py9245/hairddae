@@ -20,6 +20,13 @@ def _env_str(name: str, default: str) -> str:
     return value
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _env_json_array(name: str, default: str) -> tuple[dict[str, object], ...]:
     raw = _env_str(name, default)
     try:
@@ -53,6 +60,10 @@ class Settings:
     min_hold_ms: int
     redis_url: str | None
     rtc_ice_servers: tuple[dict[str, object], ...]
+    rtc_internal_ice_servers: tuple[dict[str, object], ...]
+    http_test_enabled: bool
+    http_test_default_dataset_code: str
+    http_test_jpeg_quality: int
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -102,4 +113,11 @@ class Settings:
             min_hold_ms=_env_int("INFERENCE_MIN_HOLD_MS", 400),
             redis_url=redis_url,
             rtc_ice_servers=_env_json_array("INFERENCE_RTC_ICE_SERVERS_JSON", "[]"),
+            rtc_internal_ice_servers=_env_json_array(
+                "INFERENCE_RTC_INTERNAL_ICE_SERVERS_JSON",
+                "[]",
+            ),
+            http_test_enabled=_env_bool("INFERENCE_HTTP_TEST_ENABLED", False),
+            http_test_default_dataset_code=_env_str("INFERENCE_HTTP_TEST_DEFAULT_DATASET_CODE", "0001"),
+            http_test_jpeg_quality=_env_int("INFERENCE_HTTP_TEST_JPEG_QUALITY", 88),
         )

@@ -35,6 +35,34 @@ uv sync --dev --frozen
 uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8090 --ws-ping-interval 15 --ws-ping-timeout 10
 ```
 
+HTTP 프레임 테스트까지 켜서 실행:
+
+```bash
+cd Inference
+INFERENCE_STATIC_ROOT=/home/ubuntu/S14P21M101/static \
+INFERENCE_FACE_LANDMARKER_MODEL_PATH=/home/ubuntu/S14P21M101/FE/public/models/face_landmarker.task \
+INFERENCE_HTTP_TEST_ENABLED=true \
+uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8090 --ws-ping-interval 15 --ws-ping-timeout 10
+```
+
+HTTP health 확인:
+
+```bash
+curl "http://127.0.0.1:8090/api/runtime/health?dataset_code=0001"
+```
+
+HTTP 프레임 테스트:
+
+```bash
+curl -X POST \
+  "http://127.0.0.1:8090/api/runtime/frame?dataset_code=0001&hair_id=1&apply_session_id=local-http-test&response_format=jpeg" \
+  -H "content-type: image/jpeg" \
+  --data-binary @/path/to/frame.jpg \
+  -o rendered.jpg -D runtime_headers.txt
+```
+
+이 경로는 내부/local 검증용이다. 운영 프록시에는 그대로 외부 공개하지 않는 편이 맞다.
+
 테스트:
 
 ```bash

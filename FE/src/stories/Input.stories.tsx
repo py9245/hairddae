@@ -26,7 +26,7 @@ function validateValue(
           ? confirmTarget ?? ''
           : '',
     passwordConfirm: label === '비밀번호 확인' ? v : '',
-    age: label === '나이' ? v : '',
+    birthDate: label === '나이' ? v : '',
     gender: '',
     agreed: true,
   }
@@ -37,7 +37,7 @@ function validateValue(
         ? 'password'
         : label === '비밀번호 확인'
           ? 'passwordConfirm'
-          : 'age'
+          : 'birthDate'
   return validateField(key, form) ?? null
 }
 
@@ -47,7 +47,6 @@ function InputPreview({ label, placeholder, confirmTarget }: InputPreviewProps) 
   const [touched, setTouched] = useState(false)
 
   const isPassword = label === '비밀번호' || label === '비밀번호 확인'
-  const isAge = label === '나이'
   const derivedPlaceholder =
     placeholder ??
     (label === '비밀번호'
@@ -55,7 +54,7 @@ function InputPreview({ label, placeholder, confirmTarget }: InputPreviewProps) 
       : label === '비밀번호 확인'
         ? '비밀번호를 다시 입력하세요'
         : label === '나이'
-          ? 'ex. 25'
+          ? '1999-01-01'
           : '아이디를 입력하세요')
 
   const error = useMemo(
@@ -76,15 +75,11 @@ function InputPreview({ label, placeholder, confirmTarget }: InputPreviewProps) 
             id="field"
             type={isPassword && !showPassword ? 'password' : 'text'}
             value={value}
-            onChange={(e) =>
-              setValue(isAge ? e.target.value.replace(/\D/g, '') : e.target.value)
-            }
+            onChange={(e) => setValue(e.target.value)}
             onBlur={() => setTouched(true)}
             placeholder={derivedPlaceholder}
             aria-invalid={hasError || undefined}
             aria-describedby={hasError ? 'field-error' : undefined}
-            inputMode={isAge ? 'numeric' : undefined}
-            maxLength={isAge ? 3 : undefined}
             className={`h-12 w-full rounded-2xl border px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
               hasError ? 'border-red-400 focus:border-red-400' : 'border-gray-200 focus:border-primary-200'
             }`}

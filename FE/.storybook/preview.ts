@@ -1,16 +1,7 @@
 import type { Preview } from '@storybook/react-vite'
 import '../src/index.css'
-import { createElement } from 'react'
 
 const preview: Preview = {
-  decorators: [
-    (Story) =>
-      createElement(
-        'div',
-        { className: 'app-frame-shell' },
-        createElement('div', { className: 'app-frame' }, createElement(Story)),
-      ),
-  ],
   parameters: {
     layout: 'fullscreen',
     backgrounds: {

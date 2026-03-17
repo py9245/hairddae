@@ -46,7 +46,7 @@ export type SignUpRequest = {
   userID: string
   password: string
   passwordCheck: string
-  age?: number
+  birthDate?: string
   gender?: 'M' | 'F'
 }
 

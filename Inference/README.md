@@ -1,7 +1,7 @@
 # Inference Service
 
 `Inference/`는 헤어 apply의 feature-only WebSocket inference 서비스를 담는다.
-
+  
 새로 합류한 인프런스 서버 담당자나 GPU 서버 분리 작업자는 먼저 [`GPU_SERVER_AGENT_GUIDE.md`](/home/yusin/S14P21M101/Inference/GPU_SERVER_AGENT_GUIDE.md) 를 읽는 것을 권장한다.
 
 ## 현재 배포 방식

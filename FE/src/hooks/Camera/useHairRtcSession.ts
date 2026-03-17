@@ -1,8 +1,6 @@
-import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
-  buildInferenceFeatureMessage,
   getOrCreateDeviceId,
   parseInferenceMessage,
   postHairApplyResumeV2,
@@ -11,16 +9,11 @@ import {
   type HairApplyV2Response,
   type InferenceAssetBundle,
 } from '@/lib/Camera/inference'
-import type { FaceFrame, PoseAngles } from '@/lib/Camera/types'
 
 type UseHairRtcSessionArgs = {
   enabled?: boolean
   hairId?: number | null
-  pose?: PoseAngles | null
-  landmarks?: NormalizedLandmark[] | null
   stream: MediaStream | null
-  frameRef?: React.RefObject<FaceFrame | null>
-  videoRef: React.RefObject<HTMLVideoElement | null>
 }
 
 type HairRtcMetrics = {
@@ -32,16 +25,10 @@ type HairRtcMetrics = {
 
 const RECONNECT_DELAY_MS = 800
 const ICE_GATHERING_TIMEOUT_MS = 1500
-const MAX_INFLIGHT_FEATURES = 3
 const REMOTE_READY_MIN_PROCESSED = 1
 const REMOTE_READY_MIN_STABLE_ASSET = 1
 const RTC_SENDER_MAX_BITRATE = 2_500_000
 const RTC_SENDER_MAX_FRAMERATE = 24
-
-type QueuedFeature = {
-  payload: string
-  seq: number
-}
 
 async function configureRtcSender(sender: RTCRtpSender) {
   const track = sender.track
@@ -119,29 +106,18 @@ function waitForIceGatheringComplete(peerConnection: RTCPeerConnection) {
 export function useHairRtcSession({
   enabled = true,
   hairId,
-  pose,
-  landmarks,
   stream,
-  frameRef,
-  videoRef,
 }: UseHairRtcSessionArgs) {
   const deviceIdRef = useRef<string>(getOrCreateDeviceId())
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const dataChannelRef = useRef<RTCDataChannel | null>(null)
   const sessionRef = useRef<HairApplyV2Response | null>(null)
   const sessionHairIdRef = useRef<number | null>(null)
-  const inflightSeqsRef = useRef<number[]>([])
-  const pendingFeatureRef = useRef<QueuedFeature | null>(null)
   const reconnectTimerRef = useRef<number | null>(null)
-  const processedTimeoutRef = useRef<number | null>(null)
-  const sequenceRef = useRef(0)
-  const lastSubmittedFrameTsRef = useRef(0)
-  const sentAtBySeqRef = useRef(new Map<number, number>())
   const lastProcessedAtRef = useRef<number | null>(null)
   const processedCountRef = useRef(0)
   const stableAssetCountRef = useRef(0)
   const lastAssetIdRef = useRef<string | null>(null)
-  const rttEmaRef = useRef<number | null>(null)
   const processedFpsEmaRef = useRef<number | null>(null)
   const bootstrapRequestRef = useRef(0)
   const latestEnabledRef = useRef(enabled)
@@ -177,18 +153,9 @@ export function useHairRtcSession({
     reconnectTimerRef.current = null
   }, [])
 
-  const clearProcessedTimeout = useCallback(() => {
-    if (processedTimeoutRef.current == null) {
-      return
-    }
-    window.clearTimeout(processedTimeoutRef.current)
-    processedTimeoutRef.current = null
-  }, [])
-
   const teardownConnection = useCallback(
     (manual: boolean) => {
       manualCloseRef.current = manual
-      clearProcessedTimeout()
 
       dataChannelRef.current?.close()
       dataChannelRef.current = null
@@ -203,19 +170,14 @@ export function useHairRtcSession({
       setRemoteStream(null)
       setConnectionState('closed')
     },
-    [clearProcessedTimeout],
+    [],
   )
 
   const resetMetrics = useCallback(() => {
-    inflightSeqsRef.current = []
-    pendingFeatureRef.current = null
-    lastSubmittedFrameTsRef.current = 0
-    sentAtBySeqRef.current.clear()
     lastProcessedAtRef.current = null
     processedCountRef.current = 0
     stableAssetCountRef.current = 0
     lastAssetIdRef.current = null
-    rttEmaRef.current = null
     processedFpsEmaRef.current = null
     setIsRenderReady(false)
     setMetrics({
@@ -254,7 +216,7 @@ export function useHairRtcSession({
       }
 
       reconnectingRef.current = true
-      setError(reason === 'processed timeout' ? 'RTC 재연결 중' : reason)
+      setError(reason)
       teardownConnection(false)
 
       reconnectTimerRef.current = window.setTimeout(() => {
@@ -264,101 +226,6 @@ export function useHairRtcSession({
     },
     [teardownConnection],
   )
-
-  const armProcessedTimeout = useCallback(() => {
-    clearProcessedTimeout()
-    const timeoutMs = sessionRef.current?.inference.processedTimeoutMs ?? 250
-    processedTimeoutRef.current = window.setTimeout(() => {
-      scheduleReconnect('processed timeout')
-    }, timeoutMs)
-  }, [clearProcessedTimeout, scheduleReconnect])
-
-  const sendQueuedFeature = useCallback(
-    (queuedFeature: QueuedFeature) => {
-      const dataChannel = dataChannelRef.current
-      if (!dataChannel || dataChannel.readyState !== 'open') {
-        return false
-      }
-
-      dataChannel.send(queuedFeature.payload)
-      inflightSeqsRef.current = [
-        ...inflightSeqsRef.current,
-        queuedFeature.seq,
-      ].slice(-MAX_INFLIGHT_FEATURES)
-      sentAtBySeqRef.current.set(queuedFeature.seq, performance.now())
-      armProcessedTimeout()
-      return true
-    },
-    [armProcessedTimeout],
-  )
-
-  const queueLatestFeature = useCallback(() => {
-    if (!enabled || !hairId || hairId <= 0) {
-      return
-    }
-
-    const session = sessionRef.current
-    const dataChannel = dataChannelRef.current
-    if (!session || !dataChannel || dataChannel.readyState !== 'open') {
-      return
-    }
-
-    const trackedFrame = frameRef?.current
-    if (trackedFrame && !trackedFrame.faceFound) {
-      return
-    }
-
-    const nextPose = trackedFrame?.pose ?? pose ?? null
-    const nextLandmarks =
-      trackedFrame && trackedFrame.landmarks.length > 0
-        ? trackedFrame.landmarks
-        : landmarks ?? null
-    const videoWidth = trackedFrame?.videoW ?? videoRef.current?.videoWidth ?? 0
-    const videoHeight = trackedFrame?.videoH ?? videoRef.current?.videoHeight ?? 0
-
-    if (
-      !nextPose ||
-      !nextLandmarks ||
-      nextLandmarks.length === 0 ||
-      videoWidth <= 0 ||
-      videoHeight <= 0
-    ) {
-      return
-    }
-
-    const frameToken = trackedFrame?.t ?? 0
-    if (frameToken > 0 && frameToken <= lastSubmittedFrameTsRef.current) {
-      return
-    }
-
-    sequenceRef.current += 1
-    const feature = buildInferenceFeatureMessage({
-      applySessionId: session.applySessionId,
-      hairId,
-      featureSchemaVersion: session.featureSchemaVersion,
-      transformVersion: session.transformVersion,
-      videoWidth,
-      videoHeight,
-      landmarks: nextLandmarks,
-      pose: nextPose,
-      seq: sequenceRef.current,
-    })
-    const queuedFeature = {
-      payload: JSON.stringify(feature),
-      seq: feature.seq,
-    } satisfies QueuedFeature
-
-    if (frameToken > 0) {
-      lastSubmittedFrameTsRef.current = frameToken
-    }
-
-    if (inflightSeqsRef.current.length >= MAX_INFLIGHT_FEATURES) {
-      pendingFeatureRef.current = queuedFeature
-      return
-    }
-
-    void sendQueuedFeature(queuedFeature)
-  }, [enabled, frameRef, hairId, landmarks, pose, sendQueuedFeature, videoRef])
 
   const openSession = useCallback(
     async (nextHairId: number, localStream: MediaStream) => {
@@ -458,9 +325,6 @@ export function useHairRtcSession({
               return
             }
             if (message.type === 'error') {
-              clearProcessedTimeout()
-              inflightSeqsRef.current = []
-              pendingFeatureRef.current = null
               setError(message.message)
               return
             }
@@ -482,16 +346,6 @@ export function useHairRtcSession({
             }
 
             const now = performance.now()
-            const sentAt = sentAtBySeqRef.current.get(message.processedSeq)
-            if (sentAt != null) {
-              sentAtBySeqRef.current.delete(message.processedSeq)
-              const nextRtt = now - sentAt
-              rttEmaRef.current =
-                rttEmaRef.current == null
-                  ? nextRtt
-                  : rttEmaRef.current * 0.8 + nextRtt * 0.2
-            }
-
             if (lastProcessedAtRef.current != null) {
               const deltaMs = now - lastProcessedAtRef.current
               if (deltaMs > 0) {
@@ -504,32 +358,12 @@ export function useHairRtcSession({
             }
             lastProcessedAtRef.current = now
 
-            inflightSeqsRef.current = inflightSeqsRef.current.filter(
-              (seq) => seq !== message.processedSeq,
-            )
-            if (
-              inflightSeqsRef.current.length === 0 &&
-              pendingFeatureRef.current == null
-            ) {
-              clearProcessedTimeout()
-            } else {
-              armProcessedTimeout()
-            }
             setMetrics({
-              inferenceRttMs: rttEmaRef.current,
+              inferenceRttMs: null,
               processedFps: processedFpsEmaRef.current,
-              queueDepth:
-                message.queueDepth +
-                inflightSeqsRef.current.length +
-                (pendingFeatureRef.current ? 1 : 0),
+              queueDepth: message.queueDepth,
               droppedPendingCount: message.droppedPendingCount,
             })
-
-            const pendingFeature = pendingFeatureRef.current
-            if (pendingFeature && inflightSeqsRef.current.length < MAX_INFLIGHT_FEATURES) {
-              pendingFeatureRef.current = null
-              void sendQueuedFeature(pendingFeature)
-            }
           } catch (caught) {
             console.error('RTC data channel parse failed:', caught)
           }
@@ -564,7 +398,7 @@ export function useHairRtcSession({
         scheduleReconnect('RTC 세션 재시도 중')
       }
     },
-    [armProcessedTimeout, clearProcessedTimeout, resetRuntime, scheduleReconnect],
+    [resetRuntime, scheduleReconnect],
   )
 
   useEffect(() => {
@@ -580,52 +414,6 @@ export function useHairRtcSession({
       resetRuntime({ clearSession: false })
     }
   }, [enabled, hairId, openSession, reconnectVersion, resetRuntime, stream])
-
-  useEffect(() => {
-    if (!frameRef || !enabled || !hairId || hairId <= 0) {
-      return
-    }
-
-    let rafId: number | null = null
-
-    const loop = () => {
-      rafId = window.requestAnimationFrame(loop)
-      queueLatestFeature()
-    }
-
-    rafId = window.requestAnimationFrame(loop)
-
-    return () => {
-      if (rafId != null) {
-        window.cancelAnimationFrame(rafId)
-      }
-    }
-  }, [enabled, frameRef, hairId, queueLatestFeature])
-
-  useEffect(() => {
-    if (frameRef) {
-      return
-    }
-    if (!enabled || !hairId || hairId <= 0) {
-      return
-    }
-    if (!pose || !landmarks || landmarks.length === 0) {
-      return
-    }
-
-    const video = videoRef.current
-    const session = sessionRef.current
-    const dataChannel = dataChannelRef.current
-
-    if (!video || !session || !dataChannel || dataChannel.readyState !== 'open') {
-      return
-    }
-    if (video.videoWidth <= 0 || video.videoHeight <= 0) {
-      return
-    }
-
-    queueLatestFeature()
-  }, [enabled, frameRef, hairId, landmarks, pose, queueLatestFeature, videoRef])
 
   return {
     isConnected:

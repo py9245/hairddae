@@ -8,7 +8,6 @@ pipeline {
 
   environment {
     APP_IMAGE = 'be-app:local'
-    INFERENCE_IMAGE = 'inference-app:local'
     DEPLOY_ROOT = '/home/ubuntu/S14P21M101/BE'
     STATIC_ROOT = '/home/ubuntu/S14P21M101/static'
     COMPOSE_FILE = '/home/ubuntu/S14P21M101/BE/docker-compose.yml'
@@ -26,7 +25,6 @@ pipeline {
         sh '''
           set -eu
           docker build -t "$APP_IMAGE" -f "$WORKSPACE/BE/Dockerfile" "$WORKSPACE/BE"
-          docker build -t "$INFERENCE_IMAGE" -f "$WORKSPACE/Inference/Dockerfile" "$WORKSPACE/Inference"
         '''
       }
     }
@@ -61,9 +59,8 @@ pipeline {
           docker compose -f "$COMPOSE_FILE" config >/dev/null
 
           docker compose -f "$COMPOSE_FILE" up -d postgres redis
-          docker compose -f "$COMPOSE_FILE" up -d --no-deps inference
           docker compose -f "$COMPOSE_FILE" up -d --no-deps app
-          docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate nginx
+          docker compose -f "$COMPOSE_FILE" up -d --no-deps --force-recreate --remove-orphans nginx
         '''
       }
     }

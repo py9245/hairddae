@@ -11,6 +11,10 @@ const dirname =
   typeof __dirname !== 'undefined'
     ? __dirname
     : path.dirname(fileURLToPath(import.meta.url))
+const backendProxyTarget =
+  process.env.FE_DEV_BACKEND_PROXY_TARGET ?? 'http://localhost:8080'
+const inferenceProxyTarget =
+  process.env.FE_DEV_INFERENCE_PROXY_TARGET ?? 'https://localhost'
 
 // More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 export default defineConfig({
@@ -18,8 +22,20 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: backendProxyTarget,
         changeOrigin: true,
+        secure: false,
+      },
+      '/ws/inference': {
+        target: inferenceProxyTarget,
+        changeOrigin: true,
+        secure: false,
+        ws: true,
+      },
+      '/rtc/inference': {
+        target: inferenceProxyTarget,
+        changeOrigin: true,
+        secure: false,
       },
     },
   },

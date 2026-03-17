@@ -62,10 +62,7 @@ export default function FaceLandmarksView({
   const hairRtc = useHairRtcSession({
     enabled: transport === 'rtc' && displayHairId > 0,
     hairId: displayHairId,
-    pose,
-    landmarks,
     stream,
-    videoRef,
   })
 
   const overlayMetrics = useHairOverlayCanvas({

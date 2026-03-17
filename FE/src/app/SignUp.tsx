@@ -23,8 +23,8 @@ export default function SignUp() {
   } = useSignUpForm()
 
   return (
-    <div className="rounded-3xl bg-white px-9 py-8 shadow-sm">
-      <div className="mx-auto w-full max-w-md">
+    <main className="app-frame-page flex flex-col items-center justify-center bg-bg-primary px-6 py-10">
+      <div className="w-full max-w-md">
         <h1 className="mt-4 text-center text-3xl font-extrabold tracking-tight text-primary-300">
           회원가입
         </h1>
@@ -60,7 +60,7 @@ export default function SignUp() {
               onChange={(e) => handleChange('userId', e.target.value)}
               onBlur={() => handleBlur('userId')}
               placeholder="사용하실 아이디를 입력하세요"
-              className={`h-12 w-full rounded-2xl border px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
+              className={`h-12 w-full rounded-2xl border bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
                 errors.userId
                   ? 'border-red-400 focus:border-red-400'
                   : 'border-gray-200 focus:border-primary-200'
@@ -87,7 +87,7 @@ export default function SignUp() {
                 onChange={(e) => handleChange('password', e.target.value)}
                 onBlur={() => handleBlur('password')}
                 placeholder="비밀번호 입력"
-                className={`h-12 w-full rounded-2xl border px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
+                className={`h-12 w-full rounded-2xl border bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
                   errors.password
                     ? 'border-red-400 focus:border-red-400'
                     : 'border-gray-200 focus:border-primary-200'
@@ -129,7 +129,7 @@ export default function SignUp() {
                 }
                 onBlur={() => handleBlur('passwordConfirm')}
                 placeholder="비밀번호 재입력"
-                className={`h-12 w-full rounded-2xl border px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
+                className={`h-12 w-full rounded-2xl border bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
                   errors.passwordConfirm
                     ? 'border-red-400 focus:border-red-400'
                     : 'border-gray-200 focus:border-primary-200'
@@ -179,7 +179,7 @@ export default function SignUp() {
                 onBlur={() => handleBlur('age')}
                 maxLength={3}
                 placeholder="ex. 25"
-                className={`h-12 w-full rounded-2xl border px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
+                className={`h-12 w-full rounded-2xl border bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
                   errors.age
                     ? 'border-red-400 focus:border-red-400'
                     : 'border-gray-200 focus:border-primary-200'
@@ -260,6 +260,6 @@ export default function SignUp() {
           </Link>
         </p>
       </div>
-    </div>
+    </main>
   )
 }

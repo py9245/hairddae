@@ -39,8 +39,8 @@ export default function Login() {
   }
 
   return (
-    <div className="rounded-3xl bg-white px-9 py-8 shadow-sm">
-      <div className="mx-auto w-full max-w-md">
+    <main className="app-frame-page flex flex-col items-center justify-center bg-bg-primary px-6 py-10">
+      <div className="w-full max-w-md">
         <h1 className="mt-4 text-center text-3xl font-extrabold tracking-tight text-primary-300">
           로그인
         </h1>
@@ -59,7 +59,7 @@ export default function Login() {
               value={input.userID}
               onChange={handleChange}
               placeholder="아이디를 입력하세요"
-              className="h-12 w-full rounded-2xl border border-gray-200 px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
+              className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
             />
           </div>
 
@@ -77,7 +77,7 @@ export default function Login() {
                 value={input.password}
                 onChange={handleChange}
                 placeholder="비밀번호를 입력하세요"
-                className="h-12 w-full rounded-2xl border border-gray-200 px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
+                className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
               />
               <button
                 type="button"
@@ -123,6 +123,6 @@ export default function Login() {
           </Link>
         </p>
       </div>
-    </div>
+    </main>
   )
 }

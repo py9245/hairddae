@@ -5,6 +5,7 @@ import { syncCanvasSize } from '@/lib/Camera/drawLandmarks'
 import type { InferenceAssetBundle } from '@/lib/Camera/inference'
 import {
   drawOverlayFrame,
+  getCachedOverlayAssetBundle,
   loadOverlayAssetBundle,
 } from '@/lib/Camera/overlay'
 
@@ -35,7 +36,6 @@ export function useHairOverlayCanvas({
   landmarks,
   asset,
 }: UseHairOverlayCanvasArgs) {
-  const bundleCacheRef = useRef(new Map<string, LoadedBundle>())
   const activeAssetIdRef = useRef<string | null>(null)
   const lastDrawAtRef = useRef<number | null>(null)
   const drawFpsEmaRef = useRef<number | null>(null)
@@ -65,7 +65,7 @@ export function useHairOverlayCanvas({
       return
     }
 
-    const cached = bundleCacheRef.current.get(assetId)
+    const cached = getCachedOverlayAssetBundle(assetId)
     if (cached) {
       setMetrics((current) => ({
         ...current,
@@ -87,7 +87,6 @@ export function useHairOverlayCanvas({
     loadOverlayAssetBundle(asset)
       .then((bundle) => {
         if (cancelled || !bundle) return
-        bundleCacheRef.current.set(assetId, bundle)
         setBundleVersion((current) => current + 1)
         if (activeAssetIdRef.current === assetId) {
           setMetrics((current) => ({
@@ -114,7 +113,7 @@ export function useHairOverlayCanvas({
       return
     }
 
-    const cached = bundleCacheRef.current.get(assetId)
+    const cached = getCachedOverlayAssetBundle(assetId)
     if (!cached) {
       return
     }

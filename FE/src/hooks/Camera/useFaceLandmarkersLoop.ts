@@ -1,5 +1,6 @@
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 import { useEffect, useRef, useState } from 'react'
+import { CAMERA_FRAME_INTERVAL_MS } from '@/lib/Camera/runtime'
 
 export type DetectForVideoResult = {
   faceLandmarks?: NormalizedLandmark[][]
@@ -12,8 +13,7 @@ export type LandmarkerLike = {
   detectForVideo: (video: HTMLVideoElement, ts: number) => DetectForVideoResult
 }
 
-const TARGET_FPS = 15
-const FRAME_INTERVAL_MS = 1000 / TARGET_FPS
+const FRAME_INTERVAL_MS = CAMERA_FRAME_INTERVAL_MS
 
 export function useFaceLandmarksLoop({
   videoRef,

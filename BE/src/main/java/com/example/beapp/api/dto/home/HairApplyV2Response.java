@@ -13,6 +13,7 @@ public record HairApplyV2Response(
         @JsonProperty("feature_schema_version") int featureSchemaVersion,
         @JsonProperty("transform_version") String transformVersion,
         InferenceConnection inference,
+        RtcConnection rtc,
         @JsonProperty("static")
         StaticBootstrap staticInfo
 ) {
@@ -21,6 +22,7 @@ public record HairApplyV2Response(
             int featureSchemaVersion,
             String transformVersion,
             InferenceConnection inference,
+            RtcConnection rtc,
             StaticBootstrap staticInfo) {
         return new HairApplyV2Response(
                 200,
@@ -30,6 +32,7 @@ public record HairApplyV2Response(
                 featureSchemaVersion,
                 transformVersion,
                 inference,
+                rtc,
                 staticInfo);
     }
 
@@ -42,6 +45,22 @@ public record HairApplyV2Response(
             @JsonProperty("processed_timeout_ms") long processedTimeoutMs,
             @JsonProperty("heartbeat_interval_ms") long heartbeatIntervalMs,
             @JsonProperty("idle_ttl_ms") long idleTtlMs
+    ) {
+    }
+
+    public record RtcConnection(
+            boolean enabled,
+            @JsonProperty("offer_url") String offerUrl,
+            @JsonProperty("connect_ticket") String connectTicket,
+            @JsonProperty("expires_at") Instant expiresAt,
+            @JsonProperty("ice_servers") List<IceServer> iceServers
+    ) {
+    }
+
+    public record IceServer(
+            List<String> urls,
+            String username,
+            String credential
     ) {
     }
 

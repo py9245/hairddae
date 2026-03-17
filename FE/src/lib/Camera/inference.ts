@@ -109,6 +109,19 @@ const RawHairApplyV2ResponseSchema = z.object({
     heartbeat_interval_ms: z.number().int(),
     idle_ttl_ms: z.number().int(),
   }),
+  rtc: z.object({
+    enabled: z.boolean(),
+    offer_url: z.string(),
+    connect_ticket: z.string(),
+    expires_at: z.string(),
+    ice_servers: z.array(
+      z.object({
+        urls: z.array(z.string()),
+        username: z.string().nullable().optional(),
+        credential: z.string().nullable().optional(),
+      }),
+    ),
+  }),
   static: z.object({
     base_url: z.string(),
     dataset_code: z.string(),
@@ -116,6 +129,26 @@ const RawHairApplyV2ResponseSchema = z.object({
     asset_index_url: z.string(),
     preload_asset_ids: z.array(z.string()),
   }),
+})
+
+const RawHairAssetIndexItemSchema = z.object({
+  asset_id: z.string(),
+  pose_key: z.string(),
+  hair_rgba_url: z.string().nullable(),
+  hair_mask_url: z.string().nullable(),
+  anchors_url: z.string().nullable(),
+  metadata_url: z.string().nullable(),
+  hair_bbox: BoundingBoxSchema.nullable(),
+  revision: z.string(),
+})
+
+const RawHairAssetIndexResponseSchema = z.object({
+  code: z.number().int(),
+  message: z.string(),
+  hair_id: z.number().int(),
+  dataset_code: z.string(),
+  asset_bundle_schema_version: z.number().int(),
+  items: z.array(RawHairAssetIndexItemSchema),
 })
 
 export type InferenceRenderTask = {
@@ -163,6 +196,17 @@ export type HairApplyV2Response = {
     heartbeatIntervalMs: number
     idleTtlMs: number
   }
+  rtc: {
+    enabled: boolean
+    offerUrl: string
+    connectTicket: string
+    expiresAt: string
+    iceServers: Array<{
+      urls: string[]
+      username?: string | null
+      credential?: string | null
+    }>
+  }
   static: {
     baseUrl: string
     datasetCode: string
@@ -170,6 +214,31 @@ export type HairApplyV2Response = {
     assetIndexUrl: string
     preloadAssetIds: string[]
   }
+}
+
+export type HairAssetIndexBundle = {
+  assetId: string
+  poseKey: string
+  hairRgbaUrl: string | null
+  hairMaskUrl: string | null
+  anchorsUrl: string | null
+  metadataUrl: string | null
+  hairBBox: { x: number; y: number; w: number; h: number } | null
+  revision: string
+}
+
+export type HairAssetIndexResponse = {
+  code: number
+  message: string
+  hairId: number
+  datasetCode: string
+  assetBundleSchemaVersion: number
+  items: HairAssetIndexBundle[]
+}
+
+export type RtcOfferResponse = {
+  sdp: string
+  type: RTCSdpType
 }
 
 export type InferenceConnectedMessage = {
@@ -271,6 +340,21 @@ function normalizeAsset(raw: z.infer<typeof RawInferenceAssetBundleSchema>): Inf
   }
 }
 
+function normalizeHairAssetIndexBundle(
+  raw: z.infer<typeof RawHairAssetIndexItemSchema>,
+): HairAssetIndexBundle {
+  return {
+    assetId: raw.asset_id,
+    poseKey: raw.pose_key,
+    hairRgbaUrl: raw.hair_rgba_url,
+    hairMaskUrl: raw.hair_mask_url,
+    anchorsUrl: raw.anchors_url,
+    metadataUrl: raw.metadata_url,
+    hairBBox: raw.hair_bbox,
+    revision: raw.revision,
+  }
+}
+
 function normalizeBootstrap(
   raw: z.infer<typeof RawHairApplyV2ResponseSchema>,
 ): HairApplyV2Response {
@@ -291,6 +375,17 @@ function normalizeBootstrap(
       heartbeatIntervalMs: raw.inference.heartbeat_interval_ms,
       idleTtlMs: raw.inference.idle_ttl_ms,
     },
+    rtc: {
+      enabled: raw.rtc.enabled,
+      offerUrl: raw.rtc.offer_url,
+      connectTicket: raw.rtc.connect_ticket,
+      expiresAt: raw.rtc.expires_at,
+      iceServers: raw.rtc.ice_servers.map((server) => ({
+        urls: server.urls,
+        username: server.username,
+        credential: server.credential,
+      })),
+    },
     static: {
       baseUrl: raw.static.base_url,
       datasetCode: raw.static.dataset_code,
@@ -298,6 +393,85 @@ function normalizeBootstrap(
       assetIndexUrl: raw.static.asset_index_url,
       preloadAssetIds: raw.static.preload_asset_ids,
     },
+  }
+}
+
+export async function postRtcOffer({
+  offerUrl,
+  connectTicket,
+  localDescription,
+  signal,
+}: {
+  offerUrl: string
+  connectTicket: string
+  localDescription: RTCSessionDescriptionInit
+  signal?: AbortSignal
+}): Promise<RtcOfferResponse> {
+  if (!localDescription.sdp || !localDescription.type) {
+    throw new Error('RTC offer is missing')
+  }
+
+  const response = await fetch(offerUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    signal,
+    body: JSON.stringify({
+      sdp: localDescription.sdp,
+      type: localDescription.type,
+      connect_ticket: connectTicket,
+    }),
+  })
+
+  if (!response.ok) {
+    let message = 'RTC 연결 협상에 실패했습니다.'
+
+    try {
+      const json = (await response.json()) as { detail?: string; message?: string }
+      if (json.detail) {
+        message = json.detail
+      } else if (json.message) {
+        message = json.message
+      }
+    } catch {}
+
+    throw new Error(message)
+  }
+
+  return z
+    .object({
+      sdp: z.string(),
+      type: z.enum(['answer', 'offer', 'pranswer', 'rollback']),
+    })
+    .parse((await response.json()) as unknown)
+}
+
+export async function fetchHairAssetIndex(
+  assetIndexUrl: string,
+  signal?: AbortSignal,
+): Promise<HairAssetIndexResponse> {
+  const response = await fetch(assetIndexUrl, {
+    credentials: 'include',
+    signal,
+  })
+
+  if (!response.ok) {
+    throw new Error(`asset index load failed: ${response.status}`)
+  }
+
+  const raw = RawHairAssetIndexResponseSchema.parse(
+    (await response.json()) as unknown,
+  )
+
+  return {
+    code: raw.code,
+    message: raw.message,
+    hairId: raw.hair_id,
+    datasetCode: raw.dataset_code,
+    assetBundleSchemaVersion: raw.asset_bundle_schema_version,
+    items: raw.items.map(normalizeHairAssetIndexBundle),
   }
 }
 

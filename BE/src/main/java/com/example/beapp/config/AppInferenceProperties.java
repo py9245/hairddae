@@ -5,6 +5,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app.inference")
 public record AppInferenceProperties(
         String wsBaseUrl,
+        String rtcOfferUrl,
+        String rtcIceServersJson,
         String wsAuthTransport,
         String wsProtocol,
         String audience,

@@ -35,8 +35,12 @@ def _derive_geom(feature: FeatureMessageModel) -> dict[str, float]:
     }
 
 
-def _retrieval_score(feature: FeatureMessageModel, asset: "AssetRecord") -> float:
-    geom = _derive_geom(feature)
+def _retrieval_score(
+    feature: FeatureMessageModel,
+    asset: "AssetRecord",
+    geom: dict[str, float] | None = None,
+) -> float:
+    resolved_geom = geom if geom is not None else _derive_geom(feature)
     pose = feature.pose
     pose_score = (
         2.6 * abs(pose.yaw_1deg - asset.yaw_1deg)
@@ -44,10 +48,10 @@ def _retrieval_score(feature: FeatureMessageModel, asset: "AssetRecord") -> floa
         + 1.2 * abs(pose.roll_1deg - asset.roll_1deg)
     )
     geom_score = (
-        40.0 * abs(geom["temple_span_norm"] - asset.temple_span_ratio)
-        + 25.0 * abs(geom["lower_span_norm"] - asset.lower_span_ratio)
-        + 18.0 * abs(geom["crown_offset_norm"] - asset.crown_offset_ratio)
-        + 18.0 * abs(geom["face_ratio"] - asset.face_ratio)
+        40.0 * abs(resolved_geom["temple_span_norm"] - asset.temple_span_ratio)
+        + 25.0 * abs(resolved_geom["lower_span_norm"] - asset.lower_span_ratio)
+        + 18.0 * abs(resolved_geom["crown_offset_norm"] - asset.crown_offset_ratio)
+        + 18.0 * abs(resolved_geom["face_ratio"] - asset.face_ratio)
     )
     return round(pose_score + geom_score, 6)
 
@@ -59,6 +63,7 @@ class AssetBundle:
     yaw_1deg: int
     pitch_1deg: int
     roll_1deg: int
+    hair_rgba_path: Path | None
     hair_rgba_url: str | None
     hair_mask_url: str | None
     anchors_url: str | None
@@ -133,8 +138,9 @@ class AssetCatalog:
         if not candidates:
             raise ValueError(f"no selectable assets for dataset {dataset_code}")
 
-        best_asset = min(candidates, key=lambda item: _retrieval_score(feature, item))
-        return self._build_bundle(dataset_code, dataset, best_asset, feature)
+        geom = _derive_geom(feature)
+        best_asset = min(candidates, key=lambda item: _retrieval_score(feature, item, geom))
+        return self._build_bundle(dataset_code, dataset, best_asset, feature, geom=geom)
 
     def bundle_for_asset(
         self,
@@ -154,8 +160,10 @@ class AssetCatalog:
         dataset: DatasetRecord,
         asset: AssetRecord,
         feature: FeatureMessageModel,
+        *,
+        geom: dict[str, float] | None = None,
     ) -> AssetBundle:
-        score = _retrieval_score(feature, asset)
+        score = _retrieval_score(feature, asset, geom)
         metadata = self._load_metadata(dataset, asset)
         anchors_payload = self._load_anchors(dataset, asset)
         render_task = build_render_task(
@@ -169,6 +177,11 @@ class AssetCatalog:
             yaw_1deg=asset.yaw_1deg,
             pitch_1deg=asset.pitch_1deg,
             roll_1deg=asset.roll_1deg,
+            hair_rgba_path=(
+                None
+                if metadata.get("hair_rgba_path") in (None, "")
+                else self._settings.static_root / dataset_code / str(metadata["hair_rgba_path"])
+            ),
             hair_rgba_url=_normalize_url(
                 self._settings.static_base_url,
                 dataset_code,

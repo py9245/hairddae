@@ -14,6 +14,7 @@ from app.auth import ReplayStore, TicketClaims, TicketValidationError, build_rep
 from app.catalog import AssetBundle, AssetCatalog
 from app.config import Settings
 from app.models import FeatureMessageModel, HeartbeatMessageModel
+from app.rtc import attach_rtc_routes
 
 
 def _now_ms() -> int:
@@ -107,15 +108,15 @@ def _maybe_switch_asset(
         state.last_switch_at_ms = now_ms
         return True, candidate
 
+    if candidate.asset_id == state.last_selected_bundle.asset_id:
+        state.last_selected_bundle = candidate
+        return False, candidate
+
     current = catalog.bundle_for_asset(
         dataset_code=dataset_code,
         asset_id=state.last_selected_bundle.asset_id,
         feature=feature,
     )
-
-    if candidate.asset_id == current.asset_id:
-        state.last_selected_bundle = candidate
-        return False, candidate
 
     within_hold = now_ms - state.last_switch_at_ms < settings.min_hold_ms
     improved_enough = candidate.score + settings.hysteresis_margin < current.score
@@ -208,6 +209,8 @@ def create_app() -> FastAPI:
         try:
             yield
         finally:
+            for peer_connection in list(getattr(app.state, "rtc_peer_connections", set())):
+                await peer_connection.close()
             await replay_store.close()
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
@@ -215,6 +218,7 @@ def create_app() -> FastAPI:
     app.state.settings = settings
     app.state.replay_store = replay_store
     app.state.catalog = catalog
+    attach_rtc_routes(app)
 
     @app.get("/healthz")
     async def healthz() -> JSONResponse:

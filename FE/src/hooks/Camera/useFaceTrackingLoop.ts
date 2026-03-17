@@ -13,10 +13,10 @@ import {
 import { updateFrameRef } from '@/lib/Camera/frame'
 import { isFaceInsideGuide } from '@/lib/Camera/guide'
 import { classifyPose } from '@/lib/Camera/pose'
+import { CAMERA_FRAME_INTERVAL_MS } from '@/lib/Camera/runtime'
 import type { FaceFrame, PoseStatus } from '@/lib/Camera/types'
 
-const TARGET_FPS = 15
-const FRAME_INTERVAL_MS = 1000 / TARGET_FPS
+const FRAME_INTERVAL_MS = CAMERA_FRAME_INTERVAL_MS
 const LOST_FACE_RESET_MS = FRAME_INTERVAL_MS * 2
 
 export function useFaceTrackingLoop({

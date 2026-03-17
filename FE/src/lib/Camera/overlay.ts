@@ -1,9 +1,12 @@
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 
 import { buildFaceAnchorPoints, type FaceAnchorSet } from '@/lib/Camera/anchors'
-import type {
-  InferenceAssetBundle,
-  InferenceRenderTask,
+import {
+  fetchHairAssetIndex,
+  type HairApplyV2Response,
+  type HairAssetIndexBundle,
+  type InferenceAssetBundle,
+  type InferenceRenderTask,
 } from '@/lib/Camera/inference'
 import { getVideoCoverLayout } from '@/lib/Camera/layout'
 
@@ -16,7 +19,12 @@ type AssetAnchorsPayload = {
   anchors: FaceAnchorSet
 }
 
-type OverlayAssetBundle = {
+export type OverlayAssetSource = Pick<
+  InferenceAssetBundle,
+  'assetId' | 'hairRgbaUrl' | 'anchorsUrl' | 'hairBBox'
+>
+
+export type OverlayAssetBundle = {
   assetId: string
   image: HTMLImageElement
   anchors: FaceAnchorSet
@@ -31,6 +39,12 @@ type Matrix2D = {
   e: number
   f: number
 }
+
+const overlayBundleCache = new Map<string, OverlayAssetBundle>()
+const overlayBundlePromiseCache = new Map<
+  string,
+  Promise<OverlayAssetBundle | null>
+>()
 
 function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -227,23 +241,90 @@ function getBundleSourceRect(
 }
 
 export async function loadOverlayAssetBundle(
-  asset: InferenceAssetBundle,
+  asset: OverlayAssetSource,
 ): Promise<OverlayAssetBundle | null> {
   if (!asset.assetId || !asset.hairRgbaUrl || !asset.anchorsUrl) {
     return null
   }
 
-  const [image, anchorsPayload] = await Promise.all([
+  const cached = overlayBundleCache.get(asset.assetId)
+  if (cached) {
+    return cached
+  }
+
+  const inflight = overlayBundlePromiseCache.get(asset.assetId)
+  if (inflight) {
+    return inflight
+  }
+
+  const nextLoad = Promise.all([
     loadImage(asset.hairRgbaUrl),
     loadAssetAnchors(asset.anchorsUrl),
   ])
+    .then(([image, anchorsPayload]) => {
+      const bundle = {
+        assetId: asset.assetId,
+        image,
+        anchors: anchorsPayload.anchors,
+        hairBBox: asset.hairBBox,
+      }
+      overlayBundleCache.set(asset.assetId, bundle)
+      return bundle
+    })
+    .finally(() => {
+      overlayBundlePromiseCache.delete(asset.assetId)
+    })
 
+  overlayBundlePromiseCache.set(asset.assetId, nextLoad)
+  return nextLoad
+}
+
+export function getCachedOverlayAssetBundle(assetId: string) {
+  return overlayBundleCache.get(assetId) ?? null
+}
+
+function toOverlayAssetSource(
+  asset: HairAssetIndexBundle,
+): OverlayAssetSource {
   return {
     assetId: asset.assetId,
-    image,
-    anchors: anchorsPayload.anchors,
+    hairRgbaUrl: asset.hairRgbaUrl,
+    anchorsUrl: asset.anchorsUrl,
     hairBBox: asset.hairBBox,
   }
+}
+
+export async function preloadSessionOverlayAssets(
+  staticBootstrap: HairApplyV2Response['static'],
+  signal?: AbortSignal,
+) {
+  if (staticBootstrap.preloadAssetIds.length === 0) {
+    return
+  }
+
+  const assetIndex = await fetchHairAssetIndex(
+    staticBootstrap.assetIndexUrl,
+    signal,
+  )
+  if (signal?.aborted) {
+    return
+  }
+
+  const itemsById = new Map(
+    assetIndex.items.map((item) => [item.assetId, item] as const),
+  )
+  const preloadTargets = staticBootstrap.preloadAssetIds
+    .map((assetId) => itemsById.get(assetId))
+    .filter((item): item is HairAssetIndexBundle => item != null)
+
+  await Promise.allSettled(
+    preloadTargets.map((item) => {
+      if (signal?.aborted) {
+        return Promise.resolve(null)
+      }
+      return loadOverlayAssetBundle(toOverlayAssetSource(item))
+    }),
+  )
 }
 
 function toCanvasMatrix(

@@ -57,6 +57,8 @@ app:
     static-base-url: ${APP_HAIR_STATIC_BASE_URL:/static}
   inference:
     ws-base-url: ${APP_INFERENCE_WS_BASE_URL:wss://j14m101.p.ssafy.io/ws/inference/apply}
+    rtc-offer-url: ${APP_INFERENCE_RTC_OFFER_URL:https://j14m101.p.ssafy.io/rtc/inference/offer}
+    rtc-ice-servers-json: ${APP_INFERENCE_RTC_ICE_SERVERS_JSON:[]}
     ws-auth-transport: ${APP_INFERENCE_WS_AUTH_TRANSPORT:sec-websocket-protocol.v1}
     ws-protocol: ${APP_INFERENCE_WS_PROTOCOL:hairapply.v2}
     audience: ${APP_INFERENCE_AUDIENCE:inference}

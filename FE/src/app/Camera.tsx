@@ -3,6 +3,7 @@ import FaceLandmarksView from '@/components/Camera/FaceLandmarksView'
 import { useFaceLandmarker } from '@/hooks/Camera/useFaceLandmarker'
 import { useFaceTrackingLoop } from '@/hooks/Camera/useFaceTrackingLoop'
 import { useUserMedia } from '@/hooks/Camera/useUserMedia'
+import { HAIR_TRANSPORT } from '@/lib/Camera/runtime'
 
 export default function Camera() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -33,6 +34,8 @@ export default function Camera() {
 
   return (
     <FaceLandmarksView
+      stream={cam.stream}
+      transport={HAIR_TRANSPORT}
       videoRef={videoRef}
       canvasRef={canvasRef}
       overlayCanvasRef={overlayCanvasRef}

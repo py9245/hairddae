@@ -6,6 +6,7 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.Period;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
@@ -209,6 +210,12 @@ public class HomeService {
                         appInferenceProperties.processedTimeoutMs(),
                         appInferenceProperties.heartbeatIntervalMs(),
                         appInferenceProperties.idleTtlMs()),
+                new HairApplyV2Response.RtcConnection(
+                        StringUtils.hasText(appInferenceProperties.rtcOfferUrl()),
+                        appInferenceProperties.rtcOfferUrl(),
+                        ticket.token(),
+                        ticket.expiresAt(),
+                        resolveRtcIceServers()),
                 new HairApplyV2Response.StaticBootstrap(
                         bootstrap.baseUrl(),
                         bootstrap.datasetCode(),
@@ -225,6 +232,45 @@ public class HomeService {
         return hairJpaRepository.findByIdAndActiveTrue(hairId.longValue())
                 .map(this::toResolvedHairBootstrap)
                 .orElseGet(() -> fallbackBootstrap(hairId));
+    }
+
+    private List<HairApplyV2Response.IceServer> resolveRtcIceServers() {
+        if (!StringUtils.hasText(appInferenceProperties.rtcIceServersJson())) {
+            return List.of();
+        }
+
+        try {
+            JsonNode payload = objectMapper.readTree(appInferenceProperties.rtcIceServersJson());
+            if (!payload.isArray()) {
+                throw new ApiException(ErrorCode.INVALID_REQUEST, "RTC ICE 서버 설정 형식이 올바르지 않습니다.");
+            }
+
+            List<HairApplyV2Response.IceServer> iceServers = new ArrayList<>();
+            for (JsonNode item : payload) {
+                JsonNode urlsNode = item.path("urls");
+                if (!urlsNode.isArray() || urlsNode.isEmpty()) {
+                    continue;
+                }
+
+                List<String> urls = new ArrayList<>();
+                for (JsonNode urlNode : urlsNode) {
+                    if (urlNode.isTextual() && StringUtils.hasText(urlNode.asText())) {
+                        urls.add(urlNode.asText());
+                    }
+                }
+                if (urls.isEmpty()) {
+                    continue;
+                }
+
+                String username = item.path("username").isTextual() ? item.path("username").asText() : null;
+                String credential = item.path("credential").isTextual() ? item.path("credential").asText() : null;
+                iceServers.add(new HairApplyV2Response.IceServer(urls, username, credential));
+            }
+
+            return List.copyOf(iceServers);
+        } catch (IOException exception) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "RTC ICE 서버 설정을 읽지 못했습니다.");
+        }
     }
 
     private ResolvedHairBootstrap toResolvedHairBootstrap(HairEntity hair) {

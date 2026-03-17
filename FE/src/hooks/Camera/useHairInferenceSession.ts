@@ -11,6 +11,7 @@ import {
   postHairApplyStartV2,
   type HairApplyV2Response,
 } from '@/lib/Camera/inference'
+import { preloadSessionOverlayAssets } from '@/lib/Camera/overlay'
 import type { PoseAngles } from '@/lib/Camera/types'
 
 type UseHairInferenceSessionArgs = {
@@ -46,6 +47,7 @@ export function useHairInferenceSession({
   const processedTimeoutRef = useRef<number | null>(null)
   const heartbeatTimerRef = useRef<number | null>(null)
   const reconnectTimerRef = useRef<number | null>(null)
+  const preloadAbortRef = useRef<AbortController | null>(null)
   const reconnectingRef = useRef(false)
   const manualCloseRef = useRef(false)
   const bootstrapRequestRef = useRef(0)
@@ -88,6 +90,11 @@ export function useHairInferenceSession({
     reconnectTimerRef.current = null
   }, [])
 
+  const clearPreload = useCallback(() => {
+    preloadAbortRef.current?.abort()
+    preloadAbortRef.current = null
+  }, [])
+
   const closeSocket = useCallback(() => {
     const ws = wsRef.current
     if (!ws) return
@@ -102,6 +109,7 @@ export function useHairInferenceSession({
     clearProcessedTimeout()
     clearHeartbeatTimer()
     clearReconnectTimer()
+    clearPreload()
     closeSocket()
     inflightSeqRef.current = null
     pendingFeatureRef.current = null
@@ -117,7 +125,28 @@ export function useHairInferenceSession({
       queueDepth: 0,
       droppedPendingCount: 0,
     })
-  }, [clearHeartbeatTimer, clearProcessedTimeout, clearReconnectTimer, closeSocket])
+  }, [
+    clearHeartbeatTimer,
+    clearPreload,
+    clearProcessedTimeout,
+    clearReconnectTimer,
+    closeSocket,
+  ])
+
+  const preloadStaticAssets = useCallback((bootstrap: HairApplyV2Response) => {
+    clearPreload()
+    const controller = new AbortController()
+    preloadAbortRef.current = controller
+
+    void preloadSessionOverlayAssets(bootstrap.static, controller.signal).catch(
+      (caught) => {
+        if (controller.signal.aborted) {
+          return
+        }
+        console.warn('overlay preload failed:', caught)
+      },
+    )
+  }, [clearPreload])
 
   const scheduleReconnect = useCallback(async (reason: string) => {
     if (reconnectingRef.current) return
@@ -146,6 +175,7 @@ export function useHairInferenceSession({
             )
 
         sessionRef.current = nextBootstrap
+        preloadStaticAssets(nextBootstrap)
         setError(null)
         reconnectingRef.current = false
         manualCloseRef.current = false
@@ -300,6 +330,7 @@ export function useHairInferenceSession({
     clearProcessedTimeout,
     clearReconnectTimer,
     closeSocket,
+    preloadStaticAssets,
   ])
 
   const openSession = useCallback(async (nextHairId: number) => {
@@ -316,6 +347,7 @@ export function useHairInferenceSession({
       }
 
       sessionRef.current = bootstrap
+      preloadStaticAssets(bootstrap)
       reconnectingRef.current = false
       manualCloseRef.current = false
 
@@ -436,6 +468,7 @@ export function useHairInferenceSession({
   }, [
     clearHeartbeatTimer,
     clearProcessedTimeout,
+    preloadStaticAssets,
     resetRuntime,
     scheduleReconnect,
   ])

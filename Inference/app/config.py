@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 
@@ -17,6 +18,17 @@ def _env_str(name: str, default: str) -> str:
     if value is None or value == "":
         return default
     return value
+
+
+def _env_json_array(name: str, default: str) -> tuple[dict[str, object], ...]:
+    raw = _env_str(name, default)
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return ()
+    if not isinstance(payload, list):
+        return ()
+    return tuple(item for item in payload if isinstance(item, dict))
 
 
 @dataclass(frozen=True)
@@ -39,6 +51,7 @@ class Settings:
     hysteresis_margin: float
     min_hold_ms: int
     redis_url: str | None
+    rtc_ice_servers: tuple[dict[str, object], ...]
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -81,4 +94,5 @@ class Settings:
             hysteresis_margin=float(_env_str("INFERENCE_HYSTERESIS_MARGIN", "4.0")),
             min_hold_ms=_env_int("INFERENCE_MIN_HOLD_MS", 400),
             redis_url=redis_url,
+            rtc_ice_servers=_env_json_array("INFERENCE_RTC_ICE_SERVERS_JSON", "[]"),
         )

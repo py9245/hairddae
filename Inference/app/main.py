@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from app.auth import ReplayStore, TicketClaims, TicketValidationError, build_replay_store, validate_connect_ticket
 from app.catalog import AssetBundle, AssetCatalog
 from app.config import Settings
+from app.face_tracking import ServerFaceTracker
 from app.models import FeatureMessageModel, HeartbeatMessageModel
 from app.rtc import attach_rtc_routes
 
@@ -203,6 +204,7 @@ def create_app() -> FastAPI:
     settings = Settings.from_env()
     replay_store = build_replay_store(settings)
     catalog = AssetCatalog(settings)
+    face_tracker = ServerFaceTracker(settings.face_landmarker_model_path)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -211,6 +213,7 @@ def create_app() -> FastAPI:
         finally:
             for peer_connection in list(getattr(app.state, "rtc_peer_connections", set())):
                 await peer_connection.close()
+            face_tracker.close()
             await replay_store.close()
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
@@ -218,6 +221,7 @@ def create_app() -> FastAPI:
     app.state.settings = settings
     app.state.replay_store = replay_store
     app.state.catalog = catalog
+    app.state.face_tracker = face_tracker
     attach_rtc_routes(app)
 
     @app.get("/healthz")

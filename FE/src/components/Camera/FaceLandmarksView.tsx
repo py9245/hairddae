@@ -9,13 +9,15 @@ import { useHairInferenceSession } from '@/hooks/Camera/useHairInferenceSession'
 import { useHairRtcSession } from '@/hooks/Camera/useHairRtcSession'
 import { useHairOverlayCanvas } from '@/hooks/Camera/useHairOverlayCanvas'
 import { captureCompositedImage } from '@/lib/Camera/capture'
-import { HAIR_ITEMS } from '@/lib/Camera/HairItem'
+import { fetchHairItems, HAIR_ITEMS, type HairItem } from '@/lib/Camera/HairItem'
 
 type Pose = {
   yaw: number
   pitch: number
   roll: number
 }
+
+const REMOTE_DISPLAY_SETTLE_MS = 180
 
 type FaceLandmarksViewProps = {
   stream: MediaStream | null
@@ -43,7 +45,9 @@ export default function FaceLandmarksView({
   const [selectedHairId, setSelectedHairId] = useState(0)
   const [pendingHairId, setPendingHairId] = useState<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [hairItems, setHairItems] = useState<HairItem[]>(HAIR_ITEMS)
   const [remoteVideoReady, setRemoteVideoReady] = useState(false)
+  const [remoteDisplayReady, setRemoteDisplayReady] = useState(false)
 
   const displayHairId = pendingHairId ?? selectedHairId
 
@@ -72,7 +76,8 @@ export default function FaceLandmarksView({
   })
 
   const activeRemoteStream = transport === 'rtc' ? hairRtc.remoteStream : null
-  const hasRemoteVideo = transport === 'rtc' && remoteVideoReady
+  const hasRemoteVideo =
+    transport === 'rtc' && remoteDisplayReady
 
   const activeAsset = transport === 'rtc' ? hairRtc.asset : hairInference.asset
 
@@ -131,6 +136,26 @@ export default function FaceLandmarksView({
     }
   }, [activeRemoteStream])
 
+  useEffect(() => {
+    if (transport !== 'rtc') {
+      setRemoteDisplayReady(false)
+      return
+    }
+    if (!remoteVideoReady || !hairRtc.isRenderReady) {
+      setRemoteDisplayReady(false)
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setRemoteDisplayReady(true)
+    }, REMOTE_DISPLAY_SETTLE_MS)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      setRemoteDisplayReady(false)
+    }
+  }, [hairRtc.isRenderReady, remoteVideoReady, transport])
+
   const handleHairSelect = useCallback((hairId: number) => {
     if (hairId === 0) {
       setPendingHairId(null)
@@ -141,6 +166,25 @@ export default function FaceLandmarksView({
 
     setPendingHairId(hairId)
     setModalOpen(true)
+  }, [])
+
+  useEffect(() => {
+    const abortController = new AbortController()
+
+    void fetchHairItems(abortController.signal)
+      .then((items) => {
+        setHairItems(items)
+      })
+      .catch((error) => {
+        if (abortController.signal.aborted) {
+          return
+        }
+        console.warn('hair list load failed:', error)
+      })
+
+    return () => {
+      abortController.abort()
+    }
   }, [])
 
   const handleModalComplete = useCallback(() => {
@@ -161,10 +205,10 @@ export default function FaceLandmarksView({
       videoRef: hasRemoteVideo ? remoteVideoRef : videoRef,
       overlayCanvasRef,
       wrapRef,
-      hairItems: HAIR_ITEMS,
+      hairItems,
       selectedHairId: displayHairId,
     })
-  }, [displayHairId, hasRemoteVideo, overlayCanvasRef, videoRef])
+  }, [displayHairId, hairItems, hasRemoteVideo, overlayCanvasRef, videoRef])
 
   const handleClose = useCallback(() => {
     void router.navigate({ to: '/main' })
@@ -266,7 +310,15 @@ export default function FaceLandmarksView({
                 activeMetrics.processedFps == null
                   ? '-'
                   : activeMetrics.processedFps.toFixed(1)
-              } fps / remote ${hasRemoteVideo ? 'ready' : 'waiting'}`
+              } fps / remote ${
+                hasRemoteVideo
+                  ? 'ready'
+                  : remoteVideoReady && hairRtc.isRenderReady
+                    ? 'settling'
+                    : remoteVideoReady
+                    ? 'warming'
+                    : 'waiting'
+              }`
             : `proc ${
                 activeMetrics.processedFps == null
                   ? '-'
@@ -281,7 +333,7 @@ export default function FaceLandmarksView({
         </div>
 
         <HairSelector
-          items={HAIR_ITEMS}
+          items={hairItems}
           selectedId={displayHairId}
           onSelect={handleHairSelect}
           onCapture={handleCapture}

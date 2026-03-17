@@ -44,6 +44,7 @@ class Settings:
     transform_version: str
     ws_protocol: str
     static_root: Path
+    face_landmarker_model_path: Path
     static_base_url: str
     processed_timeout_ms: int
     heartbeat_interval_ms: int
@@ -87,6 +88,12 @@ class Settings:
             transform_version=_env_str("INFERENCE_TRANSFORM_VERSION", "affine_v1"),
             ws_protocol=_env_str("INFERENCE_WS_PROTOCOL", "hairapply.v2"),
             static_root=Path(_env_str("INFERENCE_STATIC_ROOT", "/opt/be-static")).resolve(),
+            face_landmarker_model_path=Path(
+                _env_str(
+                    "INFERENCE_FACE_LANDMARKER_MODEL_PATH",
+                    "/opt/inference-models/face_landmarker.task",
+                )
+            ).resolve(),
             static_base_url=_env_str("INFERENCE_STATIC_BASE_URL", "/static").rstrip("/"),
             processed_timeout_ms=_env_int("INFERENCE_PROCESSED_TIMEOUT_MS", 250),
             heartbeat_interval_ms=_env_int("INFERENCE_HEARTBEAT_INTERVAL_MS", 5000),

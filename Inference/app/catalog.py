@@ -56,6 +56,31 @@ def _retrieval_score(
     return round(pose_score + geom_score, 6)
 
 
+POSE_FILTER_STAGES: tuple[tuple[int, int, int], ...] = (
+    (12, 10, 12),
+    (20, 14, 16),
+    (32, 20, 20),
+)
+
+
+def _filter_assets_by_pose(
+    feature: FeatureMessageModel,
+    candidates: list["AssetRecord"],
+) -> list["AssetRecord"]:
+    pose = feature.pose
+    for yaw_limit, pitch_limit, roll_limit in POSE_FILTER_STAGES:
+        filtered = [
+            item
+            for item in candidates
+            if abs(pose.yaw_1deg - item.yaw_1deg) <= yaw_limit
+            and abs(pose.pitch_1deg - item.pitch_1deg) <= pitch_limit
+            and abs(pose.roll_1deg - item.roll_1deg) <= roll_limit
+        ]
+        if filtered:
+            return filtered
+    return candidates
+
+
 @dataclass(frozen=True)
 class AssetBundle:
     asset_id: str
@@ -138,6 +163,7 @@ class AssetCatalog:
         if not candidates:
             raise ValueError(f"no selectable assets for dataset {dataset_code}")
 
+        candidates = _filter_assets_by_pose(feature, candidates)
         geom = _derive_geom(feature)
         best_asset = min(candidates, key=lambda item: _retrieval_score(feature, item, geom))
         return self._build_bundle(dataset_code, dataset, best_asset, feature, geom=geom)

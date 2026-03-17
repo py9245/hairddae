@@ -27,10 +27,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public class HairSeedImportService {
 
     private static final Logger log = LoggerFactory.getLogger(HairSeedImportService.class);
-    private static final String DATASET_CODE = "0001";
-    private static final String HAIR_NAME = "leaf cut";
-    private static final String HAIR_SLUG = "leaf-cut";
-    private static final String HAIR_CATEGORY = "short";
+    private static final List<DatasetSeedDefinition> DATASET_DEFINITIONS = List.of(
+            new DatasetSeedDefinition("0001", "leaf cut", "leaf-cut", "short"),
+            new DatasetSeedDefinition("0002", "Hair 2", "hair-2", "short"));
 
     private final ObjectMapper objectMapper;
     private final HairJpaRepository hairJpaRepository;
@@ -47,7 +46,13 @@ public class HairSeedImportService {
 
     @Transactional
     public void importDefaultDatasetIfPresent() {
-        Path datasetRoot = appHairProperties.staticRootPath().resolve(DATASET_CODE);
+        for (DatasetSeedDefinition definition : DATASET_DEFINITIONS) {
+            importDatasetIfPresent(definition);
+        }
+    }
+
+    private void importDatasetIfPresent(DatasetSeedDefinition definition) {
+        Path datasetRoot = appHairProperties.staticRootPath().resolve(definition.datasetCode());
         Path assetIndexPath = datasetRoot.resolve("manifests").resolve("asset_index_v0.json");
         if (!Files.isRegularFile(assetIndexPath)) {
             log.info("Hair seed import skipped. Missing asset index: {}", assetIndexPath);
@@ -56,47 +61,60 @@ public class HairSeedImportService {
 
         try {
             AssetIndexPayload payload = objectMapper.readValue(assetIndexPath.toFile(), AssetIndexPayload.class);
-            AssetIndexItem representative = selectRepresentativeItem(payload.items());
+            AssetIndexItem representative = selectRepresentativeItem(definition.datasetCode(), payload.items());
             Path representativeMetadataPath = datasetRoot.resolve(representative.metadataPath());
             Map<String, Object> metadata = objectMapper.readValue(
                     representativeMetadataPath.toFile(),
                     new TypeReference<Map<String, Object>>() {
                     });
 
-            String datasetRootUrl = buildUrl(DATASET_CODE);
+            String datasetRootUrl = buildUrl(definition.datasetCode());
             String previewImageUrl = buildRepresentativePreviewUrl(datasetRoot, datasetRootUrl, metadata, representative);
-            String assetIndexUrl = buildUrl(DATASET_CODE + "/manifests/asset_index_v0.json");
+            String assetIndexUrl = buildUrl(definition.datasetCode() + "/manifests/asset_index_v0.json");
 
-            HairEntity hair = hairJpaRepository.findByDatasetCode(DATASET_CODE)
-                    .or(() -> hairJpaRepository.findBySlug(HAIR_SLUG))
-                    .orElseGet(() -> new HairEntity(HAIR_NAME, HAIR_CATEGORY, previewImageUrl, defaultDescription()));
+            HairEntity hair = hairJpaRepository.findByDatasetCode(definition.datasetCode())
+                    .or(() -> hairJpaRepository.findBySlug(definition.slug()))
+                    .orElseGet(() -> new HairEntity(
+                            definition.name(),
+                            definition.category(),
+                            previewImageUrl,
+                            defaultDescription(definition.datasetCode())));
 
             hair.applySeed(
-                    HAIR_NAME,
-                    HAIR_SLUG,
-                    HAIR_CATEGORY,
-                    DATASET_CODE,
+                    definition.name(),
+                    definition.slug(),
+                    definition.category(),
+                    definition.datasetCode(),
                     datasetRootUrl,
                     assetIndexUrl,
                     representative.assetId(),
                     previewImageUrl,
-                    defaultDescription());
+                    defaultDescription(definition.datasetCode()));
             hairJpaRepository.save(hair);
-            log.info("Hair seed import completed. datasetCode={}, representativeAssetId={}", DATASET_CODE, representative.assetId());
+            log.info(
+                    "Hair seed import completed. datasetCode={}, representativeAssetId={}",
+                    definition.datasetCode(),
+                    representative.assetId());
         } catch (IOException exception) {
-            throw new IllegalStateException("Failed to import hair dataset seed from " + assetIndexPath, exception);
+            throw new IllegalStateException(
+                    "Failed to import hair dataset seed from " + assetIndexPath,
+                    exception);
         }
     }
 
-    private AssetIndexItem selectRepresentativeItem(List<AssetIndexItem> items) {
-        return items.stream()
+    private AssetIndexItem selectRepresentativeItem(String datasetCode, List<AssetIndexItem> items) {
+        List<AssetIndexItem> approvedItems = items.stream()
                 .filter(item -> Boolean.TRUE.equals(item.approved()))
+                .toList();
+        List<AssetIndexItem> selectableItems = approvedItems.isEmpty() ? items : approvedItems;
+
+        return selectableItems.stream()
                 .min(
                         Comparator.comparingInt(this::posePenalty)
                                 .thenComparing(
                                         item -> Optional.ofNullable(item.qualityScore()).orElse(0.0),
                                         Comparator.reverseOrder()))
-                .orElseThrow(() -> new IllegalStateException("No approved assets found in dataset " + DATASET_CODE));
+                .orElseThrow(() -> new IllegalStateException("No selectable assets found in dataset " + datasetCode));
     }
 
     private int posePenalty(AssetIndexItem item) {
@@ -141,8 +159,16 @@ public class HairSeedImportService {
         return value instanceof String string ? string : null;
     }
 
-    private String defaultDescription() {
-        return "Leaf cut dataset imported from static asset pack 0001.";
+    private String defaultDescription(String datasetCode) {
+        return "Hair dataset imported from static asset pack " + datasetCode + ".";
+    }
+
+    private record DatasetSeedDefinition(
+            String datasetCode,
+            String name,
+            String slug,
+            String category
+    ) {
     }
 
     private record AssetIndexPayload(

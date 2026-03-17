@@ -8,6 +8,9 @@ from PIL import Image
 from app.catalog import AssetBundle
 
 
+RESAMPLE_FILTER = Image.Resampling.BILINEAR
+
+
 @lru_cache(maxsize=64)
 def _load_rgba_image(path: str) -> Image.Image:
     return Image.open(path).convert("RGBA")
@@ -27,7 +30,65 @@ def _invert_affine(a: float, b: float, c: float, d: float, e: float, f: float) -
     return (inv_a, inv_c, inv_e, inv_b, inv_d, inv_f)
 
 
-def compose_bundle_frame(frame_image: Image.Image, bundle: AssetBundle | None) -> Image.Image:
+def _scale_render_task(
+    render_task: dict[str, object],
+    reference_width: int,
+    reference_height: int,
+    frame_width: int,
+    frame_height: int,
+) -> dict[str, object]:
+    if (
+        reference_width <= 0
+        or reference_height <= 0
+        or frame_width <= 0
+        or frame_height <= 0
+        or (reference_width == frame_width and reference_height == frame_height)
+    ):
+        return render_task
+
+    matrix = render_task.get("matrix")
+    destination_roi = render_task.get("destination_roi")
+    destination_quad = render_task.get("destination_quad")
+    if not isinstance(matrix, dict) or not isinstance(destination_roi, dict):
+        return render_task
+
+    scale_x = frame_width / reference_width
+    scale_y = frame_height / reference_height
+
+    scaled_task = dict(render_task)
+    scaled_task["matrix"] = {
+        "a": float(matrix["a"]) * scale_x,
+        "b": float(matrix["b"]) * scale_y,
+        "c": float(matrix["c"]) * scale_x,
+        "d": float(matrix["d"]) * scale_y,
+        "e": float(matrix["e"]) * scale_x,
+        "f": float(matrix["f"]) * scale_y,
+    }
+    scaled_task["destination_roi"] = {
+        "x": int(round(float(destination_roi["x"]) * scale_x)),
+        "y": int(round(float(destination_roi["y"]) * scale_y)),
+        "w": int(round(float(destination_roi["w"]) * scale_x)),
+        "h": int(round(float(destination_roi["h"]) * scale_y)),
+    }
+    if isinstance(destination_quad, list):
+        scaled_task["destination_quad"] = [
+            {
+                "x": round(float(point["x"]) * scale_x, 3),
+                "y": round(float(point["y"]) * scale_y, 3),
+            }
+            for point in destination_quad
+            if isinstance(point, dict)
+        ]
+    return scaled_task
+
+
+def compose_bundle_frame(
+    frame_image: Image.Image,
+    bundle: AssetBundle | None,
+    *,
+    reference_width: int | None = None,
+    reference_height: int | None = None,
+) -> Image.Image:
     if (
         bundle is None
         or bundle.hair_rgba_path is None
@@ -37,6 +98,14 @@ def compose_bundle_frame(frame_image: Image.Image, bundle: AssetBundle | None) -
         return frame_image
 
     render_task = bundle.render_task
+    if reference_width is not None and reference_height is not None:
+        render_task = _scale_render_task(
+            render_task,
+            reference_width=reference_width,
+            reference_height=reference_height,
+            frame_width=frame_image.width,
+            frame_height=frame_image.height,
+        )
     destination_roi = render_task.get("destination_roi")
     matrix = render_task.get("matrix")
     if not destination_roi or not matrix:
@@ -80,24 +149,17 @@ def compose_bundle_frame(frame_image: Image.Image, bundle: AssetBundle | None) -
         (roi_width, roi_height),
         Image.AFFINE,
         inverse,
-        resample=Image.BICUBIC,
+        resample=RESAMPLE_FILTER,
     )
 
-    output = frame_image.convert("RGBA")
-    roi = output.crop(
-        (
-            int(destination_roi["x"]),
-            int(destination_roi["y"]),
-            int(destination_roi["x"]) + roi_width,
-            int(destination_roi["y"]) + roi_height,
-        ),
+    output = frame_image if frame_image.mode == "RGB" else frame_image.convert("RGB")
+    box = (
+        int(destination_roi["x"]),
+        int(destination_roi["y"]),
+        int(destination_roi["x"]) + roi_width,
+        int(destination_roi["y"]) + roi_height,
     )
-    composited_roi = Image.alpha_composite(roi, warped_patch)
-    output.paste(
-        composited_roi,
-        (
-            int(destination_roi["x"]),
-            int(destination_roi["y"]),
-        ),
-    )
+    base_roi = output.crop(box).convert("RGBA")
+    composited_roi = Image.alpha_composite(base_roi, warped_patch)
+    output.paste(composited_roi.convert(output.mode), box[:2])
     return output

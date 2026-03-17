@@ -19,13 +19,17 @@ export function useFaceLandmarksLoop({
   videoRef,
   landmarkerRef,
   enabled,
+  publishState = true,
 }: {
   videoRef: React.RefObject<HTMLVideoElement | null>
   landmarkerRef: React.RefObject<LandmarkerLike | null>
   enabled: boolean
+  publishState?: boolean
 }) {
   const rafRef = useRef<number | null>(null)
   const lastDetectRef = useRef(0)
+  const resultRef = useRef<DetectForVideoResult | null>(null)
+  const landmarksRef = useRef<NormalizedLandmark[] | null>(null)
 
   const [result, setResult] = useState<DetectForVideoResult | null>(null)
   const [landmarks, setLandmarks] = useState<NormalizedLandmark[] | null>(null)
@@ -51,9 +55,13 @@ export function useFaceLandmarksLoop({
 
       const res = landmarker.detectForVideo(video, now)
       const nextLandmarks = res.faceLandmarks?.[0] ?? null
+      resultRef.current = res
+      landmarksRef.current = nextLandmarks
 
-      setResult(res)
-      setLandmarks(nextLandmarks)
+      if (publishState) {
+        setResult(res)
+        setLandmarks(nextLandmarks)
+      }
     }
 
     rafRef.current = requestAnimationFrame(loop)
@@ -65,7 +73,7 @@ export function useFaceLandmarksLoop({
       }
       rafRef.current = null
     }
-  }, [enabled, videoRef, landmarkerRef])
+  }, [enabled, landmarkerRef, publishState, videoRef])
 
-  return { result, landmarks }
+  return { result, landmarks, resultRef, landmarksRef }
 }

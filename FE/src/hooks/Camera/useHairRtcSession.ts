@@ -11,7 +11,7 @@ import {
   type HairApplyV2Response,
   type InferenceAssetBundle,
 } from '@/lib/Camera/inference'
-import type { PoseAngles } from '@/lib/Camera/types'
+import type { FaceFrame, PoseAngles } from '@/lib/Camera/types'
 
 type UseHairRtcSessionArgs = {
   enabled?: boolean
@@ -19,6 +19,7 @@ type UseHairRtcSessionArgs = {
   pose?: PoseAngles | null
   landmarks?: NormalizedLandmark[] | null
   stream: MediaStream | null
+  frameRef?: React.RefObject<FaceFrame | null>
   videoRef: React.RefObject<HTMLVideoElement | null>
 }
 
@@ -30,14 +31,49 @@ type HairRtcMetrics = {
 }
 
 const RECONNECT_DELAY_MS = 800
-const ICE_GATHERING_TIMEOUT_MS = 8000
+const ICE_GATHERING_TIMEOUT_MS = 1500
 const MAX_INFLIGHT_FEATURES = 3
-const REMOTE_READY_MIN_PROCESSED = 3
-const REMOTE_READY_MIN_STABLE_ASSET = 2
+const REMOTE_READY_MIN_PROCESSED = 1
+const REMOTE_READY_MIN_STABLE_ASSET = 1
+const RTC_SENDER_MAX_BITRATE = 2_500_000
+const RTC_SENDER_MAX_FRAMERATE = 24
 
 type QueuedFeature = {
   payload: string
   seq: number
+}
+
+async function configureRtcSender(sender: RTCRtpSender) {
+  const track = sender.track
+  if (!track || track.kind !== 'video') {
+    return
+  }
+
+  try {
+    track.contentHint = 'motion'
+  } catch {}
+
+  const parameters = sender.getParameters()
+  const encodings =
+    parameters.encodings && parameters.encodings.length > 0
+      ? parameters.encodings.map((encoding) => ({ ...encoding }))
+      : [{}]
+
+  encodings[0] = {
+    ...encodings[0],
+    maxBitrate: RTC_SENDER_MAX_BITRATE,
+    maxFramerate: RTC_SENDER_MAX_FRAMERATE,
+    scaleResolutionDownBy: 1,
+  }
+
+  try {
+    await sender.setParameters({
+      ...parameters,
+      encodings,
+    })
+  } catch (error) {
+    console.warn('RTC sender parameter update failed:', error)
+  }
 }
 
 function waitForIceGatheringComplete(peerConnection: RTCPeerConnection) {
@@ -86,6 +122,7 @@ export function useHairRtcSession({
   pose,
   landmarks,
   stream,
+  frameRef,
   videoRef,
 }: UseHairRtcSessionArgs) {
   const deviceIdRef = useRef<string>(getOrCreateDeviceId())
@@ -98,6 +135,7 @@ export function useHairRtcSession({
   const reconnectTimerRef = useRef<number | null>(null)
   const processedTimeoutRef = useRef<number | null>(null)
   const sequenceRef = useRef(0)
+  const lastSubmittedFrameTsRef = useRef(0)
   const sentAtBySeqRef = useRef(new Map<number, number>())
   const lastProcessedAtRef = useRef<number | null>(null)
   const processedCountRef = useRef(0)
@@ -171,6 +209,7 @@ export function useHairRtcSession({
   const resetMetrics = useCallback(() => {
     inflightSeqsRef.current = []
     pendingFeatureRef.current = null
+    lastSubmittedFrameTsRef.current = 0
     sentAtBySeqRef.current.clear()
     lastProcessedAtRef.current = null
     processedCountRef.current = 0
@@ -203,25 +242,6 @@ export function useHairRtcSession({
     [clearReconnect, resetMetrics, teardownConnection],
   )
 
-  const sendQueuedFeature = useCallback(
-    (queuedFeature: QueuedFeature) => {
-      const dataChannel = dataChannelRef.current
-      if (!dataChannel || dataChannel.readyState !== 'open') {
-        return false
-      }
-
-      dataChannel.send(queuedFeature.payload)
-      inflightSeqsRef.current = [
-        ...inflightSeqsRef.current,
-        queuedFeature.seq,
-      ].slice(-MAX_INFLIGHT_FEATURES)
-      sentAtBySeqRef.current.set(queuedFeature.seq, performance.now())
-      armProcessedTimeout()
-      return true
-    },
-    [armProcessedTimeout],
-  )
-
   const scheduleReconnect = useCallback(
     (reason: string) => {
       if (
@@ -252,6 +272,93 @@ export function useHairRtcSession({
       scheduleReconnect('processed timeout')
     }, timeoutMs)
   }, [clearProcessedTimeout, scheduleReconnect])
+
+  const sendQueuedFeature = useCallback(
+    (queuedFeature: QueuedFeature) => {
+      const dataChannel = dataChannelRef.current
+      if (!dataChannel || dataChannel.readyState !== 'open') {
+        return false
+      }
+
+      dataChannel.send(queuedFeature.payload)
+      inflightSeqsRef.current = [
+        ...inflightSeqsRef.current,
+        queuedFeature.seq,
+      ].slice(-MAX_INFLIGHT_FEATURES)
+      sentAtBySeqRef.current.set(queuedFeature.seq, performance.now())
+      armProcessedTimeout()
+      return true
+    },
+    [armProcessedTimeout],
+  )
+
+  const queueLatestFeature = useCallback(() => {
+    if (!enabled || !hairId || hairId <= 0) {
+      return
+    }
+
+    const session = sessionRef.current
+    const dataChannel = dataChannelRef.current
+    if (!session || !dataChannel || dataChannel.readyState !== 'open') {
+      return
+    }
+
+    const trackedFrame = frameRef?.current
+    if (trackedFrame && !trackedFrame.faceFound) {
+      return
+    }
+
+    const nextPose = trackedFrame?.pose ?? pose ?? null
+    const nextLandmarks =
+      trackedFrame && trackedFrame.landmarks.length > 0
+        ? trackedFrame.landmarks
+        : landmarks ?? null
+    const videoWidth = trackedFrame?.videoW ?? videoRef.current?.videoWidth ?? 0
+    const videoHeight = trackedFrame?.videoH ?? videoRef.current?.videoHeight ?? 0
+
+    if (
+      !nextPose ||
+      !nextLandmarks ||
+      nextLandmarks.length === 0 ||
+      videoWidth <= 0 ||
+      videoHeight <= 0
+    ) {
+      return
+    }
+
+    const frameToken = trackedFrame?.t ?? 0
+    if (frameToken > 0 && frameToken <= lastSubmittedFrameTsRef.current) {
+      return
+    }
+
+    sequenceRef.current += 1
+    const feature = buildInferenceFeatureMessage({
+      applySessionId: session.applySessionId,
+      hairId,
+      featureSchemaVersion: session.featureSchemaVersion,
+      transformVersion: session.transformVersion,
+      videoWidth,
+      videoHeight,
+      landmarks: nextLandmarks,
+      pose: nextPose,
+      seq: sequenceRef.current,
+    })
+    const queuedFeature = {
+      payload: JSON.stringify(feature),
+      seq: feature.seq,
+    } satisfies QueuedFeature
+
+    if (frameToken > 0) {
+      lastSubmittedFrameTsRef.current = frameToken
+    }
+
+    if (inflightSeqsRef.current.length >= MAX_INFLIGHT_FEATURES) {
+      pendingFeatureRef.current = queuedFeature
+      return
+    }
+
+    void sendQueuedFeature(queuedFeature)
+  }, [enabled, frameRef, hairId, landmarks, pose, sendQueuedFeature, videoRef])
 
   const openSession = useCallback(
     async (nextHairId: number, localStream: MediaStream) => {
@@ -429,7 +536,8 @@ export function useHairRtcSession({
         })
 
         for (const track of videoTracks) {
-          peerConnection.addTrack(track, localStream)
+          const sender = peerConnection.addTrack(track, localStream)
+          void configureRtcSender(sender)
         }
 
         const offer = await peerConnection.createOffer()
@@ -474,6 +582,30 @@ export function useHairRtcSession({
   }, [enabled, hairId, openSession, reconnectVersion, resetRuntime, stream])
 
   useEffect(() => {
+    if (!frameRef || !enabled || !hairId || hairId <= 0) {
+      return
+    }
+
+    let rafId: number | null = null
+
+    const loop = () => {
+      rafId = window.requestAnimationFrame(loop)
+      queueLatestFeature()
+    }
+
+    rafId = window.requestAnimationFrame(loop)
+
+    return () => {
+      if (rafId != null) {
+        window.cancelAnimationFrame(rafId)
+      }
+    }
+  }, [enabled, frameRef, hairId, queueLatestFeature])
+
+  useEffect(() => {
+    if (frameRef) {
+      return
+    }
     if (!enabled || !hairId || hairId <= 0) {
       return
     }
@@ -492,30 +624,8 @@ export function useHairRtcSession({
       return
     }
 
-    sequenceRef.current += 1
-    const feature = buildInferenceFeatureMessage({
-      applySessionId: session.applySessionId,
-      hairId,
-      featureSchemaVersion: session.featureSchemaVersion,
-      transformVersion: session.transformVersion,
-      videoWidth: video.videoWidth,
-      videoHeight: video.videoHeight,
-      landmarks,
-      pose,
-      seq: sequenceRef.current,
-    })
-    const queuedFeature = {
-      payload: JSON.stringify(feature),
-      seq: feature.seq,
-    } satisfies QueuedFeature
-
-    if (inflightSeqsRef.current.length >= MAX_INFLIGHT_FEATURES) {
-      pendingFeatureRef.current = queuedFeature
-      return
-    }
-
-    void sendQueuedFeature(queuedFeature)
-  }, [enabled, hairId, landmarks, pose, sendQueuedFeature, videoRef])
+    queueLatestFeature()
+  }, [enabled, frameRef, hairId, landmarks, pose, queueLatestFeature, videoRef])
 
   return {
     isConnected:

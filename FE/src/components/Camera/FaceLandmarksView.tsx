@@ -1,7 +1,7 @@
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 import { useRouter } from '@tanstack/react-router'
 import { Settings, X } from 'lucide-react'
-import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { HairSelector } from '@/components/Camera/HairSelector'
 import { ApplyStyleModal } from '@/components/Camera/Modal'
@@ -17,7 +17,7 @@ type Pose = {
   roll: number
 }
 
-const REMOTE_DISPLAY_SETTLE_MS = 180
+const REMOTE_DISPLAY_SETTLE_MS = 40
 
 type FaceLandmarksViewProps = {
   stream: MediaStream | null
@@ -50,6 +50,20 @@ export default function FaceLandmarksView({
   const [remoteDisplayReady, setRemoteDisplayReady] = useState(false)
 
   const displayHairId = pendingHairId ?? selectedHairId
+  const quickHairItems = useMemo(() => {
+    const candidates = hairItems.filter((item) => item.id > 0).slice(0, 4)
+    if (candidates.length > 0) {
+      return candidates
+    }
+    return [
+      {
+        id: 1,
+        img: '/hair/hair.png',
+        thumb: '/hair/hair.png',
+        label: 'Hair 1',
+      },
+    ]
+  }, [hairItems])
 
   const hairInference = useHairInferenceSession({
     enabled: transport === 'ws' && displayHairId > 0,
@@ -207,6 +221,12 @@ export default function FaceLandmarksView({
     })
   }, [displayHairId, hairItems, hasRemoteVideo, overlayCanvasRef, videoRef])
 
+  const handleQuickHairSelect = useCallback((hairId: number) => {
+    setPendingHairId(null)
+    setModalOpen(false)
+    setSelectedHairId(hairId)
+  }, [])
+
   const handleClose = useCallback(() => {
     void router.navigate({ to: '/main' })
   }, [router])
@@ -327,6 +347,34 @@ export default function FaceLandmarksView({
                     : `${Math.round(overlayMetrics.bundleLoadMs)}ms`
                   : 'loading'
               }`}
+        </div>
+
+        <div className="absolute top-[8rem] right-2 z-20 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => handleQuickHairSelect(0)}
+            className={`rounded px-3 py-1 text-xs ${
+              selectedHairId === 0
+                ? 'bg-pink-500 text-white'
+                : 'bg-black/60 text-white'
+            }`}
+          >
+            해제
+          </button>
+          {quickHairItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => handleQuickHairSelect(item.id)}
+              className={`rounded px-3 py-1 text-xs ${
+                selectedHairId === item.id
+                  ? 'bg-pink-500 text-white'
+                  : 'bg-black/60 text-white'
+              }`}
+            >
+              hair {item.id}
+            </button>
+          ))}
         </div>
 
         <HairSelector

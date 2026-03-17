@@ -38,6 +38,21 @@ def _env_json_array(name: str, default: str) -> tuple[dict[str, object], ...]:
     return tuple(item for item in payload if isinstance(item, dict))
 
 
+def _resolve_model_path(env_name: str, default_path: str, local_fallback: Path) -> Path:
+    configured = os.getenv(env_name)
+    if configured:
+        return Path(configured).expanduser().resolve()
+
+    default_resolved = Path(default_path).expanduser().resolve()
+    if default_resolved.is_file():
+        return default_resolved
+
+    if local_fallback.is_file():
+        return local_fallback.resolve()
+
+    return default_resolved
+
+
 @dataclass(frozen=True)
 class Settings:
     app_name: str
@@ -49,14 +64,10 @@ class Settings:
     node_id: str
     feature_schema_version: int
     transform_version: str
-    ws_protocol: str
     static_root: Path
     face_landmarker_model_path: Path
     hair_segmenter_model_path: Path
     static_base_url: str
-    processed_timeout_ms: int
-    heartbeat_interval_ms: int
-    idle_ttl_ms: int
     hysteresis_margin: float
     min_hold_ms: int
     redis_url: str | None
@@ -65,10 +76,11 @@ class Settings:
     http_test_enabled: bool
     http_test_default_dataset_code: str
     http_test_jpeg_quality: int
-    bald_preprocess_enabled: bool
 
     @classmethod
     def from_env(cls) -> "Settings":
+        project_root = Path(__file__).resolve().parents[1]
+        local_models_dir = project_root / "models"
         redis_url = os.getenv("INFERENCE_REDIS_URL")
         if not redis_url:
             redis_host = os.getenv("REDIS_HOST")
@@ -99,24 +111,18 @@ class Settings:
             node_id=_env_str("INFERENCE_NODE_ID", "infer-a-01"),
             feature_schema_version=_env_int("INFERENCE_FEATURE_SCHEMA_VERSION", 2),
             transform_version=_env_str("INFERENCE_TRANSFORM_VERSION", "affine_v1"),
-            ws_protocol=_env_str("INFERENCE_WS_PROTOCOL", "hairapply.v2"),
             static_root=Path(_env_str("INFERENCE_STATIC_ROOT", "/opt/be-static")).resolve(),
-            face_landmarker_model_path=Path(
-                _env_str(
-                    "INFERENCE_FACE_LANDMARKER_MODEL_PATH",
-                    "/opt/inference-models/face_landmarker.task",
-                )
-            ).resolve(),
-            hair_segmenter_model_path=Path(
-                _env_str(
-                    "INFERENCE_HAIR_SEGMENTER_MODEL_PATH",
-                    "/opt/inference-models/hair_segmenter.tflite",
-                )
-            ).resolve(),
+            face_landmarker_model_path=_resolve_model_path(
+                "INFERENCE_FACE_LANDMARKER_MODEL_PATH",
+                "/opt/inference-models/face_landmarker.task",
+                local_models_dir / "face_landmarker.task",
+            ),
+            hair_segmenter_model_path=_resolve_model_path(
+                "INFERENCE_HAIR_SEGMENTER_MODEL_PATH",
+                "/opt/inference-models/hair_segmenter.tflite",
+                local_models_dir / "hair_segmenter.tflite",
+            ),
             static_base_url=_env_str("INFERENCE_STATIC_BASE_URL", "/static").rstrip("/"),
-            processed_timeout_ms=_env_int("INFERENCE_PROCESSED_TIMEOUT_MS", 250),
-            heartbeat_interval_ms=_env_int("INFERENCE_HEARTBEAT_INTERVAL_MS", 5000),
-            idle_ttl_ms=_env_int("INFERENCE_IDLE_TTL_MS", 30000),
             hysteresis_margin=float(_env_str("INFERENCE_HYSTERESIS_MARGIN", "4.0")),
             min_hold_ms=_env_int("INFERENCE_MIN_HOLD_MS", 400),
             redis_url=redis_url,
@@ -128,5 +134,4 @@ class Settings:
             http_test_enabled=_env_bool("INFERENCE_HTTP_TEST_ENABLED", False),
             http_test_default_dataset_code=_env_str("INFERENCE_HTTP_TEST_DEFAULT_DATASET_CODE", "0001"),
             http_test_jpeg_quality=_env_int("INFERENCE_HTTP_TEST_JPEG_QUALITY", 88),
-            bald_preprocess_enabled=_env_bool("INFERENCE_BALD_PREPROCESS_ENABLED", False),
         )

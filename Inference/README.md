@@ -1,6 +1,6 @@
 # Inference Service
 
-`Inference/`는 헤어 apply의 feature-only WebSocket inference 서비스를 담는다.
+`Inference/`는 헤어 apply의 WebRTC 중심 inference 서비스를 담는다.
   
 새로 합류한 인프런스 서버 담당자나 GPU 서버 분리 작업자는 먼저 [`GPU_SERVER_AGENT_GUIDE.md`](/home/yusin/S14P21M101/Inference/GPU_SERVER_AGENT_GUIDE.md) 를 읽는 것을 권장한다.
 
@@ -32,7 +32,7 @@
 ```bash
 cd Inference
 uv sync --dev --frozen
-uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8090 --ws-ping-interval 15 --ws-ping-timeout 10
+uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8090
 ```
 
 HTTP 프레임 테스트까지 켜서 실행:
@@ -40,9 +40,10 @@ HTTP 프레임 테스트까지 켜서 실행:
 ```bash
 cd Inference
 INFERENCE_STATIC_ROOT=/home/ubuntu/S14P21M101/static \
-INFERENCE_FACE_LANDMARKER_MODEL_PATH=/home/ubuntu/S14P21M101/FE/public/models/face_landmarker.task \
+INFERENCE_FACE_LANDMARKER_MODEL_PATH=/home/ubuntu/S14P21M101/Inference/models/face_landmarker.task \
+INFERENCE_HAIR_SEGMENTER_MODEL_PATH=/home/ubuntu/S14P21M101/Inference/models/hair_segmenter.tflite \
 INFERENCE_HTTP_TEST_ENABLED=true \
-uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8090 --ws-ping-interval 15 --ws-ping-timeout 10
+uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8090
 ```
 
 HTTP health 확인:

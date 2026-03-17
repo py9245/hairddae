@@ -20,4 +20,4 @@ COPY app ./app
 
 EXPOSE 8090
 
-CMD ["uv", "run", "uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8090", "--ws-ping-interval", "15", "--ws-ping-timeout", "10"]
+CMD ["uv", "run", "uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8090"]

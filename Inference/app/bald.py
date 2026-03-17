@@ -19,6 +19,7 @@ LEFT_CHEEK = 234
 RIGHT_CHEEK = 454
 LEFT_EYEBROW = [70, 63, 105, 66, 107, 55, 65, 52, 53, 46]
 RIGHT_EYEBROW = [336, 296, 334, 293, 300, 285, 295, 282, 283, 276]
+HAIR_CATEGORY_INDEX = 1
 
 
 def _polygon_mask(indices: list[int], landmarks_px: np.ndarray, width: int, height: int) -> np.ndarray:
@@ -30,9 +31,134 @@ def _polygon_mask(indices: list[int], landmarks_px: np.ndarray, width: int, heig
 
 
 def _refine_mask(mask: np.ndarray) -> np.ndarray:
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8), iterations=1)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8), iterations=1)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8), iterations=1)
-    return cv2.dilate(mask, np.ones((9, 9), np.uint8), iterations=2)
+    return cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=1)
+
+
+def _keep_top_connected_hair(mask: np.ndarray, forehead_y: int) -> np.ndarray:
+    binary = (mask > 0).astype(np.uint8)
+    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
+    if num_labels <= 1:
+        return mask
+
+    best_label = 0
+    best_score = -1e18
+    for label in range(1, num_labels):
+        _, y, _, _, area = stats[label]
+        if area < 100:
+            continue
+        top_bonus = max(forehead_y - y, 0) * 12
+        score = float(area) + top_bonus - max(y - forehead_y, 0) * 4
+        if score > best_score:
+            best_score = score
+            best_label = label
+
+    if best_label == 0:
+        return mask
+    return np.where(labels == best_label, mask, 0).astype(np.uint8)
+
+
+def _build_face_lower_protect_mask(landmarks_px: np.ndarray, width: int, height: int) -> np.ndarray:
+    left_temple = landmarks_px[LEFT_TEMPLE]
+    right_temple = landmarks_px[RIGHT_TEMPLE]
+    chin = landmarks_px[CHIN]
+    nose = landmarks_px[NOSE_TIP]
+    left_cheek = landmarks_px[LEFT_CHEEK]
+    right_cheek = landmarks_px[RIGHT_CHEEK]
+
+    face_width = max(abs(int(right_temple[0]) - int(left_temple[0])), 1)
+    face_height = max(abs(int(chin[1]) - int(nose[1])), 1)
+    center = (
+        int((int(left_cheek[0]) + int(right_cheek[0])) * 0.5),
+        int(int(nose[1]) + face_height * 0.72),
+    )
+    axes = (
+        max(int(face_width * 0.62), 12),
+        max(int(face_height * 0.42), 10),
+    )
+    mask = np.zeros((height, width), dtype=np.uint8)
+    cv2.ellipse(mask, center, axes, 0, 0, 360, 255, -1)
+
+    jaw_points = np.array([left_cheek, chin, right_cheek], dtype=np.int32)
+    cv2.fillConvexPoly(mask, jaw_points, 255)
+
+    x1 = max(min(int(left_cheek[0]), int(left_temple[0])) - int(face_width * 0.08), 0)
+    x2 = min(max(int(right_cheek[0]), int(right_temple[0])) + int(face_width * 0.08), width - 1)
+    y1 = max(int(int(nose[1]) + (int(chin[1]) - int(nose[1])) * 0.18), 0)
+    y2 = min(height - 1, int(chin[1]) + int((int(chin[1]) - int(nose[1])) * 0.22))
+    cv2.rectangle(mask, (x1, y1), (x2, y2), 255, -1)
+    return cv2.GaussianBlur(mask, (71, 71), 0).astype(np.float32) / 255.0
+
+
+def _build_neck_side_protect_mask(landmarks_px: np.ndarray, width: int, height: int) -> np.ndarray:
+    left_temple = landmarks_px[LEFT_TEMPLE]
+    right_temple = landmarks_px[RIGHT_TEMPLE]
+    chin = landmarks_px[CHIN]
+    left_cheek = landmarks_px[LEFT_CHEEK]
+    right_cheek = landmarks_px[RIGHT_CHEEK]
+
+    face_width = max(abs(int(right_temple[0]) - int(left_temple[0])), 1)
+    face_height = max(abs(int(chin[1]) - min(int(left_temple[1]), int(right_temple[1]))), 1)
+    mask = np.zeros((height, width), dtype=np.uint8)
+
+    y_top = max(int(chin[1] - face_height * 0.08), 0)
+    y_bottom = min(int(chin[1] + face_height * 0.42), height - 1)
+
+    left_poly = np.array(
+        [
+            [max(int(left_cheek[0] - face_width * 0.14), 0), y_top],
+            [max(int(left_cheek[0] - face_width * 0.34), 0), min(int(chin[1] + face_height * 0.10), height - 1)],
+            [max(int(left_cheek[0] - face_width * 0.28), 0), y_bottom],
+            [max(int(left_cheek[0] - face_width * 0.06), 0), y_bottom],
+            [max(int(left_cheek[0] + face_width * 0.04), 0), min(int(chin[1] + face_height * 0.06), height - 1)],
+        ],
+        dtype=np.int32,
+    )
+    right_poly = np.array(
+        [
+            [min(int(right_cheek[0] + face_width * 0.14), width - 1), y_top],
+            [min(int(right_cheek[0] + face_width * 0.34), width - 1), min(int(chin[1] + face_height * 0.10), height - 1)],
+            [min(int(right_cheek[0] + face_width * 0.28), width - 1), y_bottom],
+            [min(int(right_cheek[0] + face_width * 0.06), width - 1), y_bottom],
+            [min(int(right_cheek[0] - face_width * 0.04), width - 1), min(int(chin[1] + face_height * 0.06), height - 1)],
+        ],
+        dtype=np.int32,
+    )
+
+    cv2.fillConvexPoly(mask, left_poly, 255)
+    cv2.fillConvexPoly(mask, right_poly, 255)
+    return cv2.GaussianBlur(mask, (51, 51), 0).astype(np.float32) / 255.0
+
+
+def _extract_hair_mask(
+    result: object,
+    height: int,
+    width: int,
+) -> tuple[np.ndarray, np.ndarray | None]:
+    confidence_masks = getattr(result, "confidence_masks", None)
+    hair_confidence: np.ndarray | None = None
+
+    if confidence_masks is not None and len(confidence_masks) > HAIR_CATEGORY_INDEX:
+        hair_confidence = confidence_masks[HAIR_CATEGORY_INDEX].numpy_view()
+        if hair_confidence.ndim == 3 and hair_confidence.shape[-1] == 1:
+            hair_confidence = hair_confidence[..., 0]
+        if hair_confidence.shape[:2] != (height, width):
+            hair_confidence = cv2.resize(
+                hair_confidence.astype(np.float32),
+                (width, height),
+                interpolation=cv2.INTER_LINEAR,
+            )
+        hair_mask = (hair_confidence > 0.55).astype(np.uint8) * 255
+        return hair_mask, hair_confidence
+
+    category_mask = result.category_mask.numpy_view()  # type: ignore[attr-defined]
+    if category_mask.ndim == 3 and category_mask.shape[-1] == 1:
+        category_mask = category_mask[..., 0]
+    hair_mask = (category_mask == HAIR_CATEGORY_INDEX).astype(np.uint8) * 255
+    if hair_mask.shape[:2] != (height, width):
+        hair_mask = cv2.resize(hair_mask, (width, height), interpolation=cv2.INTER_NEAREST)
+    return hair_mask, None
 
 
 def _sample_skin_color(
@@ -81,69 +207,6 @@ def _sample_skin_color(
     return np.clip(np.percentile(merged, 52, axis=0), 0, 255).astype(np.float32)
 
 
-def _keep_top_connected_hair(mask: np.ndarray, forehead_y: int) -> np.ndarray:
-    binary = (mask > 0).astype(np.uint8)
-    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
-    if num_labels <= 1:
-        return mask
-
-    best_label = 0
-    best_score = -1e18
-    for label in range(1, num_labels):
-        x, y, _, _, area = stats[label]
-        if area < 100:
-            continue
-        top_bonus = max(forehead_y - y, 0) * 12
-        score = float(area) + top_bonus - max(y - forehead_y, 0) * 4
-        if score > best_score:
-            best_score = score
-            best_label = label
-
-    if best_label == 0:
-        return mask
-    return np.where(labels == best_label, mask, 0).astype(np.uint8)
-
-
-def _build_neck_side_protect_mask(landmarks_px: np.ndarray, width: int, height: int) -> np.ndarray:
-    left_temple = landmarks_px[LEFT_TEMPLE]
-    right_temple = landmarks_px[RIGHT_TEMPLE]
-    chin = landmarks_px[CHIN]
-    left_cheek = landmarks_px[LEFT_CHEEK]
-    right_cheek = landmarks_px[RIGHT_CHEEK]
-
-    face_width = max(abs(int(right_temple[0]) - int(left_temple[0])), 1)
-    face_height = max(abs(int(chin[1]) - min(int(left_temple[1]), int(right_temple[1]))), 1)
-    mask = np.zeros((height, width), dtype=np.uint8)
-
-    y_top = max(int(chin[1] - face_height * 0.08), 0)
-    y_bottom = min(int(chin[1] + face_height * 0.42), height - 1)
-
-    left_poly = np.array(
-        [
-            [max(int(left_cheek[0] - face_width * 0.14), 0), y_top],
-            [max(int(left_cheek[0] - face_width * 0.34), 0), min(int(chin[1] + face_height * 0.10), height - 1)],
-            [max(int(left_cheek[0] - face_width * 0.28), 0), y_bottom],
-            [max(int(left_cheek[0] - face_width * 0.06), 0), y_bottom],
-            [max(int(left_cheek[0] + face_width * 0.04), 0), min(int(chin[1] + face_height * 0.06), height - 1)],
-        ],
-        dtype=np.int32,
-    )
-    right_poly = np.array(
-        [
-            [min(int(right_cheek[0] + face_width * 0.14), width - 1), y_top],
-            [min(int(right_cheek[0] + face_width * 0.34), width - 1), min(int(chin[1] + face_height * 0.10), height - 1)],
-            [min(int(right_cheek[0] + face_width * 0.28), width - 1), y_bottom],
-            [min(int(right_cheek[0] + face_width * 0.06), width - 1), y_bottom],
-            [min(int(right_cheek[0] - face_width * 0.04), width - 1), min(int(chin[1] + face_height * 0.06), height - 1)],
-        ],
-        dtype=np.int32,
-    )
-
-    cv2.fillConvexPoly(mask, left_poly, 255)
-    cv2.fillConvexPoly(mask, right_poly, 255)
-    return cv2.GaussianBlur(mask, (51, 51), 0).astype(np.float32) / 255.0
-
-
 def _inpaint_mask_crop(image_rgb: np.ndarray, mask: np.ndarray, radius: int = 5, pad: int = 24) -> np.ndarray:
     ys, xs = np.where(mask > 0)
     if len(xs) == 0:
@@ -189,11 +252,14 @@ def _paint_segmented_hair_as_skin(
         ring_color = np.percentile(ring_pixels, 55, axis=0).astype(np.float32)
     else:
         ring_color = cleaned.reshape(-1, 3).mean(axis=0).astype(np.float32)
-
     ring_fill = np.full_like(cleaned, ring_color, dtype=np.float32)
     ring_fill = ring_fill * 0.72 + cleaned * 0.28
     fill = skin_fill * (1.0 - edge_alpha[..., None]) + ring_fill * edge_alpha[..., None]
-    output = image_rgb.astype(np.float32) * (1.0 - alpha[..., None]) + fill * alpha[..., None]
+
+    output = (
+        image_rgb.astype(np.float32) * (1.0 - alpha[..., None])
+        + fill * alpha[..., None]
+    )
     return np.clip(output, 0, 255).astype(np.uint8)
 
 
@@ -204,7 +270,7 @@ class BaldPreprocessor:
             base_options=python.BaseOptions(model_asset_path=str(resolved_model_path)),
             running_mode=vision.RunningMode.IMAGE,
             output_category_mask=True,
-            output_confidence_masks=False,
+            output_confidence_masks=True,
         )
         self._segmenter = vision.ImageSegmenter.create_from_options(options)
         self._lock = Lock()
@@ -215,8 +281,6 @@ class BaldPreprocessor:
     def apply(self, frame_rgb: np.ndarray, landmarks_px: np.ndarray) -> np.ndarray:
         if frame_rgb.ndim != 3 or frame_rgb.shape[2] != 3:
             return frame_rgb
-        if len(landmarks_px) <= RIGHT_EYEBROW[-1]:
-            return frame_rgb
 
         if not frame_rgb.flags["C_CONTIGUOUS"]:
             frame_rgb = np.ascontiguousarray(frame_rgb)
@@ -226,38 +290,31 @@ class BaldPreprocessor:
         with self._lock:
             result = self._segmenter.segment(mp_image)
 
-        category_mask = result.category_mask.numpy_view()
-        if category_mask.ndim == 3 and category_mask.shape[-1] == 1:
-            category_mask = category_mask[..., 0]
-        hair_mask = (category_mask > 0).astype(np.uint8) * 255
-        if hair_mask.shape[:2] != (height, width):
-            hair_mask = cv2.resize(hair_mask, (width, height), interpolation=cv2.INTER_NEAREST)
+        hair_mask, hair_confidence = _extract_hair_mask(result, height, width)
         hair_mask = _refine_mask(hair_mask)
 
-        eyebrow_mask = _polygon_mask(LEFT_EYEBROW, landmarks_px, width, height)
-        eyebrow_mask = cv2.bitwise_or(eyebrow_mask, _polygon_mask(RIGHT_EYEBROW, landmarks_px, width, height))
-        eyebrow_guard = cv2.dilate(eyebrow_mask, np.ones((15, 15), np.uint8), iterations=1)
+        target_mask = hair_mask
+        lower_face_protect: np.ndarray | None = None
+        if landmarks_px.shape[0] > RIGHT_CHEEK:
+            eyebrow_mask = _polygon_mask(LEFT_EYEBROW, landmarks_px, width, height)
+            eyebrow_mask = cv2.bitwise_or(eyebrow_mask, _polygon_mask(RIGHT_EYEBROW, landmarks_px, width, height))
+            eyebrow_guard = cv2.dilate(eyebrow_mask, np.ones((13, 13), np.uint8), 1)
 
-        forehead = landmarks_px[FOREHEAD]
-        left_temple = landmarks_px[LEFT_TEMPLE]
-        right_temple = landmarks_px[RIGHT_TEMPLE]
-        chin = landmarks_px[CHIN]
-        nose = landmarks_px[NOSE_TIP]
-        left_cheek = landmarks_px[LEFT_CHEEK]
-        right_cheek = landmarks_px[RIGHT_CHEEK]
+            target_mask = cv2.bitwise_and(target_mask, cv2.bitwise_not(eyebrow_guard))
+            lower_face_protect = _build_face_lower_protect_mask(landmarks_px, width, height)
+            target_mask = np.where(lower_face_protect > 0.08, 0, target_mask).astype(np.uint8)
+            neck_side_protect = _build_neck_side_protect_mask(landmarks_px, width, height)
+            target_mask = np.where(neck_side_protect > 0.10, 0, target_mask).astype(np.uint8)
+            target_mask = _keep_top_connected_hair(target_mask, int(landmarks_px[FOREHEAD][1]))
+            forehead_color = _sample_skin_color(
+                frame_rgb,
+                nose=landmarks_px[NOSE_TIP],
+                left_cheek=landmarks_px[LEFT_CHEEK],
+                right_cheek=landmarks_px[RIGHT_CHEEK],
+                left_temple=landmarks_px[LEFT_TEMPLE],
+                right_temple=landmarks_px[RIGHT_TEMPLE],
+                chin=landmarks_px[CHIN],
+            )
+            return _paint_segmented_hair_as_skin(frame_rgb, target_mask, forehead_color)
 
-        target_mask = cv2.bitwise_and(hair_mask, cv2.bitwise_not(eyebrow_guard))
-        neck_side_protect = _build_neck_side_protect_mask(landmarks_px, width, height)
-        target_mask = np.where(neck_side_protect > 0.10, 0, target_mask).astype(np.uint8)
-        target_mask = _keep_top_connected_hair(target_mask, int(forehead[1]))
-
-        forehead_color = _sample_skin_color(
-            frame_rgb,
-            nose=nose,
-            left_cheek=left_cheek,
-            right_cheek=right_cheek,
-            left_temple=left_temple,
-            right_temple=right_temple,
-            chin=chin,
-        )
-        return _paint_segmented_hair_as_skin(frame_rgb, target_mask, forehead_color)
+        return frame_rgb

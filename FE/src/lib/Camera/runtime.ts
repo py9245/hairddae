@@ -3,7 +3,7 @@ const MIN_CAMERA_TARGET_FPS = 15
 const MAX_CAMERA_TARGET_FPS = 60
 const DEFAULT_RTC_CAPTURE_WIDTH = 640
 const DEFAULT_RTC_CAPTURE_HEIGHT = 360
-const DEFAULT_RTC_CAPTURE_FPS = 24
+const DEFAULT_RTC_CAPTURE_FPS = 10
 
 function resolveCameraTargetFps(rawValue: string | undefined) {
   const parsed = Number.parseInt(rawValue ?? '', 10)
@@ -45,5 +45,4 @@ export const RTC_CAPTURE_FPS = resolveCameraTargetFps(
   import.meta.env.VITE_RTC_CAPTURE_FPS ?? String(DEFAULT_RTC_CAPTURE_FPS),
 )
 
-export const HAIR_TRANSPORT =
-  import.meta.env.VITE_HAIR_TRANSPORT === 'ws' ? 'ws' : 'rtc'
+export const HAIR_TRANSPORT = 'rtc'

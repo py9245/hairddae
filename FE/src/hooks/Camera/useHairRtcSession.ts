@@ -27,8 +27,8 @@ const RECONNECT_DELAY_MS = 800
 const ICE_GATHERING_TIMEOUT_MS = 1500
 const REMOTE_READY_MIN_PROCESSED = 1
 const REMOTE_READY_MIN_STABLE_ASSET = 1
-const RTC_SENDER_MAX_BITRATE = 2_500_000
-const RTC_SENDER_MAX_FRAMERATE = 24
+const RTC_SENDER_MAX_BITRATE = 1_800_000
+const RTC_SENDER_MAX_FRAMERATE = 10
 
 async function configureRtcSender(sender: RTCRtpSender) {
   const track = sender.track

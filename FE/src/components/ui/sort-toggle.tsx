@@ -3,7 +3,7 @@ import { cn } from '@/lib/utils'
 type SortOption<T extends string> = { value: T; label: string }
 
 type SortToggleProps<T extends string> = {
-  options: [SortOption<T>, SortOption<T>]
+  options: readonly [SortOption<T>, SortOption<T>]
   value: T
   onChange: (value: T) => void
   className?: string

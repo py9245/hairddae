@@ -2,7 +2,12 @@ import { cn } from '@/lib/utils'
 
 export function StyleAdsCardSkeleton({ className }: { className?: string }) {
   return (
-    <article className={cn('relative isolate w-[360px] overflow-hidden rounded-lg bg-white shadow-[0_0.4px_4px_1px_rgba(0,0,0,0.25)]', className)}>
+    <article
+      className={cn(
+        'relative isolate w-[360px] overflow-hidden rounded-lg bg-white shadow-[0_0.4px_4px_1px_rgba(0,0,0,0.25)]',
+        className,
+      )}
+    >
       <div className="h-[320px] w-full animate-pulse bg-gray-200" />
       <div className="absolute bottom-0 left-0 right-0 rounded-b-lg bg-gradient-to-t from-white/95 via-white/70 to-transparent px-3 pb-3 pt-10">
         <div className="flex items-start justify-between">
@@ -27,12 +32,25 @@ type StyleAdsCardProps = {
   onLikeToggle?: () => void
 }
 
-export function StyleAdsCard({ hairImgpath, hairName, hairSlug, liked = false, priority = false, className, onLikeToggle }: StyleAdsCardProps) {
+export function StyleAdsCard({
+  hairImgpath,
+  hairName,
+  hairSlug,
+  liked = false,
+  priority = false,
+  className,
+  onLikeToggle,
+}: StyleAdsCardProps) {
   const heartIconSrc = liked ? '/icon/heart-fill.svg' : '/icon/hair-empty.svg'
   const heartLabel = liked ? '찜 해제' : '찜하기'
 
   return (
-    <article className={cn('relative isolate w-[360px] overflow-hidden rounded-lg bg-white shadow-[0_0.4px_4px_1px_rgba(0,0,0,0.25)]', className)}>
+    <article
+      className={cn(
+        'relative isolate w-[360px] overflow-hidden rounded-lg bg-white shadow-[0_0.4px_4px_1px_rgba(0,0,0,0.25)]',
+        className,
+      )}
+    >
       <img
         src={hairImgpath}
         alt={hairName}
@@ -61,7 +79,12 @@ export function StyleAdsCard({ hairImgpath, hairName, hairSlug, liked = false, p
             className="ml-2 flex size-[18px] shrink-0 items-center justify-center rounded-full bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20 focus-visible:ring-offset-2"
             onClick={onLikeToggle}
           >
-            <img src={heartIconSrc} alt="" aria-hidden="true" className="size-[18px] object-contain" />
+            <img
+              src={heartIconSrc}
+              alt=""
+              aria-hidden="true"
+              className="size-[18px] object-contain"
+            />
           </button>
         </div>
       </div>

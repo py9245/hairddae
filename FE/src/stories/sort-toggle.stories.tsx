@@ -16,6 +16,11 @@ const meta = {
     layout: 'centered',
   },
   tags: ['autodocs'],
+  args: {
+    options: SORT_OPTIONS,
+    value: 'popular',
+    onChange: () => {},
+  },
 } satisfies Meta<typeof SortToggle>
 
 export default meta
@@ -23,10 +28,15 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
-  render: () => {
-    const [value, setValue] = useState<SortValue>('popular')
+  args: {
+    value: 'popular',
+  },
+  render: (args) => {
+    const [value, setValue] = useState<SortValue>(args.value as SortValue)
+
     return (
       <SortToggle
+        {...args}
         options={SORT_OPTIONS}
         value={value}
         onChange={setValue}
@@ -36,10 +46,15 @@ export const Default: Story = {
 }
 
 export const Latest: Story = {
-  render: () => {
-    const [value, setValue] = useState<SortValue>('latest')
+  args: {
+    value: 'latest',
+  },
+  render: (args) => {
+    const [value, setValue] = useState<SortValue>(args.value as SortValue)
+
     return (
       <SortToggle
+        {...args}
         options={SORT_OPTIONS}
         value={value}
         onChange={setValue}

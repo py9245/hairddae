@@ -25,16 +25,32 @@ function TopButtonsDemo({
 const meta = {
   title: 'UI/Button/CameraBackButton',
   component: TopButtonsDemo,
+  tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
     docs: {
       description: {
-        component: '카메라 화면에서 메인 페이지로 돌아가는 뒤로가기 버튼입니다.',
+        component: `
+카메라 화면 상단에 위치하는 뒤로가기 버튼입니다.
+
+- 메인 페이지로 이동하는 액션에 사용됩니다.
+- 아이콘 버튼 형태로 제공됩니다.
+- 어두운 배경 위에서 사용하는 것을 기준으로 스타일링되어 있습니다.
+        `,
       },
     },
   },
   args: {
     onBack: fn(),
+  },
+  argTypes: {
+    onBack: {
+      description: '뒤로가기 버튼 클릭 시 실행되는 콜백 함수',
+      action: 'clicked',
+      table: {
+        type: { summary: '() => void' },
+      },
+    },
   },
 } satisfies Meta<typeof TopButtonsDemo>
 
@@ -43,5 +59,12 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
-  name: '메인 페이지 이동 버튼',
+  name: 'MoveMainPage',
+  parameters: {
+    docs: {
+      description: {
+        story: '기본 뒤로가기 버튼 상태입니다.',
+      },
+    },
+  },
 }

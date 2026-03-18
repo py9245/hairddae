@@ -178,7 +178,9 @@ export default function SignUp() {
                 hasError={!!errors.birthDate}
               />
               {errors.birthDate && (
-                <p className="mt-2 text-sm text-primary-300">{errors.birthDate}</p>
+                <p className="mt-2 text-sm text-primary-300">
+                  {errors.birthDate}
+                </p>
               )}
             </div>
 
@@ -215,7 +217,9 @@ export default function SignUp() {
             requiredText="[필수]"
           />
           {errors.agreed && (
-            <p className="text-center text-sm text-primary-300">{errors.agreed}</p>
+            <p className="text-center text-sm text-primary-300">
+              {errors.agreed}
+            </p>
           )}
 
           {signUpMutation.isError && (

@@ -13,7 +13,11 @@ type HairSelectorProps = {
   onFreezeChange?: (frozen: boolean) => void
 }
 
-function HairSelectorSkeletonItem({ selected = false }: { selected?: boolean }) {
+function HairSelectorSkeletonItem({
+  selected = false,
+}: {
+  selected?: boolean
+}) {
   return (
     <div className="flex w-24 shrink-0 flex-col items-center justify-start">
       <div

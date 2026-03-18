@@ -6,6 +6,7 @@ import {
   redirect,
 } from '@tanstack/react-router'
 import type { ReactElement } from 'react'
+import Adsense from '@/app/adsense'
 import Camera from '@/app/camera'
 import Login from '@/app/login'
 import SignUp from '@/app/sign-up'
@@ -89,23 +90,24 @@ function createProtectedRoute(
   return createRoute({
     getParentRoute: () => rootRoute,
     path,
-    // beforeLoad: ({ context, location }) => {
-    //   if (!context.auth.isAuthenticated()) {
-    //     throw redirect({
-    //       to: '/auth/login',
-    //       search: {
-    //         redirect: location.href,
-    //       },
-    //     })
-    //   }
-    // },
+    beforeLoad: ({ context, location }) => {
+      if (!context.auth.isAuthenticated()) {
+        throw redirect({
+          to: '/auth/login',
+          search: {
+            redirect: location.href,
+          },
+        })
+      }
+    },
     component,
   })
 }
 
 function RootLayout() {
   return (
-    <div className="app-frame-shell">
+    <div className="app-frame-shell flex items-center justify-center gap-10">
+      <Adsense />
       <div className="app-frame">
         <div className="app-frame-content">
           <Outlet />

@@ -15,7 +15,11 @@ export default function Adsense({ loading = false }: AdsenseProps) {
     if (loading) return
 
     try {
-      ;(window.adsbygoogle = window.adsbygoogle || []).push({})
+      if (!window.adsbygoogle) {
+        window.adsbygoogle = []
+      }
+
+      window.adsbygoogle.push({})
     } catch (e) {
       console.error('AdSense error:', e)
     }
@@ -33,7 +37,7 @@ export default function Adsense({ loading = false }: AdsenseProps) {
             </div>
           ) : (
             <div className="w-full max-w-[336px]">
-              <ins  
+              <ins
                 className="adsbygoogle block w-full"
                 style={{ display: 'block' }}
                 data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"

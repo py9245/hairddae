@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
 
@@ -29,6 +30,12 @@ FACE_LANDMARK_INDEX = {
 }
 
 
+@dataclass(frozen=True)
+class TrackingResult:
+    feature: FeatureMessageModel
+    landmarks_px: np.ndarray
+
+
 def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
@@ -36,6 +43,19 @@ def _clamp(value: float, low: float, high: float) -> float:
 def _point_to_pixel(landmarks: list[object], index: int, width: int, height: int) -> tuple[float, float]:
     point = landmarks[index]
     return (float(point.x) * width, float(point.y) * height)
+
+
+def _landmarks_to_pixel_array(landmarks: list[object], width: int, height: int) -> np.ndarray:
+    return np.array(
+        [
+            [
+                int(np.clip(round(float(point.x) * width), 0, max(width - 1, 0))),
+                int(np.clip(round(float(point.y) * height), 0, max(height - 1, 0))),
+            ]
+            for point in landmarks
+        ],
+        dtype=np.int32,
+    )
 
 
 def _averaged_point(points: list[tuple[float, float]]) -> tuple[float, float]:
@@ -125,7 +145,7 @@ class ServerFaceTracker:
     def close(self) -> None:
         self._landmarker.close()
 
-    def extract_feature_from_rgb(
+    def extract_tracking_result_from_rgb(
         self,
         frame_rgb: np.ndarray,
         *,
@@ -133,7 +153,7 @@ class ServerFaceTracker:
         settings: Settings,
         seq: int,
         ts_ms: int,
-    ) -> FeatureMessageModel | None:
+    ) -> TrackingResult | None:
         if frame_rgb.ndim != 3 or frame_rgb.shape[2] != 3:
             return None
 
@@ -150,10 +170,7 @@ class ServerFaceTracker:
             return None
 
         landmarks = result.face_landmarks[0]
-        bbox = _bbox_from_landmarks(landmarks, width, height)
-        anchors = _anchor_points(landmarks, width, height)
-        pose = _pose_from_result(result)
-        return FeatureMessageModel.model_validate(
+        feature = FeatureMessageModel.model_validate(
             {
                 "type": "feature",
                 "feature_schema_version": settings.feature_schema_version,
@@ -165,8 +182,32 @@ class ServerFaceTracker:
                 "apply_session_id": claims.apply_session_id,
                 "hair_id": claims.hair_id,
                 "image_size": {"width": width, "height": height},
-                "pose": pose,
-                "face_bbox": bbox,
-                "anchors": anchors,
+                "pose": _pose_from_result(result),
+                "face_bbox": _bbox_from_landmarks(landmarks, width, height),
+                "anchors": _anchor_points(landmarks, width, height),
             }
         )
+        return TrackingResult(
+            feature=feature,
+            landmarks_px=_landmarks_to_pixel_array(landmarks, width, height),
+        )
+
+    def extract_feature_from_rgb(
+        self,
+        frame_rgb: np.ndarray,
+        *,
+        claims: TicketClaims,
+        settings: Settings,
+        seq: int,
+        ts_ms: int,
+    ) -> FeatureMessageModel | None:
+        tracking_result = self.extract_tracking_result_from_rgb(
+            frame_rgb,
+            claims=claims,
+            settings=settings,
+            seq=seq,
+            ts_ms=ts_ms,
+        )
+        if tracking_result is None:
+            return None
+        return tracking_result.feature

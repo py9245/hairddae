@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 import json
 import logging
 import numpy as np
+from PIL import Image
 from statistics import median
 import time
 from typing import Any
@@ -14,6 +15,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from app.auth import TicketValidationError, validate_connect_ticket
+from app.bald import BaldPreprocessor
 from app.catalog import AssetBundle, AssetCatalog
 from app.config import Settings
 from app.face_tracking import ServerFaceTracker
@@ -45,6 +47,7 @@ except ImportError:  # pragma: no cover - runtime guarded
 logger = logging.getLogger("uvicorn.error")
 RENDER_FRAME_DELAY_MS = 60.0
 MAX_BUFFERED_VIDEO_FRAMES = 8
+SERVER_TRACK_MAX_BUFFERED_VIDEO_FRAMES = 2
 SERVER_RENDER_READY_MIN_PROCESSED = 1
 SERVER_RENDER_READY_MIN_STABLE_ASSET = 1
 PROCESSED_BUNDLE_HISTORY_SIZE = 48
@@ -74,6 +77,31 @@ async def _wait_for_ice_gathering_complete(peer_connection: Any, timeout_seconds
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _build_fallback_bundle(feature: FeatureMessageModel) -> AssetBundle:
+    return AssetBundle(
+        asset_id="fallback-blur-only",
+        pose_key=(
+            f"yaw{feature.pose.yaw_1deg:+03d}_"
+            f"pitch{feature.pose.pitch_1deg:+03d}_"
+            f"roll{feature.pose.roll_1deg:+03d}"
+        ),
+        yaw_1deg=feature.pose.yaw_1deg,
+        pitch_1deg=feature.pose.pitch_1deg,
+        roll_1deg=feature.pose.roll_1deg,
+        hair_rgba_path=None,
+        hair_rgba_url=None,
+        hair_mask_url=None,
+        anchors_url=None,
+        metadata_url=None,
+        hair_bbox=None,
+        face_mask_url=None,
+        protect_face_mask_url=None,
+        render_task=None,
+        revision="fallback:blur-only",
+        score=0.0,
+    )
 
 
 class RtcOfferRequest(BaseModel):
@@ -293,6 +321,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         settings: Settings,
         catalog: AssetCatalog,
         face_tracker: ServerFaceTracker,
+        bald_processor: BaldPreprocessor | None,
     ) -> None:
         super().__init__()
         self._source_track = source_track
@@ -301,6 +330,43 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         self._settings = settings
         self._catalog = catalog
         self._face_tracker = face_tracker
+        self._bald_processor = bald_processor
+        self._buffer: deque[BufferedVideoFrame] = deque()
+        self._frame_available = asyncio.Event()
+        self._source_ended = False
+        self._reader_task = asyncio.create_task(self._reader_loop())
+
+    async def _reader_loop(self) -> None:
+        try:
+            while True:
+                frame = await self._source_track.recv()
+                self._buffer.append(
+                    BufferedVideoFrame(frame=frame, received_at_ms=time.monotonic() * 1000)
+                )
+                while len(self._buffer) > SERVER_TRACK_MAX_BUFFERED_VIDEO_FRAMES:
+                    self._buffer.popleft()
+                self._frame_available.set()
+        except Exception:
+            self._source_ended = True
+            self._frame_available.set()
+
+    async def _next_latest_frame(self) -> Any:
+        while True:
+            if self._buffer:
+                latest = self._buffer.pop()
+                self._buffer.clear()
+                return latest.frame
+
+            if self._source_ended:
+                raise MediaStreamError
+
+            self._frame_available.clear()
+            await self._frame_available.wait()
+
+    def stop(self) -> None:
+        if not self._reader_task.done():
+            self._reader_task.cancel()
+        super().stop()
 
     def _emit_channel_payload(self, payload: dict[str, object]) -> None:
         channel = self._state.data_channel
@@ -309,42 +375,52 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         channel.send(json.dumps(payload))
 
     async def recv(self) -> Any:
-        frame = await self._source_track.recv()
-        image = frame.to_image()
-        frame_rgb = np.asarray(image.convert("RGB"))
+        frame = await self._next_latest_frame()
+        frame_rgb = frame.to_ndarray(format="rgb24")
 
         next_seq = self._state.server_processed_seq + 1
-        feature = await asyncio.to_thread(
-            self._face_tracker.extract_feature_from_rgb,
+        tracking_result = await asyncio.to_thread(
+            self._face_tracker.extract_tracking_result_from_rgb,
             frame_rgb,
             claims=self._claims,
             settings=self._settings,
             seq=next_seq,
             ts_ms=_now_ms(),
         )
-        if feature is None:
+        if tracking_result is None:
             return frame
+        feature = tracking_result.feature
 
         self._state.server_processed_seq = next_seq
         selection_feature = _build_selection_feature(self._state, feature)
-        candidate = self._catalog.recommend(
-            dataset_code=self._claims.dataset_code,
-            feature=selection_feature,
-            representative_asset_id=self._claims.representative_asset_id,
-        )
-        candidate = self._catalog.bundle_for_asset(
-            dataset_code=self._claims.dataset_code,
-            asset_id=candidate.asset_id,
-            feature=feature,
-        )
-        changed, selected = _maybe_switch_asset(
-            self._state,
-            candidate,
-            self._settings,
-            self._catalog,
-            self._claims.dataset_code,
-            feature,
-        )
+        selected: AssetBundle
+        changed = False
+        try:
+            candidate = self._catalog.recommend(
+                dataset_code=self._claims.dataset_code,
+                feature=selection_feature,
+                representative_asset_id=self._claims.representative_asset_id,
+            )
+            candidate = self._catalog.bundle_for_asset(
+                dataset_code=self._claims.dataset_code,
+                asset_id=candidate.asset_id,
+                feature=feature,
+            )
+            changed, selected = _maybe_switch_asset(
+                self._state,
+                candidate,
+                self._settings,
+                self._catalog,
+                self._claims.dataset_code,
+                feature,
+            )
+        except Exception as exc:
+            # Keep RTC output alive even when static dataset/bootstrap assets are missing.
+            logger.warning("rtc asset selection failed: %s", exc)
+            selected = _build_fallback_bundle(feature)
+            changed = self._state.last_asset_id != selected.asset_id
+            self._state.last_selected_bundle = selected
+            self._state.last_switch_at_ms = _now_ms()
         self._state.latest_feature = feature
         self._state.last_processed_seq = feature.seq
         self._state.processed_count += 1
@@ -389,8 +465,14 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             }
         )
 
+        render_input = Image.fromarray(frame_rgb, mode="RGB")
+        if self._bald_processor is not None:
+            render_input = Image.fromarray(
+                self._bald_processor.apply(frame_rgb, tracking_result.landmarks_px),
+                mode="RGB",
+            )
         rendered = compose_bundle_frame(
-            image,
+            render_input,
             selected,
             reference_width=feature.image_size.width,
             reference_height=feature.image_size.height,
@@ -603,6 +685,7 @@ def attach_rtc_routes(app: FastAPI) -> None:
                     settings=settings,
                     catalog=app.state.catalog,
                     face_tracker=app.state.face_tracker,
+                    bald_processor=getattr(app.state, "bald_processor", None),
                 )
             )
 

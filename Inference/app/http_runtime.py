@@ -15,6 +15,7 @@ import numpy as np
 from PIL import Image, UnidentifiedImageError
 
 from app.auth import TicketClaims
+from app.bald import BaldPreprocessor
 from app.catalog import AssetBundle, AssetCatalog
 from app.config import Settings
 from app.face_tracking import ServerFaceTracker
@@ -118,6 +119,7 @@ def _process_http_frame(
     settings: Settings,
     face_tracker: ServerFaceTracker,
     catalog: AssetCatalog,
+    bald_processor: BaldPreprocessor | None,
 ) -> HttpFrameResult:
     total_started_at = time.perf_counter()
     image = _decode_image(payload)
@@ -131,7 +133,7 @@ def _process_http_frame(
     )
 
     tracking_started_at = time.perf_counter()
-    feature = face_tracker.extract_feature_from_rgb(
+    tracking_result = face_tracker.extract_tracking_result_from_rgb(
         frame_rgb,
         claims=claims,
         settings=settings,
@@ -146,8 +148,10 @@ def _process_http_frame(
     status = "no_face"
     rendered = image
     processed_seq = 0
+    feature = None
 
-    if feature is not None:
+    if tracking_result is not None:
+        feature = tracking_result.feature
         processed_seq = feature.seq
         selection_started_at = time.perf_counter()
         selected_bundle = catalog.recommend(
@@ -161,8 +165,14 @@ def _process_http_frame(
             feature=feature,
         )
         selection_latency_ms = round((time.perf_counter() - selection_started_at) * 1000.0, 3)
+        render_input = image
+        if bald_processor is not None:
+            render_input = Image.fromarray(
+                bald_processor.apply(frame_rgb, tracking_result.landmarks_px),
+                mode="RGB",
+            )
         rendered = compose_bundle_frame(
-            image,
+            render_input,
             selected_bundle,
             reference_width=feature.image_size.width,
             reference_height=feature.image_size.height,
@@ -261,6 +271,7 @@ def attach_http_runtime_routes(app: FastAPI) -> None:
                 settings=settings,
                 face_tracker=app.state.face_tracker,
                 catalog=app.state.catalog,
+                bald_processor=getattr(app.state, "bald_processor", None),
             )
         except FileNotFoundError as exc:
             raise HTTPException(status_code=500, detail=str(exc)) from exc

@@ -9,6 +9,10 @@ import {
   type HairApplyV2Response,
   type InferenceAssetBundle,
 } from '@/lib/Camera/inference'
+import {
+  RTC_SENDER_MAX_BITRATE,
+  RTC_SENDER_MAX_FRAMERATE,
+} from '@/lib/Camera/runtime'
 
 type UseHairRtcSessionArgs = {
   enabled?: boolean
@@ -27,8 +31,6 @@ const RECONNECT_DELAY_MS = 800
 const ICE_GATHERING_TIMEOUT_MS = 1500
 const REMOTE_READY_MIN_PROCESSED = 1
 const REMOTE_READY_MIN_STABLE_ASSET = 1
-const RTC_SENDER_MAX_BITRATE = 2_500_000
-const RTC_SENDER_MAX_FRAMERATE = 24
 
 async function configureRtcSender(sender: RTCRtpSender) {
   const track = sender.track

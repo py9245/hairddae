@@ -9,7 +9,13 @@ import { useHairInferenceSession } from '@/hooks/Camera/useHairInferenceSession'
 import { useHairRtcSession } from '@/hooks/Camera/useHairRtcSession'
 import { useHairOverlayCanvas } from '@/hooks/Camera/useHairOverlayCanvas'
 import { captureCompositedImage } from '@/lib/Camera/capture'
-import { fetchHairItems, HAIR_ITEMS, type HairItem } from '@/lib/Camera/HairItem'
+import { HAIR_ITEMS, type HairItem } from '@/lib/Camera/HairItem'
+import {
+  RTC_CAPTURE_FPS,
+  RTC_CAPTURE_HEIGHT,
+  RTC_CAPTURE_WIDTH,
+  RTC_SENDER_MAX_BITRATE,
+} from '@/lib/Camera/runtime'
 
 type Pose = {
   yaw: number
@@ -17,7 +23,7 @@ type Pose = {
   roll: number
 }
 
-const REMOTE_DISPLAY_SETTLE_MS = 180
+const REMOTE_DISPLAY_SETTLE_MS = 40
 
 type FaceLandmarksViewProps = {
   stream: MediaStream | null
@@ -48,6 +54,10 @@ export default function FaceLandmarksView({
   const [hairItems, setHairItems] = useState<HairItem[]>(HAIR_ITEMS)
   const [remoteVideoReady, setRemoteVideoReady] = useState(false)
   const [remoteDisplayReady, setRemoteDisplayReady] = useState(false)
+  const [remoteVideoSize, setRemoteVideoSize] = useState<{
+    width: number
+    height: number
+  } | null>(null)
 
   const displayHairId = pendingHairId ?? selectedHairId
 
@@ -84,6 +94,12 @@ export default function FaceLandmarksView({
   const activeError = transport === 'rtc' ? hairRtc.error : hairInference.error
   const activeConnected =
     transport === 'rtc' ? hairRtc.isConnected : hairInference.isConnected
+  const targetQualityLabel = `${RTC_CAPTURE_WIDTH}x${RTC_CAPTURE_HEIGHT}@${RTC_CAPTURE_FPS} ${(
+    RTC_SENDER_MAX_BITRATE / 1_000_000
+  ).toFixed(1)}Mbps`
+  const currentQualityLabel = remoteVideoSize
+    ? `${remoteVideoSize.width}x${remoteVideoSize.height}`
+    : '-'
 
   useEffect(() => {
     const remoteVideo = remoteVideoRef.current
@@ -92,6 +108,7 @@ export default function FaceLandmarksView({
     }
 
     setRemoteVideoReady(false)
+    setRemoteVideoSize(null)
     remoteVideo.srcObject = activeRemoteStream
     if (!activeRemoteStream) {
       return () => {
@@ -104,10 +121,15 @@ export default function FaceLandmarksView({
         return
       }
       setRemoteVideoReady(true)
+      setRemoteVideoSize({
+        width: remoteVideo.videoWidth,
+        height: remoteVideo.videoHeight,
+      })
     }
 
     const markWaiting = () => {
       setRemoteVideoReady(false)
+      setRemoteVideoSize(null)
     }
 
     remoteVideo.addEventListener('loadedmetadata', markReady)
@@ -129,6 +151,7 @@ export default function FaceLandmarksView({
       remoteVideo.removeEventListener('emptied', markWaiting)
       remoteVideo.removeEventListener('pause', markWaiting)
       setRemoteVideoReady(false)
+      setRemoteVideoSize(null)
       remoteVideo.srcObject = null
     }
   }, [activeRemoteStream])
@@ -154,34 +177,13 @@ export default function FaceLandmarksView({
   }, [hairRtc.isRenderReady, remoteVideoReady, transport])
 
   const handleHairSelect = useCallback((hairId: number) => {
-    if (hairId === 0) {
-      setPendingHairId(null)
-      setSelectedHairId(0)
-      setModalOpen(false)
-      return
-    }
-
-    setPendingHairId(hairId)
-    setModalOpen(true)
+    setPendingHairId(null)
+    setModalOpen(false)
+    setSelectedHairId(hairId)
   }, [])
 
   useEffect(() => {
-    const abortController = new AbortController()
-
-    void fetchHairItems(abortController.signal)
-      .then((items) => {
-        setHairItems(items)
-      })
-      .catch((error) => {
-        if (abortController.signal.aborted) {
-          return
-        }
-        console.warn('hair list load failed:', error)
-      })
-
-    return () => {
-      abortController.abort()
-    }
+    setHairItems(HAIR_ITEMS)
   }, [])
 
   const handleModalComplete = useCallback(() => {
@@ -327,6 +329,12 @@ export default function FaceLandmarksView({
                     : `${Math.round(overlayMetrics.bundleLoadMs)}ms`
                   : 'loading'
               }`}
+        </div>
+
+        <div className="absolute top-[7.5rem] left-2 z-20 rounded bg-black/60 px-2 py-1 text-[10px] text-white">
+          {transport === 'rtc'
+            ? `quality ${currentQualityLabel} / target ${targetQualityLabel}`
+            : `quality target ${targetQualityLabel}`}
         </div>
 
         <HairSelector

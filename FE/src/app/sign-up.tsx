@@ -217,9 +217,7 @@ export default function SignUp() {
             requiredText="[필수]"
           />
           {errors.agreed && (
-            <p className="text-center text-sm text-error">
-              {errors.agreed}
-            </p>
+            <p className="text-center text-sm text-error">{errors.agreed}</p>
           )}
 
           {signUpMutation.isError && (

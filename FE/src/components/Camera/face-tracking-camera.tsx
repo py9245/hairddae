@@ -23,7 +23,7 @@ export default function FaceTrackingCamera() {
     wasmBaseUrl: wasmPath,
   })
 
-  const { pose, landmarks } = useFaceTrackingLoop({
+  useFaceTrackingLoop({
     videoRef,
     canvasRef,
     landmarkerRef: mp.landmarkerRef,
@@ -33,11 +33,11 @@ export default function FaceTrackingCamera() {
 
   return (
     <FaceLandmarksView
+      stream={cam.stream}
+      transport="rtc"
       videoRef={videoRef}
       canvasRef={canvasRef}
       overlayCanvasRef={overlayCanvasRef}
-      landmarks={landmarks}
-      pose={pose}
     />
   )
 }

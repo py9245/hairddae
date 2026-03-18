@@ -48,7 +48,7 @@ export default function Camera() {
     wasmBaseUrl: wasmPath,
   })
 
-  const { pose, landmarks } = useFaceTrackingLoop({
+  useFaceTrackingLoop({
     videoRef,
     canvasRef,
     landmarkerRef: mp.landmarkerRef,
@@ -66,8 +66,6 @@ export default function Camera() {
       videoRef={videoRef}
       canvasRef={canvasRef}
       overlayCanvasRef={overlayCanvasRef}
-      pose={pose}
-      landmarks={landmarks}
     />
   )
 }

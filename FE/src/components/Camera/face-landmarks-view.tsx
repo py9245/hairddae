@@ -1,41 +1,27 @@
-import { useMutation } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { Settings, X } from 'lucide-react'
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 
 import { HairSelector } from '@/components/Camera/hair-selector'
 import { ApplyStyleModal } from '@/components/Camera/modal'
-import { useHairWebSocket } from '@/hooks/Camera/useHairWebSocket'
+import { useHairRtcSession } from '@/hooks/Camera/useHairRtcSession'
 import { captureCompositedImage } from '@/lib/Camera/capture'
 import { HAIR_ITEMS } from '@/lib/Camera/HairItem'
-import { postHairApplyStart } from '@/lib/Camera/hairApply'
-
-type LandmarkPoint = {
-  x: number
-  y: number
-  z: number
-}
-
-type Pose = {
-  yaw: number
-  pitch: number
-  roll: number
-}
 
 type FaceLandmarksViewProps = {
+  stream: MediaStream | null
+  transport: string
   videoRef: RefObject<HTMLVideoElement | null>
   canvasRef: RefObject<HTMLCanvasElement | null>
   overlayCanvasRef: RefObject<HTMLCanvasElement | null>
-  landmarks: LandmarkPoint[] | null
-  pose: Pose | null
 }
 
 export default function FaceLandmarksView({
+  stream,
+  transport,
   videoRef,
   canvasRef,
   overlayCanvasRef,
-  landmarks,
-  pose,
 }: FaceLandmarksViewProps) {
   const router = useRouter()
   const wrapRef = useRef<HTMLDivElement | null>(null)
@@ -43,34 +29,34 @@ export default function FaceLandmarksView({
   const [selectedHairId, setSelectedHairId] = useState(0)
   const [pendingHairId, setPendingHairId] = useState<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
-  const [applySessionId, setApplySessionId] = useState<string | null>(null)
   const [isFrameFrozen, setIsFrameFrozen] = useState(false)
 
   const displayHairId = pendingHairId ?? selectedHairId
-
-  const hairApplyMutation = useMutation({
-    mutationFn: postHairApplyStart,
+  const hairRtc = useHairRtcSession({
+    enabled: transport === 'rtc' && !isFrameFrozen && displayHairId > 0,
+    hairId: displayHairId > 0 ? displayHairId : null,
+    stream,
   })
+  const displayStream =
+    transport === 'rtc' && hairRtc.remoteStream ? hairRtc.remoteStream : stream
 
   useEffect(() => {
     const video = videoRef.current
     if (!video) return
+
+    if (video.srcObject !== displayStream) {
+      video.srcObject = displayStream
+    }
 
     if (isFrameFrozen) {
       video.pause()
       return
     }
 
-    void video.play().catch(() => {})
-  }, [isFrameFrozen, videoRef])
-
-  useHairWebSocket({
-    enabled: !!applySessionId && !isFrameFrozen,
-    applySessionId,
-    pose: isFrameFrozen ? null : pose,
-    landmarks: isFrameFrozen ? null : landmarks,
-    selectedHairId: displayHairId,
-  })
+    if (displayStream) {
+      void video.play().catch(() => {})
+    }
+  }, [displayStream, isFrameFrozen, videoRef])
 
   const handleHairSelect = useCallback((hairId: number) => {
     setIsFrameFrozen(false)
@@ -86,19 +72,10 @@ export default function FaceLandmarksView({
 
     const nextHairId = pendingHairId
 
-    hairApplyMutation.mutate(nextHairId, {
-      onSuccess: (data) => {
-        setSelectedHairId(nextHairId)
-        setApplySessionId(data?.applySessionId ?? null)
-      },
-      onError: (error) => {
-        console.error('헤어 적용 시작 실패', error)
-      },
-    })
-
+    setSelectedHairId(nextHairId)
     setPendingHairId(null)
     setModalOpen(false)
-  }, [pendingHairId, hairApplyMutation])
+  }, [pendingHairId])
 
   const handleCapture = useCallback(() => {
     captureCompositedImage({
@@ -156,6 +133,12 @@ export default function FaceLandmarksView({
 
           <Settings className="h-10 w-10 text-white" />
         </div>
+
+        {transport === 'rtc' && hairRtc.error ? (
+          <div className="absolute inset-x-4 top-18 z-20 rounded-xl bg-black/55 px-3 py-2 text-sm text-white">
+            {hairRtc.error}
+          </div>
+        ) : null}
 
         <HairSelector
           items={HAIR_ITEMS}

@@ -67,27 +67,25 @@ public class HairEntity extends BaseTimeEntity {
         this.description = description;
     }
 
-    public void applySeed(
+    public void applyCatalogMetadata(
             String name,
             String slug,
             String category,
             String datasetCode,
-            String datasetRootUrl,
-            String assetIndexUrl,
-            String representativeAssetId,
             String previewImageUrl,
-            String description
+            String description,
+            boolean active
     ) {
         this.name = name;
         this.slug = slug;
         this.category = category;
         this.datasetCode = datasetCode;
-        this.datasetRootUrl = datasetRootUrl;
-        this.assetIndexUrl = assetIndexUrl;
-        this.representativeAssetId = representativeAssetId;
+        this.datasetRootUrl = null;
+        this.assetIndexUrl = null;
+        this.representativeAssetId = null;
         this.previewImageUrl = previewImageUrl;
         this.description = description;
-        this.active = Boolean.TRUE;
+        this.active = active;
     }
 
     public Long getId() {

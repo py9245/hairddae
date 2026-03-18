@@ -1,5 +1,8 @@
 package com.example.beapp.api;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -12,14 +15,18 @@ import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockCookie;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import com.example.beapp.api.dto.hairs.HairMetadataSyncResponse;
 import com.example.beapp.security.AuthCookieManager;
+import com.example.beapp.service.HairMetadataSyncService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -33,6 +40,9 @@ class ApiSecurityIntegrationTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @MockBean
+    private HairMetadataSyncService hairMetadataSyncService;
 
     @Test
     void protectedEndpointRequiresJwt() throws Exception {
@@ -226,45 +236,6 @@ class ApiSecurityIntegrationTest {
     }
 
     @Test
-    void hairApplyStartCreatesTrackableJob() throws Exception {
-        MvcResult loginResult = mockMvc.perform(post("/api/accounts/login")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "userID": "TestUser01",
-                                  "password": "P@ssw0rd1"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andReturn();
-
-        MockCookie accessTokenCookie = extractCookie(loginResult, AuthCookieManager.ACCESS_TOKEN_COOKIE);
-
-        MvcResult applyStartResult = mockMvc.perform(post("/api/home/hairapplystart")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .cookie(accessTokenCookie)
-                        .content("""
-                                {
-                                  "hairID": 1
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true))
-                .andReturn();
-
-        JsonNode applyStartBody = objectMapper.readTree(applyStartResult.getResponse().getContentAsString());
-        String applySessionId = applyStartBody.get("applySessionId").asText();
-
-        mockMvc.perform(get("/api/home/hairapplystatus/{applySessionId}", applySessionId)
-                        .cookie(accessTokenCookie))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.applySessionId").value(applySessionId))
-                .andExpect(jsonPath("$.jobType").value("HAIR_APPLY"))
-                .andExpect(jsonPath("$.status").value("PENDING"))
-                .andExpect(jsonPath("$.hairID").value(1));
-    }
-
-    @Test
     void hairApplyBootstrapReturnsInferenceBootstrapPayload() throws Exception {
         MvcResult loginResult = mockMvc.perform(post("/api/accounts/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -301,9 +272,107 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.inference.ws_url").value(org.hamcrest.Matchers.containsString("/ws/inference/apply")))
                 .andExpect(jsonPath("$.inference.ws_auth_transport").value("sec-websocket-protocol.v1"))
                 .andExpect(jsonPath("$.inference.connect_ticket").isString())
+                .andExpect(jsonPath("$.rtc.enabled").value(true))
+                .andExpect(jsonPath("$.rtc.offer_url").value(org.hamcrest.Matchers.containsString("/rtc/inference/offer")))
+                .andExpect(jsonPath("$.rtc.connect_ticket").isString())
                 .andExpect(jsonPath("$.static.dataset_code").value("0001"))
                 .andExpect(jsonPath("$.static.asset_bundle_schema_version").value(1))
                 .andExpect(jsonPath("$.static.preload_asset_ids").isArray());
+    }
+
+    @Test
+    void hairApplyResumeReusesExistingSessionAndIssuesFreshTicket() throws Exception {
+        MvcResult loginResult = mockMvc.perform(post("/api/accounts/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "userID": "TestUser01",
+                                  "password": "P@ssw0rd1"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        MockCookie accessTokenCookie = extractCookie(loginResult, AuthCookieManager.ACCESS_TOKEN_COOKIE);
+
+        MvcResult bootstrapResult = mockMvc.perform(post("/api/home/hairapplybootstrap")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .cookie(accessTokenCookie)
+                        .content("""
+                                {
+                                  "hair_id": 1,
+                                  "device_id": "browser-test-device",
+                                  "client_capabilities": {
+                                    "feature_schema_version": 2,
+                                    "transform_version": "affine_v1"
+                                  }
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        JsonNode bootstrapBody = objectMapper.readTree(bootstrapResult.getResponse().getContentAsString());
+        String applySessionId = bootstrapBody.get("apply_session_id").asText();
+        String connectTicket = bootstrapBody.get("rtc").get("connect_ticket").asText();
+
+        mockMvc.perform(post("/api/home/hairapplyresume")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .cookie(accessTokenCookie)
+                        .content("""
+                                {
+                                  "apply_session_id": "%s",
+                                  "device_id": "browser-test-device"
+                                }
+                                """.formatted(applySessionId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.apply_session_id").value(applySessionId))
+                .andExpect(jsonPath("$.rtc.connect_ticket").isString())
+                .andExpect(jsonPath("$.rtc.connect_ticket").value(org.hamcrest.Matchers.not(connectTicket)));
+    }
+
+    @Test
+    void inferenceHairSyncRequiresSharedSecret() throws Exception {
+        MockMultipartFile previewImage = new MockMultipartFile(
+                "preview_image",
+                "main.png",
+                "image/png",
+                "fake-image".getBytes());
+
+        mockMvc.perform(multipart("/api/internal/hairs/sync")
+                        .file(previewImage)
+                        .param("dataset_code", "0003")
+                        .param("name", "wolf cut")
+                        .param("slug", "wolf-cut")
+                        .param("category", "medium")
+                        .param("description", "wolf cut metadata"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401));
+    }
+
+    @Test
+    void inferenceHairSyncUpsertsMetadataWithSharedSecret() throws Exception {
+        MockMultipartFile previewImage = new MockMultipartFile(
+                "preview_image",
+                "main.png",
+                "image/png",
+                "fake-image".getBytes());
+
+        given(hairMetadataSyncService.upsert(any(), any()))
+                .willReturn(HairMetadataSyncResponse.ok(3, "0003", true));
+
+        mockMvc.perform(multipart("/api/internal/hairs/sync")
+                        .file(previewImage)
+                        .header("X-Inference-Sync-Secret", "test-inference-sync-secret")
+                        .param("dataset_code", "0003")
+                        .param("name", "wolf cut")
+                        .param("slug", "wolf-cut")
+                        .param("category", "medium")
+                        .param("description", "wolf cut metadata")
+                        .param("active", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hair_id").value(3))
+                .andExpect(jsonPath("$.dataset_code").value("0003"))
+                .andExpect(jsonPath("$.created").value(true));
     }
 
     private MockCookie extractCookie(MvcResult result, String cookieName) {

@@ -18,7 +18,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ../static:/opt/be-static:ro
+      - ../static:/opt/be-static
     expose:
       - "8080"
     networks:

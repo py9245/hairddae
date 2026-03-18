@@ -52,16 +52,17 @@ export default function FaceLandmarksView({
     mutationFn: postHairApplyStart,
   })
 
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
+useEffect(() => {
+  const video = videoRef.current
+  if (!video) return
 
-    if (isFrameFrozen) {
-      video.pause()
-    } else {
-      void video.play().catch(() => {})
-    }
-  }, [isFrameFrozen, videoRef])
+  if (isFrameFrozen) {
+    video.pause()
+    return
+  }
+
+  void video.play().catch(() => {})
+}, [isFrameFrozen, videoRef])
 
   useHairWebSocket({
     enabled: !!applySessionId && !isFrameFrozen,

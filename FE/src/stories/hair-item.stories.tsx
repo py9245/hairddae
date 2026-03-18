@@ -54,11 +54,11 @@ const meta = {
   argTypes: {
     items: {
       control: 'object',
-      description: '?섎떒 Controls?먯꽌 HairItem 諛곗뿴??吏곸젒 ?섏젙',
+      description: '하단 Controls에서 HairItem 배열을 직접 수정',
     },
     initialSelectedId: {
       control: { type: 'number' },
-      description: '珥덇린 ?좏깮 hair id',
+      description: '초기 선택 hair id',
     },
     loading: {
       control: { type: 'boolean' },

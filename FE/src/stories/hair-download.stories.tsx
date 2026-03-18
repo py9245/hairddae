@@ -37,5 +37,5 @@ type Story = StoryObj<typeof meta>
 
 
 export const Default: Story = {
-  name: '화면 캡쳐 다운로드 버튼',
+  name: ' ',
 }

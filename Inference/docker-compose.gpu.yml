@@ -1,0 +1,29 @@
+services:
+  inference:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+      args:
+        CUDA_ARCH_BIN: ${CUDA_ARCH_BIN:-7.5}
+    image: ${INFERENCE_IMAGE:-inference-app:local}
+    restart: unless-stopped
+    env_file:
+      - .env.server
+    environment:
+      INFERENCE_HOST: 0.0.0.0
+      INFERENCE_PORT: 8090
+      INFERENCE_STATIC_ROOT: /srv/static
+      INFERENCE_FACE_LANDMARKER_MODEL_PATH: /app/models/face_landmarker.task
+      INFERENCE_HAIR_SEGMENTER_MODEL_PATH: /app/models/hair_segmenter.tflite
+      INFERENCE_MEDIAPIPE_DELEGATE: ${INFERENCE_MEDIAPIPE_DELEGATE:-gpu}
+      INFERENCE_RENDER_ACCELERATION: ${INFERENCE_RENDER_ACCELERATION:-opencv_cuda}
+      INFERENCE_RTC_FACE_LANDMARKER_RUNNING_MODE: ${INFERENCE_RTC_FACE_LANDMARKER_RUNNING_MODE:-video}
+      INFERENCE_RTC_HAIR_SEGMENTER_RUNNING_MODE: ${INFERENCE_RTC_HAIR_SEGMENTER_RUNNING_MODE:-video}
+      INFERENCE_RTC_SESSION_LOCAL_PROCESSORS: ${INFERENCE_RTC_SESSION_LOCAL_PROCESSORS:-true}
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility,video}
+    gpus: all
+    network_mode: host
+    volumes:
+      - ../static:/srv/static:ro
+      - ./models:/app/models:ro

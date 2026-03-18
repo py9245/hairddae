@@ -73,6 +73,13 @@ class Settings:
     redis_url: str | None
     rtc_ice_servers: tuple[dict[str, object], ...]
     rtc_internal_ice_servers: tuple[dict[str, object], ...]
+    mediapipe_delegate: str
+    render_acceleration: str
+    http_face_landmarker_running_mode: str
+    http_hair_segmenter_running_mode: str
+    rtc_face_landmarker_running_mode: str
+    rtc_hair_segmenter_running_mode: str
+    rtc_session_local_processors: bool
     http_test_enabled: bool
     http_test_default_dataset_code: str
     http_test_jpeg_quality: int
@@ -131,6 +138,25 @@ class Settings:
                 "INFERENCE_RTC_INTERNAL_ICE_SERVERS_JSON",
                 "[]",
             ),
+            mediapipe_delegate=_env_str("INFERENCE_MEDIAPIPE_DELEGATE", "auto"),
+            render_acceleration=_env_str("INFERENCE_RENDER_ACCELERATION", "auto"),
+            http_face_landmarker_running_mode=_env_str(
+                "INFERENCE_HTTP_FACE_LANDMARKER_RUNNING_MODE",
+                "image",
+            ),
+            http_hair_segmenter_running_mode=_env_str(
+                "INFERENCE_HTTP_HAIR_SEGMENTER_RUNNING_MODE",
+                "image",
+            ),
+            rtc_face_landmarker_running_mode=_env_str(
+                "INFERENCE_RTC_FACE_LANDMARKER_RUNNING_MODE",
+                "video",
+            ),
+            rtc_hair_segmenter_running_mode=_env_str(
+                "INFERENCE_RTC_HAIR_SEGMENTER_RUNNING_MODE",
+                "video",
+            ),
+            rtc_session_local_processors=_env_bool("INFERENCE_RTC_SESSION_LOCAL_PROCESSORS", True),
             http_test_enabled=_env_bool("INFERENCE_HTTP_TEST_ENABLED", False),
             http_test_default_dataset_code=_env_str("INFERENCE_HTTP_TEST_DEFAULT_DATASET_CODE", "0001"),
             http_test_jpeg_quality=_env_int("INFERENCE_HTTP_TEST_JPEG_QUALITY", 88),

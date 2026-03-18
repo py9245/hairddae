@@ -5,8 +5,6 @@ from collections import deque
 from dataclasses import dataclass, field
 import json
 import logging
-import numpy as np
-from PIL import Image
 from statistics import median
 import time
 from typing import Any
@@ -20,7 +18,7 @@ from app.catalog import AssetBundle, AssetCatalog
 from app.config import Settings
 from app.face_tracking import ServerFaceTracker
 from app.models import FeatureMessageModel
-from app.server_render import compose_bundle_frame
+from app.server_render import compose_bundle_frame_rgb
 
 try:
     from aiortc import (
@@ -28,6 +26,7 @@ try:
         RTCIceGatherer,
         RTCIceServer,
         RTCPeerConnection,
+        RTCRtpSender,
         RTCSessionDescription,
         VideoStreamTrack,
     )
@@ -38,6 +37,7 @@ except ImportError:  # pragma: no cover - runtime guarded
     RTCIceGatherer = None
     RTCIceServer = None
     RTCPeerConnection = None
+    RTCRtpSender = None
     RTCSessionDescription = None
     VideoStreamTrack = object
     MediaStreamError = RuntimeError
@@ -54,6 +54,7 @@ PROCESSED_BUNDLE_HISTORY_SIZE = 48
 FRAME_BUNDLE_MAX_LAG_MS = 280.0
 FRAME_BUNDLE_MAX_LEAD_MS = 180.0
 RENDER_MATCH_LOG_INTERVAL_MS = 1000.0
+SERVER_FEATURE_LOG_INTERVAL_MS = 1000.0
 
 
 async def _wait_for_ice_gathering_complete(peer_connection: Any, timeout_seconds: float = 8.0) -> None:
@@ -296,14 +297,14 @@ class RtcRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         if match is None:
             return frame
 
-        image = frame.to_image()
-        rendered = compose_bundle_frame(
-            image,
+        frame_rgb = frame.to_ndarray(format="rgb24")
+        rendered_rgb = compose_bundle_frame_rgb(
+            frame_rgb,
             match.bundle,
             reference_width=match.feature_width,
             reference_height=match.feature_height,
         )
-        next_frame = VideoFrame.from_image(rendered.convert("RGB"))
+        next_frame = VideoFrame.from_ndarray(rendered_rgb, format="rgb24")
         next_frame.pts = frame.pts
         next_frame.time_base = frame.time_base
         return next_frame
@@ -322,6 +323,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         catalog: AssetCatalog,
         face_tracker: ServerFaceTracker,
         bald_processor: BaldPreprocessor | None,
+        owns_processors: bool,
     ) -> None:
         super().__init__()
         self._source_track = source_track
@@ -331,9 +333,11 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         self._catalog = catalog
         self._face_tracker = face_tracker
         self._bald_processor = bald_processor
+        self._owns_processors = owns_processors
         self._buffer: deque[BufferedVideoFrame] = deque()
         self._frame_available = asyncio.Event()
         self._source_ended = False
+        self._last_feature_log_at_ms = 0.0
         self._reader_task = asyncio.create_task(self._reader_loop())
 
     async def _reader_loop(self) -> None:
@@ -366,6 +370,16 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
     def stop(self) -> None:
         if not self._reader_task.done():
             self._reader_task.cancel()
+        if self._owns_processors:
+            try:
+                self._face_tracker.close()
+            except Exception:
+                logger.exception("failed to close session face tracker")
+            if self._bald_processor is not None:
+                try:
+                    self._bald_processor.close()
+                except Exception:
+                    logger.exception("failed to close session bald preprocessor")
         super().stop()
 
     def _emit_channel_payload(self, payload: dict[str, object]) -> None:
@@ -373,6 +387,34 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         if channel is None or getattr(channel, "readyState", None) != "open":
             return
         channel.send(json.dumps(payload))
+
+    def _log_server_feature(
+        self,
+        feature: FeatureMessageModel,
+        selection_feature: FeatureMessageModel,
+        selected: AssetBundle,
+        changed: bool,
+    ) -> None:
+        now_ms = time.monotonic() * 1000
+        if now_ms - self._last_feature_log_at_ms < SERVER_FEATURE_LOG_INTERVAL_MS:
+            return
+
+        self._last_feature_log_at_ms = now_ms
+        logger.info(
+            (
+                "rtc server feature: seq=%s changed=%s asset=%s "
+                "raw_pose=(%s,%s,%s) smooth_pose=(%s,%s,%s)"
+            ),
+            feature.seq,
+            changed,
+            selected.asset_id,
+            feature.pose.yaw_1deg,
+            feature.pose.pitch_1deg,
+            feature.pose.roll_1deg,
+            selection_feature.pose.yaw_1deg,
+            selection_feature.pose.pitch_1deg,
+            selection_feature.pose.roll_1deg,
+        )
 
     async def recv(self) -> Any:
         frame = await self._next_latest_frame()
@@ -396,19 +438,15 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         selected: AssetBundle
         changed = False
         try:
-            candidate = self._catalog.recommend(
+            selected = self._catalog.bundle_for_recommended_asset(
                 dataset_code=self._claims.dataset_code,
-                feature=selection_feature,
+                selection_feature=selection_feature,
+                render_feature=feature,
                 representative_asset_id=self._claims.representative_asset_id,
-            )
-            candidate = self._catalog.bundle_for_asset(
-                dataset_code=self._claims.dataset_code,
-                asset_id=candidate.asset_id,
-                feature=feature,
             )
             changed, selected = _maybe_switch_asset(
                 self._state,
-                candidate,
+                selected,
                 self._settings,
                 self._catalog,
                 self._claims.dataset_code,
@@ -436,21 +474,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         ):
             self._state.render_ready = True
 
-        logger.info(
-            (
-                "rtc server feature: seq=%s changed=%s asset=%s "
-                "raw_pose=(%s,%s,%s) smooth_pose=(%s,%s,%s)"
-            ),
-            feature.seq,
-            changed,
-            selected.asset_id,
-            feature.pose.yaw_1deg,
-            feature.pose.pitch_1deg,
-            feature.pose.roll_1deg,
-            selection_feature.pose.yaw_1deg,
-            selection_feature.pose.pitch_1deg,
-            selection_feature.pose.roll_1deg,
-        )
+        self._log_server_feature(feature, selection_feature, selected, changed)
         self._emit_channel_payload(
             {
                 "type": "processed",
@@ -465,19 +489,17 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             }
         )
 
-        render_input = Image.fromarray(frame_rgb, mode="RGB")
+        render_input_rgb = frame_rgb
         if self._bald_processor is not None:
-            render_input = Image.fromarray(
-                self._bald_processor.apply(frame_rgb, tracking_result.landmarks_px),
-                mode="RGB",
-            )
-        rendered = compose_bundle_frame(
-            render_input,
+            render_input_rgb = self._bald_processor.apply(frame_rgb, tracking_result.landmarks_px)
+        rendered_rgb = compose_bundle_frame_rgb(
+            render_input_rgb,
             selected,
             reference_width=feature.image_size.width,
             reference_height=feature.image_size.height,
+            acceleration_preference=self._settings.render_acceleration,
         )
-        next_frame = VideoFrame.from_image(rendered.convert("RGB"))
+        next_frame = VideoFrame.from_ndarray(rendered_rgb, format="rgb24")
         next_frame.pts = frame.pts
         next_frame.time_base = frame.time_base
         return next_frame
@@ -551,6 +573,49 @@ def _create_peer_connection(settings: Settings) -> Any:
     return RTCPeerConnection(configuration=RTCConfiguration(iceServers=ice_servers))
 
 
+def _prefer_h264_for_sender(peer_connection: Any, sender: Any) -> None:
+    if RTCRtpSender is None or not hasattr(peer_connection, "getTransceivers"):
+        return
+
+    try:
+        capabilities = RTCRtpSender.getCapabilities("video")
+    except Exception as exc:
+        logger.info("rtc failed to inspect local video codec capabilities: %s", exc)
+        return
+
+    h264_codecs = [
+        codec
+        for codec in capabilities.codecs
+        if getattr(codec, "mimeType", "").lower() == "video/h264"
+    ]
+    rtx_codecs = [
+        codec
+        for codec in capabilities.codecs
+        if getattr(codec, "mimeType", "").lower() == "video/rtx"
+    ]
+    if not h264_codecs:
+        return
+
+    for transceiver in peer_connection.getTransceivers():
+        if getattr(transceiver, "kind", None) != "video":
+            continue
+        if getattr(transceiver, "sender", None) is not sender:
+            continue
+
+        try:
+            transceiver.setCodecPreferences([*h264_codecs, *rtx_codecs])
+            logger.info(
+                "rtc video codec preference set: %s",
+                [
+                    getattr(codec, "mimeType", "unknown")
+                    for codec in [*h264_codecs, *rtx_codecs]
+                ],
+            )
+        except Exception as exc:
+            logger.warning("rtc failed to set H264 codec preference: %s", exc)
+        return
+
+
 def _maybe_switch_asset(
     state: RtcSessionState,
     candidate: AssetBundle,
@@ -583,6 +648,28 @@ def _maybe_switch_asset(
 
     state.last_selected_bundle = current
     return False, current
+
+
+def _build_rtc_processors(app: FastAPI, settings: Settings) -> tuple[ServerFaceTracker, BaldPreprocessor | None, bool]:
+    if not settings.rtc_session_local_processors:
+        return app.state.face_tracker, getattr(app.state, "bald_processor", None), False
+
+    face_tracker = ServerFaceTracker(
+        settings.face_landmarker_model_path,
+        delegate_preference=settings.mediapipe_delegate,
+        running_mode=settings.rtc_face_landmarker_running_mode,
+    )
+    bald_processor = BaldPreprocessor(
+        settings.hair_segmenter_model_path,
+        delegate_preference=settings.mediapipe_delegate,
+        running_mode=settings.rtc_hair_segmenter_running_mode,
+    )
+    logger.info(
+        "rtc session processors initialized: face_delegate=%s bald_delegate=%s",
+        face_tracker.acceleration,
+        bald_processor.acceleration,
+    )
+    return face_tracker, bald_processor, True
 
 
 def attach_rtc_routes(app: FastAPI) -> None:
@@ -677,17 +764,20 @@ def attach_rtc_routes(app: FastAPI) -> None:
             if track.kind != "video":
                 return
             logger.info("rtc video track received")
-            peer_connection.addTrack(
+            face_tracker, bald_processor, owns_processors = _build_rtc_processors(app, settings)
+            sender = peer_connection.addTrack(
                 RtcServerTrackedRenderTrack(
                     track,
                     session_state,
                     claims=claims,
                     settings=settings,
                     catalog=app.state.catalog,
-                    face_tracker=app.state.face_tracker,
-                    bald_processor=getattr(app.state, "bald_processor", None),
+                    face_tracker=face_tracker,
+                    bald_processor=bald_processor,
+                    owns_processors=owns_processors,
                 )
             )
+            _prefer_h264_for_sender(peer_connection, sender)
 
         await peer_connection.setRemoteDescription(
             RTCSessionDescription(sdp=payload.sdp, type=payload.type)

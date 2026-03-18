@@ -19,7 +19,7 @@ from app.bald import BaldPreprocessor
 from app.catalog import AssetBundle, AssetCatalog
 from app.config import Settings
 from app.face_tracking import ServerFaceTracker
-from app.server_render import compose_bundle_frame
+from app.server_render import compose_bundle_frame_rgb
 
 
 @dataclass(frozen=True)
@@ -146,7 +146,7 @@ def _process_http_frame(
     selection_latency_ms = 0.0
     render_started_at = time.perf_counter()
     status = "no_face"
-    rendered = image
+    rendered_rgb = frame_rgb
     processed_seq = 0
     feature = None
 
@@ -154,33 +154,31 @@ def _process_http_frame(
         feature = tracking_result.feature
         processed_seq = feature.seq
         selection_started_at = time.perf_counter()
-        selected_bundle = catalog.recommend(
+        selected_bundle = catalog.bundle_for_recommended_asset(
             dataset_code=dataset_code,
-            feature=feature,
+            selection_feature=feature,
+            render_feature=feature,
             representative_asset_id=representative_asset_id,
         )
-        selected_bundle = catalog.bundle_for_asset(
-            dataset_code=dataset_code,
-            asset_id=selected_bundle.asset_id,
-            feature=feature,
-        )
         selection_latency_ms = round((time.perf_counter() - selection_started_at) * 1000.0, 3)
-        render_input = image
+        render_input_rgb = frame_rgb
         if bald_processor is not None:
-            render_input = Image.fromarray(
-                bald_processor.apply(frame_rgb, tracking_result.landmarks_px),
-                mode="RGB",
-            )
-        rendered = compose_bundle_frame(
-            render_input,
+            render_input_rgb = bald_processor.apply(frame_rgb, tracking_result.landmarks_px)
+        rendered_rgb = compose_bundle_frame_rgb(
+            render_input_rgb,
             selected_bundle,
             reference_width=feature.image_size.width,
             reference_height=feature.image_size.height,
+            acceleration_preference=settings.render_acceleration,
         )
         status = "ok"
 
     render_latency_ms = round((time.perf_counter() - render_started_at) * 1000.0, 3)
-    response_bytes = _encode_image(rendered, response_format, settings.http_test_jpeg_quality)
+    response_bytes = _encode_image(
+        Image.fromarray(rendered_rgb),
+        response_format,
+        settings.http_test_jpeg_quality,
+    )
     total_latency_ms = round((time.perf_counter() - total_started_at) * 1000.0, 3)
     return HttpFrameResult(
         response_bytes=response_bytes,
@@ -236,9 +234,21 @@ def attach_http_runtime_routes(app: FastAPI) -> None:
                 "ready": True,
                 "http_test_enabled": settings.http_test_enabled,
                 "node_id": settings.node_id,
+                "acceleration": app.state.acceleration.to_dict(),
+                "rtc_h264_acceleration": app.state.rtc_h264_acceleration,
                 "static_root": str(settings.static_root),
                 "face_landmarker_model_path": str(settings.face_landmarker_model_path),
                 "face_landmarker_model_exists": settings.face_landmarker_model_path.is_file(),
+                "mediapipe_delegate": settings.mediapipe_delegate,
+                "http_face_tracker_delegate": app.state.face_tracker.acceleration,
+                "http_bald_processor_delegate": app.state.bald_processor.acceleration,
+                "http_bald_processor_warning": getattr(app.state.bald_processor, "initialization_warning", None),
+                "render_acceleration": settings.render_acceleration,
+                "http_face_landmarker_running_mode": settings.http_face_landmarker_running_mode,
+                "http_hair_segmenter_running_mode": settings.http_hair_segmenter_running_mode,
+                "rtc_face_landmarker_running_mode": settings.rtc_face_landmarker_running_mode,
+                "rtc_hair_segmenter_running_mode": settings.rtc_hair_segmenter_running_mode,
+                "rtc_session_local_processors": settings.rtc_session_local_processors,
                 "default_dataset_code": settings.http_test_default_dataset_code,
                 "dataset": summary,
             }

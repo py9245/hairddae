@@ -158,15 +158,27 @@ class AssetCatalog:
         feature: FeatureMessageModel,
         representative_asset_id: str | None = None,
     ) -> AssetBundle:
-        dataset = self._load_dataset(dataset_code)
-        candidates = [item for item in dataset.items if item.approved] or list(dataset.items)
-        if not candidates:
-            raise ValueError(f"no selectable assets for dataset {dataset_code}")
-
-        candidates = _filter_assets_by_pose(feature, candidates)
-        geom = _derive_geom(feature)
-        best_asset = min(candidates, key=lambda item: _retrieval_score(feature, item, geom))
+        dataset, best_asset, geom = self._select_asset(
+            dataset_code,
+            feature,
+            representative_asset_id=representative_asset_id,
+        )
         return self._build_bundle(dataset_code, dataset, best_asset, feature, geom=geom)
+
+    def bundle_for_recommended_asset(
+        self,
+        dataset_code: str,
+        *,
+        selection_feature: FeatureMessageModel,
+        render_feature: FeatureMessageModel,
+        representative_asset_id: str | None = None,
+    ) -> AssetBundle:
+        dataset, best_asset, _ = self._select_asset(
+            dataset_code,
+            selection_feature,
+            representative_asset_id=representative_asset_id,
+        )
+        return self._build_bundle(dataset_code, dataset, best_asset, render_feature)
 
     def bundle_for_asset(
         self,
@@ -243,6 +255,24 @@ class AssetCatalog:
             revision=f"{dataset_code}:{asset.asset_id}",
             score=score,
         )
+
+    def _select_asset(
+        self,
+        dataset_code: str,
+        feature: FeatureMessageModel,
+        representative_asset_id: str | None = None,
+    ) -> tuple[DatasetRecord, AssetRecord, dict[str, float]]:
+        del representative_asset_id
+
+        dataset = self._load_dataset(dataset_code)
+        candidates = [item for item in dataset.items if item.approved] or list(dataset.items)
+        if not candidates:
+            raise ValueError(f"no selectable assets for dataset {dataset_code}")
+
+        candidates = _filter_assets_by_pose(feature, candidates)
+        geom = _derive_geom(feature)
+        best_asset = min(candidates, key=lambda item: _retrieval_score(feature, item, geom))
+        return dataset, best_asset, geom
 
     def _load_dataset(self, dataset_code: str) -> DatasetRecord:
         with self._lock:

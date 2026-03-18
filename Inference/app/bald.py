@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from threading import Lock
 
@@ -8,6 +9,8 @@ import mediapipe as mp
 import numpy as np
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
+
+from app.acceleration import select_mediapipe_delegate
 
 
 LEFT_TEMPLE = 127
@@ -20,6 +23,8 @@ RIGHT_CHEEK = 454
 LEFT_EYEBROW = [70, 63, 105, 66, 107, 55, 65, 52, 53, 46]
 RIGHT_EYEBROW = [336, 296, 334, 293, 300, 285, 295, 282, 283, 276]
 HAIR_CATEGORY_INDEX = 1
+logger = logging.getLogger("uvicorn.error")
+_KNOWN_GPU_INCOMPATIBLE_SEGMENTER_MODELS: dict[str, str] = {}
 
 
 def _polygon_mask(indices: list[int], landmarks_px: np.ndarray, width: int, height: int) -> np.ndarray:
@@ -161,6 +166,14 @@ def _extract_hair_mask(
     return hair_mask, None
 
 
+def _is_known_gpu_incompatible_segmenter_error(exc: Exception) -> bool:
+    message = str(exc)
+    return (
+        "TfLiteGpuDelegate Prepare: Batch size mismatch" in message
+        or "expected 1 but got 8" in message
+    )
+
+
 def _sample_skin_color(
     image_rgb: np.ndarray,
     nose: np.ndarray,
@@ -264,19 +277,101 @@ def _paint_segmented_hair_as_skin(
 
 
 class BaldPreprocessor:
-    def __init__(self, model_path: Path) -> None:
+    def __init__(
+        self,
+        model_path: Path,
+        *,
+        delegate_preference: str = "auto",
+        running_mode: str = "image",
+    ) -> None:
         resolved_model_path = model_path.expanduser().resolve()
-        options = vision.ImageSegmenterOptions(
-            base_options=python.BaseOptions(model_asset_path=str(resolved_model_path)),
-            running_mode=vision.RunningMode.IMAGE,
-            output_category_mask=True,
-            output_confidence_masks=True,
+        self._running_mode = self._resolve_running_mode(running_mode)
+        self._video_timestamp_ms = 0
+        self._acceleration = "cpu"
+        self._initialization_warning: str | None = None
+        self._segmenter = self._build_segmenter(
+            resolved_model_path,
+            delegate_preference=delegate_preference,
         )
-        self._segmenter = vision.ImageSegmenter.create_from_options(options)
         self._lock = Lock()
 
     def close(self) -> None:
         self._segmenter.close()
+
+    @property
+    def acceleration(self) -> str:
+        return self._acceleration
+
+    @property
+    def initialization_warning(self) -> str | None:
+        return self._initialization_warning
+
+    @staticmethod
+    def _resolve_running_mode(running_mode: str) -> vision.RunningMode:
+        resolved = running_mode.strip().lower()
+        if resolved == "video":
+            return vision.RunningMode.VIDEO
+        return vision.RunningMode.IMAGE
+
+    def _build_segmenter(
+        self,
+        model_path: Path,
+        *,
+        delegate_preference: str,
+    ) -> vision.ImageSegmenter:
+        delegate, delegate_name = select_mediapipe_delegate(delegate_preference)
+        model_key = str(model_path)
+        cached_gpu_failure = _KNOWN_GPU_INCOMPATIBLE_SEGMENTER_MODELS.get(model_key)
+        if delegate_name == "gpu" and cached_gpu_failure:
+            self._initialization_warning = cached_gpu_failure
+            logger.warning(
+                "bald preprocessor skipping GPU delegate for known-incompatible model %s: %s",
+                model_path.name,
+                cached_gpu_failure,
+            )
+            delegate = python.BaseOptions.Delegate.CPU
+            delegate_name = "cpu"
+        options = vision.ImageSegmenterOptions(
+            base_options=python.BaseOptions(
+                model_asset_path=str(model_path),
+                delegate=delegate,
+            ),
+            running_mode=self._running_mode,
+            output_category_mask=True,
+            output_confidence_masks=True,
+        )
+        try:
+            segmenter = vision.ImageSegmenter.create_from_options(options)
+            self._acceleration = delegate_name
+            logger.info(
+                "bald preprocessor initialized: delegate=%s running_mode=%s",
+                delegate_name,
+                self._running_mode.name.lower(),
+            )
+            return segmenter
+        except Exception as exc:
+            if delegate_name != "gpu":
+                raise
+            if _is_known_gpu_incompatible_segmenter_error(exc):
+                _KNOWN_GPU_INCOMPATIBLE_SEGMENTER_MODELS[model_key] = str(exc)
+            self._initialization_warning = str(exc)
+            logger.warning("bald preprocessor GPU delegate unavailable, falling back to CPU: %s", exc)
+            fallback_options = vision.ImageSegmenterOptions(
+                base_options=python.BaseOptions(
+                    model_asset_path=str(model_path),
+                    delegate=python.BaseOptions.Delegate.CPU,
+                ),
+                running_mode=self._running_mode,
+                output_category_mask=True,
+                output_confidence_masks=True,
+            )
+            segmenter = vision.ImageSegmenter.create_from_options(fallback_options)
+            self._acceleration = "cpu"
+            return segmenter
+
+    def _next_video_timestamp_ms(self) -> int:
+        self._video_timestamp_ms += 1
+        return self._video_timestamp_ms
 
     def apply(self, frame_rgb: np.ndarray, landmarks_px: np.ndarray) -> np.ndarray:
         if frame_rgb.ndim != 3 or frame_rgb.shape[2] != 3:
@@ -288,7 +383,13 @@ class BaldPreprocessor:
         height, width = frame_rgb.shape[:2]
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
         with self._lock:
-            result = self._segmenter.segment(mp_image)
+            if self._running_mode == vision.RunningMode.VIDEO:
+                result = self._segmenter.segment_for_video(
+                    mp_image,
+                    self._next_video_timestamp_ms(),
+                )
+            else:
+                result = self._segmenter.segment(mp_image)
 
         hair_mask, hair_confidence = _extract_hair_mask(result, height, width)
         hair_mask = _refine_mask(hair_mask)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from threading import Lock
 
@@ -10,6 +11,7 @@ import numpy as np
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
+from app.acceleration import select_mediapipe_delegate
 from app.auth import TicketClaims
 from app.config import Settings
 from app.models import FeatureMessageModel
@@ -28,6 +30,8 @@ FACE_LANDMARK_INDEX = {
     "lower_right": 397,
     "chin_center": 152,
 }
+
+logger = logging.getLogger("uvicorn.error")
 
 
 @dataclass(frozen=True)
@@ -132,18 +136,83 @@ def _pose_from_result(result: vision.FaceLandmarkerResult) -> dict[str, float | 
 
 
 class ServerFaceTracker:
-    def __init__(self, model_path: Path) -> None:
+    def __init__(
+        self,
+        model_path: Path,
+        *,
+        delegate_preference: str = "auto",
+        running_mode: str = "image",
+    ) -> None:
         resolved_model_path = model_path.expanduser().resolve()
-        options = vision.FaceLandmarkerOptions(
-            base_options=python.BaseOptions(model_asset_path=str(resolved_model_path)),
-            output_facial_transformation_matrixes=True,
-            num_faces=1,
+        self._running_mode = self._resolve_running_mode(running_mode)
+        self._video_timestamp_ms = 0
+        self._acceleration = "cpu"
+        self._landmarker = self._build_landmarker(
+            resolved_model_path,
+            delegate_preference=delegate_preference,
         )
-        self._landmarker = vision.FaceLandmarker.create_from_options(options)
         self._lock = Lock()
 
     def close(self) -> None:
         self._landmarker.close()
+
+    @property
+    def acceleration(self) -> str:
+        return self._acceleration
+
+    @staticmethod
+    def _resolve_running_mode(running_mode: str) -> vision.RunningMode:
+        resolved = running_mode.strip().lower()
+        if resolved == "video":
+            return vision.RunningMode.VIDEO
+        return vision.RunningMode.IMAGE
+
+    def _build_landmarker(
+        self,
+        model_path: Path,
+        *,
+        delegate_preference: str,
+    ) -> vision.FaceLandmarker:
+        delegate, delegate_name = select_mediapipe_delegate(delegate_preference)
+        options = vision.FaceLandmarkerOptions(
+            base_options=python.BaseOptions(
+                model_asset_path=str(model_path),
+                delegate=delegate,
+            ),
+            running_mode=self._running_mode,
+            output_facial_transformation_matrixes=True,
+            num_faces=1,
+        )
+        try:
+            landmarker = vision.FaceLandmarker.create_from_options(options)
+            self._acceleration = delegate_name
+            logger.info(
+                "face tracker initialized: delegate=%s running_mode=%s",
+                delegate_name,
+                self._running_mode.name.lower(),
+            )
+            return landmarker
+        except Exception as exc:
+            if delegate_name != "gpu":
+                raise
+            logger.warning("face tracker GPU delegate unavailable, falling back to CPU: %s", exc)
+            fallback_options = vision.FaceLandmarkerOptions(
+                base_options=python.BaseOptions(
+                    model_asset_path=str(model_path),
+                    delegate=python.BaseOptions.Delegate.CPU,
+                ),
+                running_mode=self._running_mode,
+                output_facial_transformation_matrixes=True,
+                num_faces=1,
+            )
+            landmarker = vision.FaceLandmarker.create_from_options(fallback_options)
+            self._acceleration = "cpu"
+            return landmarker
+
+    def _next_video_timestamp_ms(self, ts_ms: int) -> int:
+        candidate = max(int(ts_ms), self._video_timestamp_ms + 1)
+        self._video_timestamp_ms = candidate
+        return candidate
 
     def extract_tracking_result_from_rgb(
         self,
@@ -164,7 +233,13 @@ class ServerFaceTracker:
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
 
         with self._lock:
-            result = self._landmarker.detect(mp_image)
+            if self._running_mode == vision.RunningMode.VIDEO:
+                result = self._landmarker.detect_for_video(
+                    mp_image,
+                    self._next_video_timestamp_ms(ts_ms),
+                )
+            else:
+                result = self._landmarker.detect(mp_image)
 
         if not result.face_landmarks or not result.facial_transformation_matrixes:
             return None

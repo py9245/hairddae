@@ -28,7 +28,7 @@ function validateValue(
           : '',
     passwordConfirm: label === '비밀번호 확인' ? v : '',
     birthDate: '2026-03-17',
-    gender: '',
+    gender: null,
     agreed: true,
   }
   const key =

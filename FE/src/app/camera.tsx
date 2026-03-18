@@ -12,6 +12,7 @@ import {
 import type { FaceFrame } from '@/lib/Camera/types'
 
 export default function Camera() {
+  const sourceVideoRef = useRef<HTMLVideoElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -39,7 +40,7 @@ export default function Camera() {
     }
   }, [])
 
-  const cam = useUserMedia({ videoRef, constraints: mediaConstraints })
+  const cam = useUserMedia({ videoRef: sourceVideoRef, constraints: mediaConstraints })
   const shouldUseClientTracking = HAIR_TRANSPORT !== 'rtc'
 
   const mp = useFaceLandmarker({
@@ -61,6 +62,7 @@ export default function Camera() {
 
   return (
     <FaceLandmarksView
+      sourceVideoRef={sourceVideoRef}
       stream={cam.stream}
       transport={HAIR_TRANSPORT}
       videoRef={videoRef}

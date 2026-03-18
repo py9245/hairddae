@@ -5,6 +5,7 @@ import { useUserMedia } from '@/hooks/Camera/useUserMedia'
 import FaceLandmarksView from './face-landmarks-view'
 
 export default function FaceTrackingCamera() {
+  const sourceVideoRef = useRef<HTMLVideoElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -16,7 +17,7 @@ export default function FaceTrackingCamera() {
 
   const wasmPath = useMemo(() => `${import.meta.env.BASE_URL}mediapipe`, [])
 
-  const cam = useUserMedia({ videoRef })
+  const cam = useUserMedia({ videoRef: sourceVideoRef })
 
   const mp = useFaceLandmarker({
     modelAssetPath: modelPath,
@@ -33,6 +34,7 @@ export default function FaceTrackingCamera() {
 
   return (
     <FaceLandmarksView
+      sourceVideoRef={sourceVideoRef}
       stream={cam.stream}
       transport="rtc"
       videoRef={videoRef}

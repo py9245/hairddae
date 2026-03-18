@@ -5,10 +5,13 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 import { HairSelector } from '@/components/Camera/hair-selector'
 import { ApplyStyleModal } from '@/components/Camera/modal'
 import { useHairRtcSession } from '@/hooks/Camera/useHairRtcSession'
+import { useViewportCaptureStream } from '@/hooks/Camera/useViewportCaptureStream'
 import { captureCompositedImage } from '@/lib/Camera/capture'
 import { HAIR_ITEMS } from '@/lib/Camera/HairItem'
+import { RTC_CAPTURE_FPS } from '@/lib/Camera/runtime'
 
 type FaceLandmarksViewProps = {
+  sourceVideoRef: RefObject<HTMLVideoElement | null>
   stream: MediaStream | null
   transport: string
   videoRef: RefObject<HTMLVideoElement | null>
@@ -17,6 +20,7 @@ type FaceLandmarksViewProps = {
 }
 
 export default function FaceLandmarksView({
+  sourceVideoRef,
   stream,
   transport,
   videoRef,
@@ -32,13 +36,20 @@ export default function FaceLandmarksView({
   const [isFrameFrozen, setIsFrameFrozen] = useState(false)
 
   const displayHairId = pendingHairId ?? selectedHairId
+  const rtcCaptureStream = useViewportCaptureStream({
+    enabled: transport === 'rtc',
+    fps: RTC_CAPTURE_FPS,
+    sourceVideoRef,
+    wrapRef,
+  })
   const hairRtc = useHairRtcSession({
     enabled: transport === 'rtc' && !isFrameFrozen && displayHairId > 0,
     hairId: displayHairId > 0 ? displayHairId : null,
-    stream,
+    stream: rtcCaptureStream,
   })
   const displayStream =
     transport === 'rtc' && hairRtc.remoteStream ? hairRtc.remoteStream : stream
+  const shouldMirrorDisplay = displayStream != null && displayStream === stream
 
   useEffect(() => {
     const video = videoRef.current
@@ -83,11 +94,12 @@ export default function FaceLandmarksView({
       overlayCanvasRef,
       wrapRef,
       hairItems: HAIR_ITEMS,
+      mirror: shouldMirrorDisplay,
       selectedHairId: displayHairId,
     })
 
     setIsFrameFrozen(false)
-  }, [displayHairId, overlayCanvasRef, videoRef])
+  }, [displayHairId, overlayCanvasRef, shouldMirrorDisplay, videoRef])
 
   const handleTopLeftAction = useCallback(() => {
     if (isFrameFrozen) {
@@ -104,22 +116,24 @@ export default function FaceLandmarksView({
         ref={wrapRef}
         className="relative h-[100dvh] w-[430px] max-w-full overflow-hidden bg-black"
       >
+        <video ref={sourceVideoRef} autoPlay playsInline muted className="hidden" />
+
         <video
           ref={videoRef}
           autoPlay
           playsInline
           muted
-          className="block h-full w-full object-cover -scale-x-100"
+          className={`block h-full w-full object-cover ${shouldMirrorDisplay ? '-scale-x-100' : ''}`}
         />
 
         <canvas
           ref={canvasRef}
-          className="pointer-events-none absolute inset-0 hidden h-full w-full -scale-x-100"
+          className={`pointer-events-none absolute inset-0 hidden h-full w-full ${shouldMirrorDisplay ? '-scale-x-100' : ''}`}
         />
 
         <canvas
           ref={overlayCanvasRef}
-          className="pointer-events-none absolute inset-0 z-10 h-full w-full -scale-x-100"
+          className={`pointer-events-none absolute inset-0 z-10 h-full w-full ${shouldMirrorDisplay ? '-scale-x-100' : ''}`}
         />
 
         <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 pt-5">

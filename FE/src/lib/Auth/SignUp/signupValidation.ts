@@ -7,6 +7,7 @@ const PASSWORD_HAS_LETTER_REGEX = /[A-Za-z]/
 const PASSWORD_HAS_NUMBER_REGEX = /\d/
 const PASSWORD_HAS_SPECIAL_REGEX = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/
 const BIRTH_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
+const genderSchema = z.union([z.literal('M'), z.literal('F'), z.null()])
 
 export const signupFormSchema = z
   .object({
@@ -52,7 +53,7 @@ export const signupFormSchema = z
         '생년월일을 올바른 형식으로 입력해주세요.',
       ),
 
-    gender: z.enum(['', 'M', 'F']),
+    gender: genderSchema,
 
     agreed: z.boolean(),
   })

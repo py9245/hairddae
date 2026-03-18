@@ -1,8 +1,9 @@
 import { Link, useRouter } from '@tanstack/react-router'
-import { ChevronDown, Eye, EyeClosed } from 'lucide-react'
+import { Eye, EyeClosed } from 'lucide-react'
 import { useState } from 'react'
 import { AgreementCheckbox } from '@/components/Auth/agreement-checkbox'
 import { BirthDatePicker } from '@/components/Auth/birth-date-picker'
+import { GenderSelect } from '@/components/Auth/gender-select'
 import { useSignUpForm } from '@/hooks/Auth/SignUp/useSignUpForm'
 import { useSignUpMutation } from '@/hooks/Auth/SignUp/useSignUpMutation'
 
@@ -38,7 +39,7 @@ export default function SignUp() {
                 password: formValues.password,
                 passwordCheck: formValues.passwordConfirm,
                 birthDate: formValues.birthDate || undefined,
-                gender: formValues.gender || undefined,
+                gender: formValues.gender ?? undefined,
               })
 
               await router.navigate({ to: '/auth/login' })
@@ -62,12 +63,12 @@ export default function SignUp() {
               placeholder="사용하실 아이디를 입력하세요"
               className={`h-12 w-full rounded-2xl border bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
                 errors.userId
-                  ? 'border-red-400 focus:border-red-400'
+                  ? 'border-primary-300 focus:border-error'
                   : 'border-gray-200 focus:border-primary-200'
               }`}
             />
             {errors.userId && (
-              <p className="mt-2 text-sm text-red-500">{errors.userId}</p>
+              <p className="mt-2 text-sm text-error">{errors.userId}</p>
             )}
           </div>
 
@@ -89,7 +90,7 @@ export default function SignUp() {
                 placeholder="비밀번호 입력"
                 className={`h-12 w-full rounded-2xl border bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
                   errors.password
-                    ? 'border-red-400 focus:border-red-400'
+                    ? 'border-error focus:border-error'
                     : 'border-gray-200 focus:border-primary-200'
                 }`}
               />
@@ -107,7 +108,7 @@ export default function SignUp() {
               </button>
             </div>
             {errors.password && (
-              <p className="mt-2 text-sm text-red-500">{errors.password}</p>
+              <p className="mt-2 text-sm text-error">{errors.password}</p>
             )}
           </div>
 
@@ -131,7 +132,7 @@ export default function SignUp() {
                 placeholder="비밀번호 재입력"
                 className={`h-12 w-full rounded-2xl border bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
                   errors.passwordConfirm
-                    ? 'border-red-400 focus:border-red-400'
+                    ? 'border-error focus:border-error'
                     : 'border-gray-200 focus:border-primary-200'
                 }`}
               />
@@ -153,7 +154,7 @@ export default function SignUp() {
               </button>
             </div>
             {errors.passwordConfirm && (
-              <p className="mt-2 text-sm text-red-500">
+              <p className="mt-2 text-sm text-error">
                 {errors.passwordConfirm}
               </p>
             )}
@@ -177,38 +178,34 @@ export default function SignUp() {
                 hasError={!!errors.birthDate}
               />
               {errors.birthDate && (
-                <p className="mt-2 text-sm text-red-500">{errors.birthDate}</p>
+                <p className="mt-2 text-sm text-primary-300">
+                  {errors.birthDate}
+                </p>
               )}
             </div>
 
-            <div>
+            <div className="space-y-2">
               <label
                 htmlFor="gender"
-                className="mb-2 block text-base font-semibold text-slate-700"
+                className="block text-base font-semibold text-slate-700"
               >
                 성별{' '}
                 <span className="text-sm font-medium text-gray-400">
                   (선택)
                 </span>
               </label>
-              <div className="relative">
-                <select
-                  id="gender"
-                  value={values.gender}
-                  onChange={(e) =>
-                    handleChange('gender', e.target.value as '' | 'M' | 'F')
-                  }
-                  onBlur={() => handleBlur('gender')}
-                  className="h-12 w-full appearance-none rounded-2xl border border-gray-200 bg-white px-4 text-base text-slate-700 outline-none focus:border-primary-200"
-                >
-                  <option value="">미선택</option>
-                  <option value="M">남성</option>
-                  <option value="F">여성</option>
-                </select>
-                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
-                  <ChevronDown />
-                </div>
-              </div>
+
+              <GenderSelect
+                id="gender"
+                value={values.gender}
+                onChange={(value) => handleChange('gender', value)}
+                onBlur={() => handleBlur('gender')}
+                error={Boolean(errors.gender)}
+              />
+
+              {errors.gender ? (
+                <p className="text-sm text-error">{errors.gender}</p>
+              ) : null}
             </div>
           </div>
 
@@ -220,11 +217,11 @@ export default function SignUp() {
             requiredText="[필수]"
           />
           {errors.agreed && (
-            <p className="text-center text-sm text-red-500">{errors.agreed}</p>
+            <p className="text-center text-sm text-error">{errors.agreed}</p>
           )}
 
           {signUpMutation.isError && (
-            <p className="text-center text-sm text-red-500">
+            <p className="text-center text-sm text-error">
               {signUpMutation.error instanceof Error
                 ? signUpMutation.error.message
                 : '회원가입 처리 중 오류가 발생했습니다.'}
@@ -236,8 +233,8 @@ export default function SignUp() {
             disabled={!isFormValid || signUpMutation.isPending}
             className={`mt-4 h-12 w-full rounded-2xl text-lg font-bold text-white transition ${
               !isFormValid || signUpMutation.isPending
-                ? 'bg-primary-100 cursor-not-allowed'
-                : 'bg-primary-300 hover:bg-primary-200 cursor-pointer'
+                ? 'cursor-not-allowed bg-primary-300'
+                : 'cursor-pointer bg-primary-300 hover:bg-primary-200'
             }`}
           >
             {signUpMutation.isPending ? '가입 중...' : '가입하기'}

@@ -131,6 +131,7 @@
   --color-primary-100: #ffdbdb;
   --color-primary-200: #f18b90;
   --color-primary-300: #ea7589;
+  --color-error: #ff3b30;
   --font-sans:
     "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
 }

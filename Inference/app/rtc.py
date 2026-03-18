@@ -5,6 +5,7 @@ from collections import deque
 from dataclasses import dataclass, field
 import json
 import logging
+import cv2
 import numpy as np
 from PIL import Image
 from statistics import median
@@ -19,6 +20,7 @@ from app.bald import BaldPreprocessor
 from app.catalog import AssetBundle, AssetCatalog
 from app.config import Settings
 from app.face_tracking import ServerFaceTracker
+from app.hairddae_runtime_manager import HairddaeRuntimeManager
 from app.models import FeatureMessageModel
 from app.server_render import compose_bundle_frame
 
@@ -320,6 +322,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         claims: Any,
         settings: Settings,
         catalog: AssetCatalog,
+        hair_runtime_manager: HairddaeRuntimeManager,
         face_tracker: ServerFaceTracker,
         bald_processor: BaldPreprocessor | None,
     ) -> None:
@@ -329,12 +332,72 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         self._claims = claims
         self._settings = settings
         self._catalog = catalog
+        self._hair_runtime_manager = hair_runtime_manager
         self._face_tracker = face_tracker
         self._bald_processor = bald_processor
         self._buffer: deque[BufferedVideoFrame] = deque()
         self._frame_available = asyncio.Event()
         self._source_ended = False
         self._reader_task = asyncio.create_task(self._reader_loop())
+
+    def _prepare_frame_for_hair_runtime(
+        self,
+        frame_bgr: np.ndarray,
+        seq: int,
+    ) -> tuple[np.ndarray, str]:
+        if self._bald_processor is None:
+            return frame_bgr, "disabled"
+
+        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        tracking_result = self._face_tracker.extract_tracking_result_from_rgb(
+            frame_rgb,
+            claims=self._claims,
+            settings=self._settings,
+            seq=seq,
+            ts_ms=_now_ms(),
+        )
+        if tracking_result is None:
+            return frame_bgr, "no_face"
+
+        try:
+            bald_rgb = self._bald_processor.apply(frame_rgb, tracking_result.landmarks_px)
+        except Exception as exc:
+            logger.warning("rtc bald preprocessing failed: %s", exc)
+            return frame_bgr, "error"
+
+        if not isinstance(bald_rgb, np.ndarray) or bald_rgb.shape != frame_rgb.shape:
+            return frame_bgr, "invalid_output"
+
+        return cv2.cvtColor(bald_rgb, cv2.COLOR_RGB2BGR), "applied"
+
+    def _resize_frame_for_processing(
+        self,
+        frame_bgr: np.ndarray,
+    ) -> tuple[np.ndarray, tuple[int, int]]:
+        frame_height, frame_width = frame_bgr.shape[:2]
+        max_dimension = max(0, int(getattr(self._settings, "rtc_process_max_dimension", 0) or 0))
+        if max_dimension <= 0 or max(frame_width, frame_height) <= max_dimension:
+            return frame_bgr, (frame_width, frame_height)
+
+        scale = float(max_dimension) / float(max(frame_width, frame_height))
+        resized_width = max(1, int(round(frame_width * scale)))
+        resized_height = max(1, int(round(frame_height * scale)))
+        resized = cv2.resize(frame_bgr, (resized_width, resized_height), interpolation=cv2.INTER_AREA)
+        return resized, (frame_width, frame_height)
+
+    def _process_runtime_frame(
+        self,
+        frame_bgr: np.ndarray,
+        seq: int,
+    ) -> tuple[dict[str, Any], str]:
+        prepared_frame_bgr, bald_status = self._prepare_frame_for_hair_runtime(frame_bgr, seq)
+        runtime_result = self._hair_runtime_manager.process_frame(
+            dataset_code=self._claims.dataset_code,
+            frame_bgr=frame_bgr,
+            render_frame_bgr=prepared_frame_bgr,
+            session_id=self._claims.apply_session_id,
+        )
+        return runtime_result, bald_status
 
     async def _reader_loop(self) -> None:
         try:
@@ -376,108 +439,101 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
 
     async def recv(self) -> Any:
         frame = await self._next_latest_frame()
-        frame_rgb = frame.to_ndarray(format="rgb24")
-
         next_seq = self._state.server_processed_seq + 1
-        tracking_result = await asyncio.to_thread(
-            self._face_tracker.extract_tracking_result_from_rgb,
-            frame_rgb,
-            claims=self._claims,
-            settings=self._settings,
-            seq=next_seq,
-            ts_ms=_now_ms(),
-        )
-        if tracking_result is None:
-            return frame
-        feature = tracking_result.feature
-
+        frame_bgr = frame.to_ndarray(format="bgr24")
         self._state.server_processed_seq = next_seq
-        selection_feature = _build_selection_feature(self._state, feature)
-        selected: AssetBundle
+        processing_frame_bgr, original_size = self._resize_frame_for_processing(frame_bgr)
+
+        selected: AssetBundle | None = None
         changed = False
         try:
-            candidate = self._catalog.recommend(
-                dataset_code=self._claims.dataset_code,
-                feature=selection_feature,
-                representative_asset_id=self._claims.representative_asset_id,
-            )
-            candidate = self._catalog.bundle_for_asset(
-                dataset_code=self._claims.dataset_code,
-                asset_id=candidate.asset_id,
-                feature=feature,
-            )
-            changed, selected = _maybe_switch_asset(
-                self._state,
-                candidate,
-                self._settings,
-                self._catalog,
-                self._claims.dataset_code,
-                feature,
+            runtime_result, bald_status = await asyncio.to_thread(
+                self._process_runtime_frame,
+                processing_frame_bgr,
+                next_seq,
             )
         except Exception as exc:
-            # Keep RTC output alive even when static dataset/bootstrap assets are missing.
-            logger.warning("rtc asset selection failed: %s", exc)
-            selected = _build_fallback_bundle(feature)
+            logger.warning("rtc hairddae runtime failed: %s", exc)
+            return frame
+
+        selected_asset_id = str(runtime_result.get("selected_asset_id") or "")
+        if selected_asset_id:
+            try:
+                selected = self._catalog.bundle_for_runtime_selection(
+                    dataset_code=self._claims.dataset_code,
+                    asset_id=selected_asset_id,
+                    score=(
+                        None
+                        if runtime_result.get("score") is None
+                        else float(runtime_result["score"])
+                    ),
+                )
+            except Exception as exc:
+                logger.warning("rtc asset bundle build failed: %s", exc)
+                selected = None
+
+        if selected is not None:
             changed = self._state.last_asset_id != selected.asset_id
             self._state.last_selected_bundle = selected
-            self._state.last_switch_at_ms = _now_ms()
-        self._state.latest_feature = feature
-        self._state.last_processed_seq = feature.seq
-        self._state.processed_count += 1
-        if self._state.last_asset_id == selected.asset_id:
-            self._state.stable_asset_count += 1
-        else:
-            self._state.last_asset_id = selected.asset_id
-            self._state.stable_asset_count = 1
-        if (
-            not self._state.render_ready
-            and self._state.processed_count >= SERVER_RENDER_READY_MIN_PROCESSED
-            and self._state.stable_asset_count >= SERVER_RENDER_READY_MIN_STABLE_ASSET
-        ):
-            self._state.render_ready = True
+            self._state.last_processed_seq = next_seq
+            self._state.processed_count += 1
+            if self._state.last_asset_id == selected.asset_id:
+                self._state.stable_asset_count += 1
+            else:
+                self._state.last_asset_id = selected.asset_id
+                self._state.stable_asset_count = 1
+            if (
+                not self._state.render_ready
+                and self._state.processed_count >= SERVER_RENDER_READY_MIN_PROCESSED
+                and self._state.stable_asset_count >= SERVER_RENDER_READY_MIN_STABLE_ASSET
+            ):
+                self._state.render_ready = True
 
-        logger.info(
-            (
-                "rtc server feature: seq=%s changed=%s asset=%s "
-                "raw_pose=(%s,%s,%s) smooth_pose=(%s,%s,%s)"
-            ),
-            feature.seq,
-            changed,
-            selected.asset_id,
-            feature.pose.yaw_1deg,
-            feature.pose.pitch_1deg,
-            feature.pose.roll_1deg,
-            selection_feature.pose.yaw_1deg,
-            selection_feature.pose.pitch_1deg,
-            selection_feature.pose.roll_1deg,
-        )
-        self._emit_channel_payload(
-            {
-                "type": "processed",
-                "apply_session_id": self._claims.apply_session_id,
-                "accepted_seq": feature.seq,
-                "processed_seq": feature.seq,
-                "changed": changed,
-                "queue_depth": 0,
-                "dropped_pending_count": 0,
-                "overloaded": False,
-                "asset": selected.to_message(),
-            }
-        )
-
-        render_input = Image.fromarray(frame_rgb, mode="RGB")
-        if self._bald_processor is not None:
-            render_input = Image.fromarray(
-                self._bald_processor.apply(frame_rgb, tracking_result.landmarks_px),
-                mode="RGB",
+            user_pose = runtime_result.get("user_row", {}).get("pose", {})
+            raw_user_pose = runtime_result.get("raw_user_row", {}).get("pose", {})
+            logger.info(
+                (
+                    "rtc hairddae feature: seq=%s changed=%s asset=%s "
+                    "raw_pose=(%s,%s,%s) smooth_pose=(%s,%s,%s) mode=%s parsing=%s bald=%s"
+                ),
+                next_seq,
+                changed,
+                selected.asset_id,
+                raw_user_pose.get("yaw_1deg"),
+                raw_user_pose.get("pitch_1deg"),
+                raw_user_pose.get("roll_1deg"),
+                user_pose.get("yaw_1deg"),
+                user_pose.get("pitch_1deg"),
+                user_pose.get("roll_1deg"),
+                runtime_result.get("selection_mode"),
+                runtime_result.get("user_parsing_status"),
+                bald_status,
             )
-        rendered = compose_bundle_frame(
-            render_input,
-            selected,
-            reference_width=feature.image_size.width,
-            reference_height=feature.image_size.height,
-        )
-        next_frame = VideoFrame.from_image(rendered.convert("RGB"))
+            self._emit_channel_payload(
+                {
+                    "type": "processed",
+                    "apply_session_id": self._claims.apply_session_id,
+                    "accepted_seq": next_seq,
+                    "processed_seq": next_seq,
+                    "changed": changed,
+                    "queue_depth": 0,
+                    "dropped_pending_count": 0,
+                    "overloaded": False,
+                    "asset": selected.to_message(),
+                }
+            )
+
+        rendered_bgr = runtime_result.get("output_frame_bgr")
+        if not isinstance(rendered_bgr, np.ndarray):
+            return frame
+        if rendered_bgr.shape[:2] != (original_size[1], original_size[0]):
+            rendered_bgr = cv2.resize(
+                rendered_bgr,
+                original_size,
+                interpolation=cv2.INTER_LINEAR,
+            )
+
+        next_frame = VideoFrame.from_ndarray(rendered_bgr, format="bgr24")
         next_frame.pts = frame.pts
         next_frame.time_base = frame.time_base
         return next_frame
@@ -684,6 +740,7 @@ def attach_rtc_routes(app: FastAPI) -> None:
                     claims=claims,
                     settings=settings,
                     catalog=app.state.catalog,
+                    hair_runtime_manager=app.state.hair_runtime_manager,
                     face_tracker=app.state.face_tracker,
                     bald_processor=getattr(app.state, "bald_processor", None),
                 )

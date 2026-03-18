@@ -73,6 +73,7 @@ class Settings:
     redis_url: str | None
     rtc_ice_servers: tuple[dict[str, object], ...]
     rtc_internal_ice_servers: tuple[dict[str, object], ...]
+    rtc_process_max_dimension: int
     http_test_enabled: bool
     http_test_default_dataset_code: str
     http_test_jpeg_quality: int
@@ -131,6 +132,7 @@ class Settings:
                 "INFERENCE_RTC_INTERNAL_ICE_SERVERS_JSON",
                 "[]",
             ),
+            rtc_process_max_dimension=_env_int("INFERENCE_RTC_PROCESS_MAX_DIMENSION", 960),
             http_test_enabled=_env_bool("INFERENCE_HTTP_TEST_ENABLED", False),
             http_test_default_dataset_code=_env_str("INFERENCE_HTTP_TEST_DEFAULT_DATASET_CODE", "0001"),
             http_test_jpeg_quality=_env_int("INFERENCE_HTTP_TEST_JPEG_QUALITY", 88),

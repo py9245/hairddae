@@ -9,7 +9,7 @@ import { useHairInferenceSession } from '@/hooks/Camera/useHairInferenceSession'
 import { useHairRtcSession } from '@/hooks/Camera/useHairRtcSession'
 import { useHairOverlayCanvas } from '@/hooks/Camera/useHairOverlayCanvas'
 import { captureCompositedImage } from '@/lib/Camera/capture'
-import { HAIR_ITEMS, type HairItem } from '@/lib/Camera/HairItem'
+import { HAIR_ITEMS, fetchHairItems, type HairItem } from '@/lib/Camera/HairItem'
 import {
   RTC_CAPTURE_FPS,
   RTC_CAPTURE_HEIGHT,
@@ -83,17 +83,26 @@ export default function FaceLandmarksView({
   })
 
   const activeRemoteStream = transport === 'rtc' ? hairRtc.remoteStream : null
-  const hasRemoteVideo =
-    transport === 'rtc' && remoteDisplayReady
+  const hasRemoteVideo = transport === 'rtc' && remoteDisplayReady
 
-  const activeAsset = transport === 'rtc' ? hairRtc.asset : hairInference.asset
+  const activeAsset =
+    transport === 'rtc'
+      ? hairRtc.asset
+      : hairInference.asset
 
   const activeMetrics =
-    transport === 'rtc' ? hairRtc.metrics : hairInference.metrics
+    transport === 'rtc'
+      ? hairRtc.metrics
+      : hairInference.metrics
 
-  const activeError = transport === 'rtc' ? hairRtc.error : hairInference.error
+  const activeError =
+    transport === 'rtc'
+      ? hairRtc.error
+      : hairInference.error
   const activeConnected =
-    transport === 'rtc' ? hairRtc.isConnected : hairInference.isConnected
+    transport === 'rtc'
+      ? hairRtc.isConnected
+      : hairInference.isConnected
   const targetQualityLabel = `${RTC_CAPTURE_WIDTH}x${RTC_CAPTURE_HEIGHT}@${RTC_CAPTURE_FPS} ${(
     RTC_SENDER_MAX_BITRATE / 1_000_000
   ).toFixed(1)}Mbps`
@@ -183,7 +192,20 @@ export default function FaceLandmarksView({
   }, [])
 
   useEffect(() => {
-    setHairItems(HAIR_ITEMS)
+    const controller = new AbortController()
+
+    fetchHairItems(controller.signal)
+      .then((items) => {
+        setHairItems(items.length > 1 ? items : HAIR_ITEMS)
+      })
+      .catch((error) => {
+        console.error('hair item load failed:', error)
+        setHairItems(HAIR_ITEMS)
+      })
+
+    return () => {
+      controller.abort()
+    }
   }, [])
 
   const handleModalComplete = useCallback(() => {
@@ -311,7 +333,7 @@ export default function FaceLandmarksView({
                   : activeMetrics.processedFps.toFixed(1)
               } fps / remote ${
                 hasRemoteVideo
-                  ? 'ready'
+                ? 'ready'
                   : remoteVideoReady && hairRtc.isRenderReady
                     ? 'settling'
                     : remoteVideoReady

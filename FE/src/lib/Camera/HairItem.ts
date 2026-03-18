@@ -7,6 +7,7 @@ export type HairItem = {
   img: string
   thumb: string
   label: string
+  datasetCode?: string | null
 }
 
 export const HAIR_ITEMS: HairItem[] = [
@@ -15,12 +16,14 @@ export const HAIR_ITEMS: HairItem[] = [
     img: '',
     thumb: '',
     label: 'None',
+    datasetCode: null,
   },
   {
     id: 1,
     img: '/hair/hair.png',
     thumb: '/hair/hair.png',
     label: 'Hair 1',
+    datasetCode: null,
   },
 ]
 
@@ -28,6 +31,7 @@ const HairCardSchema = z.object({
   hairID: z.number().int(),
   hairName: z.string(),
   hairImgpath: z.string(),
+  datasetCode: z.string().optional().nullable(),
 })
 
 const HairListResponseSchema = z.object({
@@ -52,6 +56,7 @@ export async function fetchHairItems(signal?: AbortSignal): Promise<HairItem[]> 
       img: item.hairImgpath,
       thumb: item.hairImgpath,
       label: item.hairName,
+      datasetCode: item.datasetCode ?? null,
     })),
   ]
 }

@@ -6,6 +6,7 @@ import {
   buildFaceBoundingBox,
 } from '@/lib/Camera/anchors'
 import { buildApiUrl } from '@/lib/api'
+import { getStoredAccessToken } from '@/lib/auth'
 import type { PoseAngles } from '@/lib/Camera/types'
 
 const DEVICE_ID_STORAGE_KEY = 'hairapply-device-id'
@@ -355,6 +356,21 @@ function normalizeHairAssetIndexBundle(
   }
 }
 
+function resolveLocalRtcOfferUrl(rawOfferUrl: string): string {
+  if (typeof window === 'undefined') {
+    return rawOfferUrl
+  }
+
+  const hostname = window.location.hostname
+  const isLocalhost =
+    hostname === '127.0.0.1' || hostname === 'localhost'
+  if (!isLocalhost) {
+    return rawOfferUrl
+  }
+
+  return `${window.location.origin}/rtc/inference/offer`
+}
+
 function normalizeBootstrap(
   raw: z.infer<typeof RawHairApplyV2ResponseSchema>,
 ): HairApplyV2Response {
@@ -377,7 +393,7 @@ function normalizeBootstrap(
     },
     rtc: {
       enabled: raw.rtc.enabled,
-      offerUrl: raw.rtc.offer_url,
+      offerUrl: resolveLocalRtcOfferUrl(raw.rtc.offer_url),
       connectTicket: raw.rtc.connect_ticket,
       expiresAt: raw.rtc.expires_at,
       iceServers: raw.rtc.ice_servers.map((server) => ({
@@ -494,10 +510,12 @@ async function postHairApplyV2(
   path: '/home/hairapplybootstrap' | '/home/hairapplyresume',
   payload: Record<string, unknown>,
 ) {
+  const accessToken = getStoredAccessToken()
   const response = await fetch(buildApiUrl(path), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
     },
     credentials: 'include',
     body: JSON.stringify(payload),

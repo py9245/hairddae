@@ -6,7 +6,7 @@ import {
   redirect,
 } from '@tanstack/react-router'
 import type { ReactElement } from 'react'
-import Adsense from '@/app/Adsense'
+import Adsense from '@/app/adsense'
 import Camera from '@/app/camera'
 import Login from '@/app/login'
 import SignUp from '@/app/sign-up'

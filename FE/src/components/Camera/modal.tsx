@@ -18,8 +18,12 @@ function ProgressBar({ value }: { value: number }) {
   return (
     <div className="h-3 w-full rounded-full bg-gray-300 p-[2px]">
       <div
-        className="h-full rounded-full bg-rose-200 transition-all duration-300"
-        style={{ width: `${value}%` }}
+        className="h-full transition-all duration-300"
+        style={{
+          width: `${value}%`,
+          borderRadius: '30px',
+          background: 'linear-gradient(90deg, #FFA7A6 0%, #EA7589 100%)',
+        }}
       />
     </div>
   )

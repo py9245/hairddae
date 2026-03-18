@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
-import { GenderSelect, type Gender } from '@/components/Auth/GenderSelect'
+import { GenderSelect, type Gender } from '@/components/Auth/gender-select'
 
 type StoryProps = {
   initialValue: Gender
@@ -16,17 +16,17 @@ function GenderSelectStory({ initialValue }: StoryProps) {
 }
 
 const meta = {
-  title: 'UI/Select/GenderSelect',
+  title: 'UI/Selector/GenderSelect',
   component: GenderSelectStory,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
   args: {
-    initialValue: '',
+    initialValue: null,
   },
   argTypes: {
     initialValue: {
       control: { type: 'radio' },
-      options: ['', 'M', 'F'],
+      options: [null, 'M', 'F'],
       description: '초기 선택값 (빈값은 선택안함)',
     },
   },

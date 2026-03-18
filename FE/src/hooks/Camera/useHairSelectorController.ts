@@ -1,30 +1,39 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { HairSelectorItem } from '@/components/ui/HairSelectorItem'
 import type { HairItem } from '@/lib/Camera/HairItem'
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
 }
 
-type HairSelectorProps = {
+type Args = {
   items: HairItem[]
   selectedId: number
+  loading?: boolean
+  frozen?: boolean
   onSelect: (id: number) => void
   onCapture?: () => void
+  onFreezeChange?: (frozen: boolean) => void
 }
 
-export function HairSelector({
+export function useHairSelectorController({
   items,
   selectedId,
+  loading = false,
+  frozen = false,
   onSelect,
   onCapture,
-}: HairSelectorProps) {
+  onFreezeChange,
+}: Args) {
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const [viewportWidth, setViewportWidth] = useState(0)
 
   const pointerStartXRef = useRef<number | null>(null)
   const pointerCurrentXRef = useRef<number | null>(null)
   const isDraggingRef = useRef(false)
+
+  const SLOT_WIDTH = 96
+  const swipeThreshold = 401
+  const showSkeleton = loading || items.length === 0
 
   const selectedIndex = useMemo(
     () => items.findIndex((item) => item.id === selectedId),
@@ -43,42 +52,40 @@ export function HairSelector({
     return () => window.removeEventListener('resize', update)
   }, [])
 
-  const SLOT_WIDTH = 96
-  const swipeThreshold = 40
-
   const translateX =
     viewportWidth > 0
       ? viewportWidth / 2 - (selectedIndex * SLOT_WIDTH + SLOT_WIDTH / 2)
       : 0
 
   const moveByOne = (direction: -1 | 1) => {
-    if (selectedIndex < 0) return
+    if (showSkeleton || selectedIndex < 0 || frozen) return
 
     const nextIndex = clamp(selectedIndex + direction, 0, items.length - 1)
-
     if (nextIndex !== selectedIndex) {
       onSelect(items[nextIndex].id)
     }
   }
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (showSkeleton || frozen) return
     pointerStartXRef.current = e.clientX
     pointerCurrentXRef.current = e.clientX
     isDraggingRef.current = false
   }
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (showSkeleton || frozen) return
     if (pointerStartXRef.current == null) return
 
     pointerCurrentXRef.current = e.clientX
-
-    const deltaX = e.clientX - pointerStartXRef.current
-    if (Math.abs(deltaX) > 8) {
+    if (Math.abs(e.clientX - pointerStartXRef.current) > 8) {
       isDraggingRef.current = true
     }
   }
 
   const handlePointerEnd = () => {
+    if (showSkeleton || frozen) return
+
     const startX = pointerStartXRef.current
     const endX = pointerCurrentXRef.current
 
@@ -93,11 +100,7 @@ export function HairSelector({
     const deltaX = endX - startX
 
     if (Math.abs(deltaX) >= swipeThreshold) {
-      if (deltaX < 0) {
-        moveByOne(1)
-      } else {
-        moveByOne(-1)
-      }
+      moveByOne(deltaX < 0 ? 1 : -1)
     }
 
     window.setTimeout(() => {
@@ -105,48 +108,30 @@ export function HairSelector({
     }, 0)
   }
 
-  return (
-    <div className="absolute bottom-0 left-0 right-0 z-30">
-      <div className="bg-gradient-to-t from-black/80 via-black/45 to-transparent px-4 pb-6 pt-16">
-        <div
-          ref={viewportRef}
-          className="relative touch-pan-y select-none"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerEnd}
-          onPointerCancel={handlePointerEnd}
-          onPointerLeave={handlePointerEnd}
-        >
-          <div className="pointer-events-none absolute inset-y-0 left-1/2 z-10 w-24 -translate-x-1/2 rounded-full border border-white/30" />
+  const handleItemClick = (itemId: number) => {
+    if (showSkeleton || frozen || isDraggingRef.current) return
 
-          <div
-            className="flex items-center transition-transform duration-300 ease-out"
-            style={{ transform: `translateX(${translateX}px)` }}
-          >
-            {items.map((item) => {
-              const selected = item.id === selectedId
+    if (itemId !== selectedId) {
+      onSelect(itemId)
+      return
+    }
 
-              return (
-                <HairSelectorItem
-                  key={item.id}
-                  item={item}
-                  selected={selected}
-                  onClick={() => {
-                    if (isDraggingRef.current) return
+    onFreezeChange?.(true)
+  }
 
-                    if (item.id === selectedId && onCapture) {
-                      onCapture()
-                      return
-                    }
+  const handleDownloadClick = () => {
+    onCapture?.()
+    onFreezeChange?.(false)
+  }
 
-                    onSelect(item.id)
-                  }}
-                />
-              )
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
+  return {
+    viewportRef,
+    showSkeleton,
+    translateX,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerEnd,
+    handleItemClick,
+    handleDownloadClick,
+  }
 }

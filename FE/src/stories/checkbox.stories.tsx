@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
-import { AgreementCheckbox } from '@/components/Auth/AgreementCheckbox'
+import { AgreementCheckbox } from '@/components/Auth/agreement-checkbox'
 
 type StoryProps = {
   initialChecked: boolean

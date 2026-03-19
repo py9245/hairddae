@@ -4,7 +4,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -12,10 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.beapp.api.dto.home.CustomRankResponse;
-import com.example.beapp.api.dto.home.HairApplyRequest;
-import com.example.beapp.api.dto.home.HairApplyResponse;
 import com.example.beapp.api.dto.home.HairApplyResumeV2Request;
-import com.example.beapp.api.dto.home.HairApplyStatusResponse;
 import com.example.beapp.api.dto.home.HairApplyStartV2Request;
 import com.example.beapp.api.dto.home.HairApplyV2Response;
 import com.example.beapp.api.dto.home.NormalRankResponse;
@@ -59,13 +55,6 @@ public class HomeController {
         return ResponseEntity.ok(homeService.getNormalRank(category, sort, size));
     }
 
-    @PostMapping("/hairapplystart")
-    public ResponseEntity<HairApplyResponse> hairApplyStart(
-            Authentication authentication,
-            @Valid @RequestBody HairApplyRequest request) {
-        return ResponseEntity.ok(homeService.startHairApply(request, authentication.getName()));
-    }
-
     @PostMapping({"/hairapplybootstrap", "/hairapplybootstrap/", "/hairapplystart-v2", "/hairapplystart-v2/"})
     public ResponseEntity<HairApplyV2Response> hairApplyBootstrap(
             Authentication authentication,
@@ -78,13 +67,6 @@ public class HomeController {
             Authentication authentication,
             @Valid @RequestBody HairApplyResumeV2Request request) {
         return ResponseEntity.ok(homeService.resumeHairApplyV2(request, authentication.getName()));
-    }
-
-    @GetMapping("/hairapplystatus/{applySessionId}")
-    public ResponseEntity<HairApplyStatusResponse> hairApplyStatus(
-            Authentication authentication,
-            @PathVariable String applySessionId) {
-        return ResponseEntity.ok(homeService.getHairApplyStatus(authentication.getName(), applySessionId));
     }
 
     @PostMapping("/recodehair")

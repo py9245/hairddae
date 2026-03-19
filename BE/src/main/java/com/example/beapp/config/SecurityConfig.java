@@ -60,6 +60,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/swagger-ui.html", "/api/swagger-ui/**", "/api/v3/api-docs/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.POST,
+                                "/api/internal/hairs/sync",
+                                "/api/internal/hairs/sync/",
                                 "/api/accounts/login",
                                 "/api/accounts/login/",
                                 "/api/accounts/signin",
@@ -70,18 +72,25 @@ public class SecurityConfig {
                                 "/api/accounts/signout/",
                                 "/api/accounts/refreshToken",
                                 "/api/accounts/refreshToken/").permitAll()
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/hairs",
+                                "/api/hairs/",
+                                "/api/hairs/recommend",
+                                "/api/hairs/recommend/",
+                                "/api/hairs/*",
+                                "/api/hairs/*/asset-index",
+                                "/api/hairs/*/asset-index/",
+                                "/api/hairs/*/asset-index-v2",
+                                "/api/hairs/*/asset-index-v2/").permitAll()
                         .requestMatchers(
                                 "/api/me",
                                 "/api/me/",
-                                "/api/home/hairapplystatus/**",
                                 "/api/home/customrank",
                                 "/api/home/customrank/",
                                 "/api/home/nomalrank",
                                 "/api/home/nomalrank/",
                                 "/api/mypage/**").authenticated()
                         .requestMatchers(HttpMethod.POST,
-                                "/api/home/hairapplystart",
-                                "/api/home/hairapplystart/",
                                 "/api/home/hairapplybootstrap",
                                 "/api/home/hairapplybootstrap/",
                                 "/api/home/hairapplystart-v2",
@@ -94,7 +103,7 @@ public class SecurityConfig {
                                 "/api/home/recodehair/").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/hairs/*/likes", "/api/hairs/*/likes/").authenticated()
                         .requestMatchers(HttpMethod.DELETE, "/api/hairs/*/likes", "/api/hairs/*/likes/").authenticated()
-                        .anyRequest().permitAll())
+                        .anyRequest().denyAll())
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(authenticationEntryPoint())
                         .accessDeniedHandler(accessDeniedHandler()))

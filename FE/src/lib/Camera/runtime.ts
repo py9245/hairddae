@@ -3,9 +3,9 @@ const MIN_CAMERA_TARGET_FPS = 15
 const MAX_CAMERA_TARGET_FPS = 60
 const DEFAULT_RTC_CAPTURE_WIDTH = 1920
 const DEFAULT_RTC_CAPTURE_HEIGHT = 1080
-const DEFAULT_RTC_CAPTURE_FPS = 10
+const DEFAULT_RTC_CAPTURE_FPS = 15
 const DEFAULT_RTC_SENDER_MAX_BITRATE = 8_000_000
-const DEFAULT_RTC_SENDER_MAX_FRAMERATE = 10
+const DEFAULT_RTC_SENDER_MAX_FRAMERATE = 15
 
 function resolveCameraTargetFps(rawValue: string | undefined) {
   const parsed = Number.parseInt(rawValue ?? '', 10)

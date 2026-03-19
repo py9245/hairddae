@@ -144,6 +144,24 @@ class ProcessedBundle:
     feature_height: int
 
 
+@dataclass
+class PipelineTimingWindow:
+    frame_count: int = 0
+    no_face_count: int = 0
+    total_ms: float = 0.0
+    to_ndarray_ms: float = 0.0
+    tracking_ms: float = 0.0
+    selection_ms: float = 0.0
+    channel_ms: float = 0.0
+    bald_ms: float = 0.0
+    compose_ms: float = 0.0
+    from_ndarray_ms: float = 0.0
+    max_total_ms: float = 0.0
+    last_seq: int = 0
+    frame_width: int = 0
+    frame_height: int = 0
+
+
 def _build_selection_feature(
     state: RtcSessionState,
     feature: FeatureMessageModel,
@@ -338,6 +356,8 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         self._frame_available = asyncio.Event()
         self._source_ended = False
         self._last_feature_log_at_ms = 0.0
+        self._last_timing_log_at_ms = 0.0
+        self._timing_window = PipelineTimingWindow()
         self._reader_task = asyncio.create_task(self._reader_loop())
 
     async def _reader_loop(self) -> None:
@@ -416,11 +436,90 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             selection_feature.pose.roll_1deg,
         )
 
+    def _record_pipeline_timing(
+        self,
+        *,
+        seq: int,
+        frame_width: int,
+        frame_height: int,
+        total_ms: float,
+        to_ndarray_ms: float,
+        tracking_ms: float,
+        selection_ms: float,
+        channel_ms: float,
+        bald_ms: float,
+        compose_ms: float,
+        from_ndarray_ms: float,
+        no_face: bool,
+    ) -> None:
+        if not self._settings.rtc_timing_log_enabled:
+            return
+
+        window = self._timing_window
+        window.frame_count += 1
+        window.no_face_count += int(no_face)
+        window.total_ms += total_ms
+        window.to_ndarray_ms += to_ndarray_ms
+        window.tracking_ms += tracking_ms
+        window.selection_ms += selection_ms
+        window.channel_ms += channel_ms
+        window.bald_ms += bald_ms
+        window.compose_ms += compose_ms
+        window.from_ndarray_ms += from_ndarray_ms
+        window.max_total_ms = max(window.max_total_ms, total_ms)
+        window.last_seq = seq
+        window.frame_width = frame_width
+        window.frame_height = frame_height
+
+        now_ms = time.monotonic() * 1000
+        interval_ms = max(float(self._settings.rtc_timing_log_interval_ms), 1.0)
+        elapsed_ms = now_ms - self._last_timing_log_at_ms
+        if elapsed_ms < interval_ms:
+            return
+
+        self._last_timing_log_at_ms = now_ms
+        frame_count = max(window.frame_count, 1)
+        window_seconds = max(elapsed_ms / 1000.0, 1e-3)
+        logger.info(
+            (
+                "rtc pipeline timing: frames=%s fps=%.2f avg_total_ms=%.1f max_total_ms=%.1f "
+                "to_ndarray_ms=%.1f tracking_ms=%.1f selection_ms=%.1f channel_ms=%.1f "
+                "bald_ms=%.1f compose_ms=%.1f from_ndarray_ms=%.1f no_face=%s "
+                "last_seq=%s frame_size=%sx%s face_delegate=%s bald_delegate=%s render_accel=%s"
+            ),
+            window.frame_count,
+            window.frame_count / window_seconds,
+            window.total_ms / frame_count,
+            window.max_total_ms,
+            window.to_ndarray_ms / frame_count,
+            window.tracking_ms / frame_count,
+            window.selection_ms / frame_count,
+            window.channel_ms / frame_count,
+            window.bald_ms / frame_count,
+            window.compose_ms / frame_count,
+            window.from_ndarray_ms / frame_count,
+            window.no_face_count,
+            window.last_seq,
+            window.frame_width,
+            window.frame_height,
+            self._face_tracker.acceleration,
+            "disabled" if self._bald_processor is None else self._bald_processor.acceleration,
+            self._settings.render_acceleration,
+        )
+        self._timing_window = PipelineTimingWindow()
+
     async def recv(self) -> Any:
+        total_started_at = time.perf_counter()
         frame = await self._next_latest_frame()
+        frame_width = int(getattr(frame, "width", 0) or 0)
+        frame_height = int(getattr(frame, "height", 0) or 0)
+
+        stage_started_at = time.perf_counter()
         frame_rgb = frame.to_ndarray(format="rgb24")
+        to_ndarray_ms = (time.perf_counter() - stage_started_at) * 1000.0
 
         next_seq = self._state.server_processed_seq + 1
+        stage_started_at = time.perf_counter()
         tracking_result = await asyncio.to_thread(
             self._face_tracker.extract_tracking_result_from_rgb,
             frame_rgb,
@@ -429,11 +528,28 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             seq=next_seq,
             ts_ms=_now_ms(),
         )
+        tracking_ms = (time.perf_counter() - stage_started_at) * 1000.0
         if tracking_result is None:
+            total_ms = (time.perf_counter() - total_started_at) * 1000.0
+            self._record_pipeline_timing(
+                seq=next_seq,
+                frame_width=frame_width,
+                frame_height=frame_height,
+                total_ms=total_ms,
+                to_ndarray_ms=to_ndarray_ms,
+                tracking_ms=tracking_ms,
+                selection_ms=0.0,
+                channel_ms=0.0,
+                bald_ms=0.0,
+                compose_ms=0.0,
+                from_ndarray_ms=0.0,
+                no_face=True,
+            )
             return frame
         feature = tracking_result.feature
 
         self._state.server_processed_seq = next_seq
+        stage_started_at = time.perf_counter()
         selection_feature = _build_selection_feature(self._state, feature)
         selected: AssetBundle
         changed = False
@@ -459,6 +575,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             changed = self._state.last_asset_id != selected.asset_id
             self._state.last_selected_bundle = selected
             self._state.last_switch_at_ms = _now_ms()
+        selection_ms = (time.perf_counter() - stage_started_at) * 1000.0
         self._state.latest_feature = feature
         self._state.last_processed_seq = feature.seq
         self._state.processed_count += 1
@@ -475,6 +592,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             self._state.render_ready = True
 
         self._log_server_feature(feature, selection_feature, selected, changed)
+        stage_started_at = time.perf_counter()
         self._emit_channel_payload(
             {
                 "type": "processed",
@@ -488,10 +606,15 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 "asset": selected.to_message(),
             }
         )
+        channel_ms = (time.perf_counter() - stage_started_at) * 1000.0
 
         render_input_rgb = frame_rgb
+        bald_ms = 0.0
         if self._bald_processor is not None:
+            stage_started_at = time.perf_counter()
             render_input_rgb = self._bald_processor.apply(frame_rgb, tracking_result.landmarks_px)
+            bald_ms = (time.perf_counter() - stage_started_at) * 1000.0
+        stage_started_at = time.perf_counter()
         rendered_rgb = compose_bundle_frame_rgb(
             render_input_rgb,
             selected,
@@ -499,9 +622,27 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             reference_height=feature.image_size.height,
             acceleration_preference=self._settings.render_acceleration,
         )
+        compose_ms = (time.perf_counter() - stage_started_at) * 1000.0
+        stage_started_at = time.perf_counter()
         next_frame = VideoFrame.from_ndarray(rendered_rgb, format="rgb24")
         next_frame.pts = frame.pts
         next_frame.time_base = frame.time_base
+        from_ndarray_ms = (time.perf_counter() - stage_started_at) * 1000.0
+        total_ms = (time.perf_counter() - total_started_at) * 1000.0
+        self._record_pipeline_timing(
+            seq=feature.seq,
+            frame_width=frame_width,
+            frame_height=frame_height,
+            total_ms=total_ms,
+            to_ndarray_ms=to_ndarray_ms,
+            tracking_ms=tracking_ms,
+            selection_ms=selection_ms,
+            channel_ms=channel_ms,
+            bald_ms=bald_ms,
+            compose_ms=compose_ms,
+            from_ndarray_ms=from_ndarray_ms,
+            no_face=False,
+        )
         return next_frame
 
 

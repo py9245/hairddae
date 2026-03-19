@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import fractions
 import logging
+import os
+import time
 from functools import lru_cache
+from threading import Lock
 from typing import cast
 
 import av
@@ -12,6 +15,7 @@ from aiortc.jitterbuffer import JitterFrame
 from aiortc.mediastreams import VIDEO_TIME_BASE
 
 from app.acceleration import detect_runtime_acceleration
+from app.config import Settings
 
 
 logger = logging.getLogger("uvicorn.error")
@@ -19,6 +23,99 @@ logger = logging.getLogger("uvicorn.error")
 _PATCH_INSTALLED = False
 _NVENC_PROBE_WIDTH = 432
 _NVENC_PROBE_HEIGHT = 240
+_TIMING_LOG_ENABLED = False
+_TIMING_LOG_INTERVAL_MS = 1000
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or value == "":
+        return default
+    return int(value)
+
+
+class _CodecTimingWindow:
+    def __init__(self) -> None:
+        self.count = 0
+        self.total_ms = 0.0
+        self.max_ms = 0.0
+        self.total_payload_bytes = 0
+        self.total_output_frames = 0
+        self.codec_names: set[str] = set()
+
+
+_codec_timing_lock = Lock()
+_codec_timing_windows = {
+    "encode": _CodecTimingWindow(),
+    "decode": _CodecTimingWindow(),
+}
+_codec_timing_last_log_at_ms = {
+    "encode": 0.0,
+    "decode": 0.0,
+}
+
+
+def _configure_timing_logging(settings: Settings | None = None) -> None:
+    global _TIMING_LOG_ENABLED, _TIMING_LOG_INTERVAL_MS
+    if settings is not None:
+        _TIMING_LOG_ENABLED = settings.rtc_h264_timing_log_enabled
+        _TIMING_LOG_INTERVAL_MS = settings.rtc_h264_timing_log_interval_ms
+        return
+    _TIMING_LOG_ENABLED = _env_bool("INFERENCE_RTC_H264_TIMING_LOG_ENABLED", False)
+    _TIMING_LOG_INTERVAL_MS = _env_int("INFERENCE_RTC_H264_TIMING_LOG_INTERVAL_MS", 1000)
+
+
+def _record_codec_timing(
+    kind: str,
+    *,
+    codec_name: str,
+    elapsed_ms: float,
+    payload_bytes: int = 0,
+    output_frames: int = 0,
+) -> None:
+    if not _TIMING_LOG_ENABLED:
+        return
+
+    now_ms = time.monotonic() * 1000.0
+    with _codec_timing_lock:
+        window = _codec_timing_windows[kind]
+        window.count += 1
+        window.total_ms += elapsed_ms
+        window.max_ms = max(window.max_ms, elapsed_ms)
+        window.total_payload_bytes += payload_bytes
+        window.total_output_frames += output_frames
+        window.codec_names.add(codec_name)
+
+        interval_ms = max(float(_TIMING_LOG_INTERVAL_MS), 1.0)
+        elapsed_window_ms = now_ms - _codec_timing_last_log_at_ms[kind]
+        if elapsed_window_ms < interval_ms:
+            return
+
+        _codec_timing_last_log_at_ms[kind] = now_ms
+        count = max(window.count, 1)
+        window_seconds = max(elapsed_window_ms / 1000.0, 1e-3)
+        logger.info(
+            (
+                "rtc h264 %s timing: samples=%s rate=%.2f avg_ms=%.2f max_ms=%.2f "
+                "avg_payload_kb=%.2f avg_output_frames=%.2f codecs=%s"
+            ),
+            kind,
+            window.count,
+            window.count / window_seconds,
+            window.total_ms / count,
+            window.max_ms,
+            (window.total_payload_bytes / count) / 1024.0,
+            window.total_output_frames / count,
+            sorted(window.codec_names),
+        )
+        _codec_timing_windows[kind] = _CodecTimingWindow()
 
 
 def _pyav_codec_available(codec_name: str) -> bool:
@@ -80,6 +177,8 @@ def get_rtc_h264_acceleration_state() -> dict[str, object]:
         "nvenc_candidate_available": _pyav_codec_available("h264_nvenc"),
         "cuvid_candidate_available": _pyav_codec_available("h264_cuvid"),
         "nvenc_probe_ok": _probe_h264_nvenc(),
+        "timing_logging_enabled": _TIMING_LOG_ENABLED,
+        "timing_log_interval_ms": _TIMING_LOG_INTERVAL_MS,
     }
 
 
@@ -110,15 +209,27 @@ class GPUAwareH264Decoder(h264_module.H264Decoder):
         packet = av.Packet(encoded_frame.data)
         packet.pts = encoded_frame.timestamp
         packet.time_base = VIDEO_TIME_BASE
+        started_at = time.perf_counter()
+        decoded_frames: list[Frame] = []
         try:
-            return cast(list[Frame], self.codec.decode(packet))
+            decoded_frames = cast(list[Frame], self.codec.decode(packet))
+            return decoded_frames
         except av.FFmpegError as exc:
             logger.warning(
                 "rtc H264 decoder %s failed, retrying on CPU: %s",
                 self._active_codec_name,
                 exc,
             )
-            return self._fallback_to_cpu(packet)
+            decoded_frames = self._fallback_to_cpu(packet)
+            return decoded_frames
+        finally:
+            _record_codec_timing(
+                "decode",
+                codec_name=self._active_codec_name,
+                elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
+                payload_bytes=len(encoded_frame.data),
+                output_frames=len(decoded_frames),
+            )
 
 
 class GPUAwareH264Encoder(h264_module.H264Encoder):
@@ -200,9 +311,24 @@ class GPUAwareH264Encoder(h264_module.H264Encoder):
         if data_to_send:
             yield from self._split_bitstream(data_to_send)
 
+    def encode(
+        self, frame: Frame, force_keyframe: bool = False
+    ) -> tuple[list[bytes], int]:
+        started_at = time.perf_counter()
+        payloads, timestamp = super().encode(frame, force_keyframe)
+        _record_codec_timing(
+            "encode",
+            codec_name=self._active_codec_name,
+            elapsed_ms=(time.perf_counter() - started_at) * 1000.0,
+            payload_bytes=sum(len(payload) for payload in payloads),
+            output_frames=1,
+        )
+        return payloads, timestamp
 
-def install_aiortc_h264_acceleration() -> dict[str, object]:
+
+def install_aiortc_h264_acceleration(settings: Settings | None = None) -> dict[str, object]:
     global _PATCH_INSTALLED
+    _configure_timing_logging(settings)
     if not _PATCH_INSTALLED:
         import aiortc.codecs as codecs_module
 

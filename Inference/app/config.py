@@ -80,6 +80,10 @@ class Settings:
     rtc_face_landmarker_running_mode: str
     rtc_hair_segmenter_running_mode: str
     rtc_session_local_processors: bool
+    rtc_timing_log_enabled: bool
+    rtc_timing_log_interval_ms: int
+    rtc_h264_timing_log_enabled: bool
+    rtc_h264_timing_log_interval_ms: int
     http_test_enabled: bool
     http_test_default_dataset_code: str
     http_test_jpeg_quality: int
@@ -157,6 +161,10 @@ class Settings:
                 "video",
             ),
             rtc_session_local_processors=_env_bool("INFERENCE_RTC_SESSION_LOCAL_PROCESSORS", True),
+            rtc_timing_log_enabled=_env_bool("INFERENCE_RTC_TIMING_LOG_ENABLED", False),
+            rtc_timing_log_interval_ms=_env_int("INFERENCE_RTC_TIMING_LOG_INTERVAL_MS", 1000),
+            rtc_h264_timing_log_enabled=_env_bool("INFERENCE_RTC_H264_TIMING_LOG_ENABLED", False),
+            rtc_h264_timing_log_interval_ms=_env_int("INFERENCE_RTC_H264_TIMING_LOG_INTERVAL_MS", 1000),
             http_test_enabled=_env_bool("INFERENCE_HTTP_TEST_ENABLED", False),
             http_test_default_dataset_code=_env_str("INFERENCE_HTTP_TEST_DEFAULT_DATASET_CODE", "0001"),
             http_test_jpeg_quality=_env_int("INFERENCE_HTTP_TEST_JPEG_QUALITY", 88),

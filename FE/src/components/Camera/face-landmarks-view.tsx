@@ -33,6 +33,17 @@ type FaceLandmarksViewProps = {
   landmarks: NormalizedLandmark[] | null
 }
 
+function formatDebugNumber(
+  value: number | null,
+  options: Intl.NumberFormatOptions = { maximumFractionDigits: 1 },
+) {
+  if (value == null || !Number.isFinite(value)) {
+    return '-'
+  }
+
+  return new Intl.NumberFormat('ko-KR', options).format(value)
+}
+
 export default function FaceLandmarksView({
   stream,
   videoRef,
@@ -76,6 +87,9 @@ export default function FaceLandmarksView({
     pendingHairId != null &&
     hairRtc.isRenderReady &&
     remoteDisplayReady
+  const showRtcDebug =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('rtcDebug') === '1'
 
   useEffect(() => {
     const controller = new AbortController()
@@ -191,6 +205,43 @@ export default function FaceLandmarksView({
           remoteVideoSize={remoteVideoSize}
         />
 
+        {showRtcDebug ? (
+          <div className="absolute inset-x-4 top-32 z-20 rounded-xl bg-black/70 p-3 font-mono text-[11px] leading-4 text-white">
+            <div>
+              state={hairRtc.connectionState} processed_fps=
+              {formatDebugNumber(hairRtc.metrics.processedFps)} queue=
+              {hairRtc.metrics.queueDepth} drop={hairRtc.metrics.droppedPendingCount}
+            </div>
+            <div>
+              rtc_rtt_ms=
+              {formatDebugNumber(hairRtc.metrics.transportRoundTripTimeMs)} one_way_ms=
+              {formatDebugNumber(hairRtc.metrics.estimatedOneWayTransportMs)} server_ms=
+              {formatDebugNumber(hairRtc.metrics.serverProcessingMs)}
+            </div>
+            <div>
+              out_kbps={formatDebugNumber(hairRtc.metrics.outboundBitrateKbps)} in_kbps=
+              {formatDebugNumber(hairRtc.metrics.inboundBitrateKbps)} avail_out_kbps=
+              {formatDebugNumber(hairRtc.metrics.availableOutgoingBitrateKbps)}
+            </div>
+            <div>
+              out_fps={formatDebugNumber(hairRtc.metrics.outboundFramesPerSecond)} in_fps=
+              {formatDebugNumber(hairRtc.metrics.inboundFramesPerSecond)} out_res=
+              {hairRtc.metrics.outboundFrameWidth ?? '-'}x
+              {hairRtc.metrics.outboundFrameHeight ?? '-'} in_res=
+              {hairRtc.metrics.inboundFrameWidth ?? '-'}x
+              {hairRtc.metrics.inboundFrameHeight ?? '-'}
+            </div>
+            {hairRtc.debugLogs.length > 0 ? (
+              <div className="mt-2 border-t border-white/20 pt-2">
+                {hairRtc.debugLogs.map((log) => (
+                  <div key={`${log.atIso}-${log.summary}`} className="truncate">
+                    [{log.atIso.slice(11, 19)}] {log.summary}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <HairSelector
           items={hairItems}
           selectedId={displayHairId}

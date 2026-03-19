@@ -9,6 +9,7 @@ import type { ReactElement } from 'react'
 import Adsense from '@/app/adsense'
 import Camera from '@/app/camera'
 import Login from '@/app/login'
+import Main from '@/app/main'
 import SignUp from '@/app/sign-up'
 import Splash from '@/app/splash'
 import { BottomNav } from '@/components/bottom-nav'
@@ -123,11 +124,7 @@ function AuthLayout() {
 }
 
 function MainPage() {
-  return (
-    <div className="app-frame-page bg-bg-primary">
-      <Header label="헤어때" labelClassName="text-primary-200" />
-    </div>
-  )
+  return <Main />
 }
 
 function MyPage() {
@@ -145,4 +142,3 @@ function HairListPage() {
     </div>
   )
 }
-

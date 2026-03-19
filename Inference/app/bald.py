@@ -62,6 +62,8 @@ class _BaldTimingWindow:
         self.max_total_ms = 0.0
         self.frame_width = 0
         self.frame_height = 0
+        self.roi_width = 0
+        self.roi_height = 0
 
 
 def _polygon_mask(indices: list[int], landmarks_px: np.ndarray, width: int, height: int) -> np.ndarray:
@@ -203,6 +205,44 @@ def _extract_hair_mask(
     return hair_mask, None
 
 
+def _compute_head_roi(landmarks_px: np.ndarray, width: int, height: int) -> tuple[int, int, int, int] | None:
+    if landmarks_px.shape[0] <= RIGHT_CHEEK:
+        return None
+
+    left_temple = landmarks_px[LEFT_TEMPLE]
+    right_temple = landmarks_px[RIGHT_TEMPLE]
+    forehead = landmarks_px[FOREHEAD]
+    chin = landmarks_px[CHIN]
+    left_cheek = landmarks_px[LEFT_CHEEK]
+    right_cheek = landmarks_px[RIGHT_CHEEK]
+
+    face_width = max(abs(int(right_temple[0]) - int(left_temple[0])), 1)
+    face_height = max(abs(int(chin[1]) - int(forehead[1])), 1)
+
+    x1 = max(
+        int(min(left_temple[0], left_cheek[0]) - face_width * 0.42),
+        0,
+    )
+    x2 = min(
+        int(max(right_temple[0], right_cheek[0]) + face_width * 0.42),
+        width,
+    )
+    y_top_anchor = min(int(forehead[1]), int(left_temple[1]), int(right_temple[1]))
+    y1 = max(int(y_top_anchor - face_height * 0.95), 0)
+    y2 = min(int(chin[1] + face_height * 0.42), height)
+
+    if x2 - x1 < 32 or y2 - y1 < 32:
+        return None
+    return x1, y1, x2, y2
+
+
+def _shift_landmarks_to_roi(landmarks_px: np.ndarray, x0: int, y0: int) -> np.ndarray:
+    shifted = landmarks_px.copy()
+    shifted[:, 0] -= x0
+    shifted[:, 1] -= y0
+    return shifted
+
+
 def _is_known_gpu_incompatible_segmenter_error(exc: Exception) -> bool:
     message = str(exc)
     return (
@@ -288,10 +328,7 @@ def _paint_segmented_hair_as_skin(
     if not np.any(target_mask):
         return image_rgb, timings
 
-    stage_started_at = time.perf_counter()
-    solid_target = cv2.morphologyEx(target_mask.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8), 1)
-    solid_target = cv2.morphologyEx(solid_target, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8), 1)
-    timings["paint_mask_prepare_ms"] += (time.perf_counter() - stage_started_at) * 1000.0
+    solid_target = target_mask.astype(np.uint8, copy=False)
 
     stage_started_at = time.perf_counter()
     cleaned = _inpaint_mask_crop(image_rgb, solid_target, radius=5).astype(np.float32)
@@ -395,7 +432,7 @@ class BaldPreprocessor:
             ),
             running_mode=self._running_mode,
             output_category_mask=True,
-            output_confidence_masks=True,
+            output_confidence_masks=False,
         )
         try:
             segmenter = vision.ImageSegmenter.create_from_options(options)
@@ -420,7 +457,7 @@ class BaldPreprocessor:
                 ),
                 running_mode=self._running_mode,
                 output_category_mask=True,
-                output_confidence_masks=True,
+                output_confidence_masks=False,
             )
             segmenter = vision.ImageSegmenter.create_from_options(fallback_options)
             self._acceleration = "cpu"
@@ -435,6 +472,8 @@ class BaldPreprocessor:
         *,
         width: int,
         height: int,
+        roi_width: int,
+        roi_height: int,
         total_ms: float,
         segment_ms: float,
         extract_mask_ms: float,
@@ -471,6 +510,8 @@ class BaldPreprocessor:
             window.max_total_ms = max(window.max_total_ms, total_ms)
             window.frame_width = width
             window.frame_height = height
+            window.roi_width = roi_width
+            window.roi_height = roi_height
 
             now_ms = time.monotonic() * 1000.0
             interval_ms = max(float(self._timing_log_interval_ms), 1.0)
@@ -488,7 +529,7 @@ class BaldPreprocessor:
                     "eyebrow_guard_ms=%.1f protect_mask_ms=%.1f connected_component_ms=%.1f "
                     "sample_skin_ms=%.1f paint_total_ms=%.1f paint_mask_prepare_ms=%.1f "
                     "paint_inpaint_ms=%.1f paint_fill_ms=%.1f no_landmark_path=%s "
-                    "frame_size=%sx%s delegate=%s running_mode=%s"
+                    "frame_size=%sx%s roi_size=%sx%s delegate=%s running_mode=%s"
                 ),
                 window.frame_count,
                 window.frame_count / seconds,
@@ -508,6 +549,8 @@ class BaldPreprocessor:
                 window.no_landmark_path_count,
                 window.frame_width,
                 window.frame_height,
+                window.roi_width,
+                window.roi_height,
                 self._acceleration,
                 self._running_mode.name.lower(),
             )
@@ -520,9 +563,37 @@ class BaldPreprocessor:
         if not frame_rgb.flags["C_CONTIGUOUS"]:
             frame_rgb = np.ascontiguousarray(frame_rgb)
 
-        height, width = frame_rgb.shape[:2]
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
         total_started_at = time.perf_counter()
+        height, width = frame_rgb.shape[:2]
+        roi = _compute_head_roi(landmarks_px, width, height)
+        if roi is None:
+            self._record_timing(
+                width=width,
+                height=height,
+                roi_width=0,
+                roi_height=0,
+                total_ms=(time.perf_counter() - total_started_at) * 1000.0,
+                segment_ms=0.0,
+                extract_mask_ms=0.0,
+                refine_mask_ms=0.0,
+                eyebrow_guard_ms=0.0,
+                protect_mask_ms=0.0,
+                connected_component_ms=0.0,
+                sample_skin_ms=0.0,
+                paint_total_ms=0.0,
+                paint_mask_prepare_ms=0.0,
+                paint_inpaint_ms=0.0,
+                paint_fill_ms=0.0,
+                no_landmark_path=True,
+            )
+            return frame_rgb
+
+        x0, y0, x1, y1 = roi
+        roi_width = x1 - x0
+        roi_height = y1 - y0
+        roi_rgb = frame_rgb[y0:y1, x0:x1]
+        roi_landmarks_px = _shift_landmarks_to_roi(landmarks_px, x0, y0)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=roi_rgb)
         stage_started_at = time.perf_counter()
         with self._lock:
             if self._running_mode == vision.RunningMode.VIDEO:
@@ -535,11 +606,32 @@ class BaldPreprocessor:
         segment_ms = (time.perf_counter() - stage_started_at) * 1000.0
 
         stage_started_at = time.perf_counter()
-        hair_mask, hair_confidence = _extract_hair_mask(result, height, width)
+        hair_mask, hair_confidence = _extract_hair_mask(result, roi_height, roi_width)
         extract_mask_ms = (time.perf_counter() - stage_started_at) * 1000.0
         stage_started_at = time.perf_counter()
         hair_mask = _refine_mask(hair_mask)
         refine_mask_ms = (time.perf_counter() - stage_started_at) * 1000.0
+        if not np.any(hair_mask):
+            self._record_timing(
+                width=width,
+                height=height,
+                roi_width=roi_width,
+                roi_height=roi_height,
+                total_ms=(time.perf_counter() - total_started_at) * 1000.0,
+                segment_ms=segment_ms,
+                extract_mask_ms=extract_mask_ms,
+                refine_mask_ms=refine_mask_ms,
+                eyebrow_guard_ms=0.0,
+                protect_mask_ms=0.0,
+                connected_component_ms=0.0,
+                sample_skin_ms=0.0,
+                paint_total_ms=0.0,
+                paint_mask_prepare_ms=0.0,
+                paint_inpaint_ms=0.0,
+                paint_fill_ms=0.0,
+                no_landmark_path=False,
+            )
+            return frame_rgb
 
         target_mask = hair_mask
         eyebrow_guard_ms = 0.0
@@ -552,61 +644,68 @@ class BaldPreprocessor:
             "paint_inpaint_ms": 0.0,
             "paint_fill_ms": 0.0,
         }
-        no_landmark_path = True
-        if landmarks_px.shape[0] > RIGHT_CHEEK:
-            no_landmark_path = False
-            stage_started_at = time.perf_counter()
-            eyebrow_mask = _polygon_mask(LEFT_EYEBROW, landmarks_px, width, height)
-            eyebrow_mask = cv2.bitwise_or(eyebrow_mask, _polygon_mask(RIGHT_EYEBROW, landmarks_px, width, height))
-            eyebrow_guard = cv2.dilate(eyebrow_mask, np.ones((13, 13), np.uint8), 1)
-            eyebrow_guard_ms = (time.perf_counter() - stage_started_at) * 1000.0
+        no_landmark_path = False
+        stage_started_at = time.perf_counter()
+        eyebrow_mask = _polygon_mask(LEFT_EYEBROW, roi_landmarks_px, roi_width, roi_height)
+        eyebrow_mask = cv2.bitwise_or(
+            eyebrow_mask,
+            _polygon_mask(RIGHT_EYEBROW, roi_landmarks_px, roi_width, roi_height),
+        )
+        eyebrow_guard = cv2.dilate(eyebrow_mask, np.ones((13, 13), np.uint8), 1)
+        eyebrow_guard_ms = (time.perf_counter() - stage_started_at) * 1000.0
 
-            stage_started_at = time.perf_counter()
-            target_mask = cv2.bitwise_and(target_mask, cv2.bitwise_not(eyebrow_guard))
-            lower_face_protect = _build_face_lower_protect_mask(landmarks_px, width, height)
-            target_mask = np.where(lower_face_protect > 0.08, 0, target_mask).astype(np.uint8)
-            neck_side_protect = _build_neck_side_protect_mask(landmarks_px, width, height)
-            target_mask = np.where(neck_side_protect > 0.10, 0, target_mask).astype(np.uint8)
-            protect_mask_ms = (time.perf_counter() - stage_started_at) * 1000.0
-
-            stage_started_at = time.perf_counter()
-            target_mask = _keep_top_connected_hair(target_mask, int(landmarks_px[FOREHEAD][1]))
-            connected_component_ms = (time.perf_counter() - stage_started_at) * 1000.0
-
-            stage_started_at = time.perf_counter()
-            forehead_color = _sample_skin_color(
-                frame_rgb,
-                nose=landmarks_px[NOSE_TIP],
-                left_cheek=landmarks_px[LEFT_CHEEK],
-                right_cheek=landmarks_px[RIGHT_CHEEK],
-                left_temple=landmarks_px[LEFT_TEMPLE],
-                right_temple=landmarks_px[RIGHT_TEMPLE],
-                chin=landmarks_px[CHIN],
-            )
-            sample_skin_ms = (time.perf_counter() - stage_started_at) * 1000.0
-            rendered_rgb, paint_timings = _paint_segmented_hair_as_skin(frame_rgb, target_mask, forehead_color)
+        stage_started_at = time.perf_counter()
+        target_mask = cv2.bitwise_and(target_mask, cv2.bitwise_not(eyebrow_guard))
+        lower_face_protect = _build_face_lower_protect_mask(roi_landmarks_px, roi_width, roi_height)
+        target_mask = np.where(lower_face_protect > 0.08, 0, target_mask).astype(np.uint8)
+        neck_side_protect = _build_neck_side_protect_mask(roi_landmarks_px, roi_width, roi_height)
+        target_mask = np.where(neck_side_protect > 0.10, 0, target_mask).astype(np.uint8)
+        protect_mask_ms = (time.perf_counter() - stage_started_at) * 1000.0
+        if not np.any(target_mask):
             self._record_timing(
                 width=width,
                 height=height,
+                roi_width=roi_width,
+                roi_height=roi_height,
                 total_ms=(time.perf_counter() - total_started_at) * 1000.0,
                 segment_ms=segment_ms,
                 extract_mask_ms=extract_mask_ms,
                 refine_mask_ms=refine_mask_ms,
                 eyebrow_guard_ms=eyebrow_guard_ms,
                 protect_mask_ms=protect_mask_ms,
-                connected_component_ms=connected_component_ms,
-                sample_skin_ms=sample_skin_ms,
-                paint_total_ms=paint_timings["paint_total_ms"],
-                paint_mask_prepare_ms=paint_timings["paint_mask_prepare_ms"],
-                paint_inpaint_ms=paint_timings["paint_inpaint_ms"],
-                paint_fill_ms=paint_timings["paint_fill_ms"],
+                connected_component_ms=0.0,
+                sample_skin_ms=0.0,
+                paint_total_ms=0.0,
+                paint_mask_prepare_ms=0.0,
+                paint_inpaint_ms=0.0,
+                paint_fill_ms=0.0,
                 no_landmark_path=no_landmark_path,
             )
-            return rendered_rgb
+            return frame_rgb
 
+        stage_started_at = time.perf_counter()
+        target_mask = _keep_top_connected_hair(target_mask, int(roi_landmarks_px[FOREHEAD][1]))
+        connected_component_ms = (time.perf_counter() - stage_started_at) * 1000.0
+
+        stage_started_at = time.perf_counter()
+        forehead_color = _sample_skin_color(
+            roi_rgb,
+            nose=roi_landmarks_px[NOSE_TIP],
+            left_cheek=roi_landmarks_px[LEFT_CHEEK],
+            right_cheek=roi_landmarks_px[RIGHT_CHEEK],
+            left_temple=roi_landmarks_px[LEFT_TEMPLE],
+            right_temple=roi_landmarks_px[RIGHT_TEMPLE],
+            chin=roi_landmarks_px[CHIN],
+        )
+        sample_skin_ms = (time.perf_counter() - stage_started_at) * 1000.0
+        rendered_roi_rgb, paint_timings = _paint_segmented_hair_as_skin(roi_rgb, target_mask, forehead_color)
+        output_rgb = frame_rgb.copy()
+        output_rgb[y0:y1, x0:x1] = rendered_roi_rgb
         self._record_timing(
             width=width,
             height=height,
+            roi_width=roi_width,
+            roi_height=roi_height,
             total_ms=(time.perf_counter() - total_started_at) * 1000.0,
             segment_ms=segment_ms,
             extract_mask_ms=extract_mask_ms,
@@ -621,4 +720,4 @@ class BaldPreprocessor:
             paint_fill_ms=paint_timings["paint_fill_ms"],
             no_landmark_path=no_landmark_path,
         )
-        return frame_rgb
+        return output_rgb

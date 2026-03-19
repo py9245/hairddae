@@ -80,6 +80,7 @@ class Settings:
     rtc_face_landmarker_running_mode: str
     rtc_hair_segmenter_running_mode: str
     rtc_session_local_processors: bool
+    rtc_bald_enabled: bool
     rtc_timing_log_enabled: bool
     rtc_timing_log_interval_ms: int
     rtc_h264_timing_log_enabled: bool
@@ -161,6 +162,7 @@ class Settings:
                 "video",
             ),
             rtc_session_local_processors=_env_bool("INFERENCE_RTC_SESSION_LOCAL_PROCESSORS", True),
+            rtc_bald_enabled=_env_bool("INFERENCE_RTC_BALD_ENABLED", True),
             rtc_timing_log_enabled=_env_bool("INFERENCE_RTC_TIMING_LOG_ENABLED", False),
             rtc_timing_log_interval_ms=_env_int("INFERENCE_RTC_TIMING_LOG_INTERVAL_MS", 1000),
             rtc_h264_timing_log_enabled=_env_bool("INFERENCE_RTC_H264_TIMING_LOG_ENABLED", False),

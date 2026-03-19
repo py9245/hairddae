@@ -69,6 +69,7 @@ def create_app() -> FastAPI:
                     "face_tracker_delegate": face_tracker.acceleration,
                     "bald_processor_delegate": bald_processor.acceleration,
                     "bald_processor_warning": getattr(bald_processor, "initialization_warning", None),
+                    "rtc_bald_enabled": settings.rtc_bald_enabled,
                     "render_acceleration": settings.render_acceleration,
                     "face_tracker_running_mode": settings.http_face_landmarker_running_mode,
                     "bald_processor_running_mode": settings.http_hair_segmenter_running_mode,

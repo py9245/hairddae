@@ -14,6 +14,7 @@ from app.http_runtime import _headers_from_result, _process_http_frame
 from app.main import create_app
 from app.models import FeatureMessageModel
 from app.face_tracking import TrackingResult
+from app.rtc import _crop_rgb_to_even_dimensions, _rgb_requires_even_dimensions
 
 
 class _DummyAccelerationInfo:
@@ -213,3 +214,13 @@ def test_http_runtime_frame_returns_render_headers(monkeypatch: pytest.MonkeyPat
     assert headers["X-Selected-Asset-Id"] == "asset-http-test"
     assert headers["X-Selected-Pose-Key"] == "yaw+00_pitch+00_roll+00"
     assert headers["X-Processed-Seq"] == "1"
+
+
+def test_rtc_rgb_crop_to_even_dimensions() -> None:
+    odd_rgb = np.zeros((911, 430, 3), dtype=np.uint8)
+    assert _rgb_requires_even_dimensions(odd_rgb) is True
+
+    even_rgb = _crop_rgb_to_even_dimensions(odd_rgb)
+
+    assert even_rgb.shape == (910, 430, 3)
+    assert _rgb_requires_even_dimensions(even_rgb) is False

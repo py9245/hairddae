@@ -80,6 +80,31 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _rgb_requires_even_dimensions(frame_rgb: Any) -> bool:
+    if not hasattr(frame_rgb, "shape") or len(frame_rgb.shape) < 2:
+        return False
+    height, width = frame_rgb.shape[:2]
+    return (width % 2) != 0 or (height % 2) != 0
+
+
+def _crop_rgb_to_even_dimensions(frame_rgb: Any) -> Any:
+    height, width = frame_rgb.shape[:2]
+    even_height = height - (height % 2)
+    even_width = width - (width % 2)
+    if even_height <= 0 or even_width <= 0:
+        return frame_rgb
+    if even_height == height and even_width == width:
+        return frame_rgb
+    return frame_rgb[:even_height, :even_width]
+
+
+def _build_video_frame_from_rgb(source_frame: Any, frame_rgb: Any) -> Any:
+    next_frame = VideoFrame.from_ndarray(frame_rgb, format="rgb24")
+    next_frame.pts = source_frame.pts
+    next_frame.time_base = source_frame.time_base
+    return next_frame
+
+
 def _build_fallback_bundle(feature: FeatureMessageModel) -> AssetBundle:
     return AssetBundle(
         asset_id="fallback-blur-only",
@@ -221,7 +246,12 @@ class RtcRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 while len(self._buffer) > MAX_BUFFERED_VIDEO_FRAMES:
                     self._buffer.popleft()
                 self._frame_available.set()
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "rtc buffered source track reader stopped: %s: %s",
+                type(exc).__name__,
+                exc,
+            )
             self._source_ended = True
             self._frame_available.set()
 
@@ -312,20 +342,21 @@ class RtcRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             frame_width,
             frame_height,
         )
-        if match is None:
+        if match is None and frame_width % 2 == 0 and frame_height % 2 == 0:
             return frame
 
         frame_rgb = frame.to_ndarray(format="rgb24")
-        rendered_rgb = compose_bundle_frame_rgb(
-            frame_rgb,
-            match.bundle,
-            reference_width=match.feature_width,
-            reference_height=match.feature_height,
-        )
-        next_frame = VideoFrame.from_ndarray(rendered_rgb, format="rgb24")
-        next_frame.pts = frame.pts
-        next_frame.time_base = frame.time_base
-        return next_frame
+        output_rgb = frame_rgb
+        if match is not None:
+            output_rgb = compose_bundle_frame_rgb(
+                frame_rgb,
+                match.bundle,
+                reference_width=match.feature_width,
+                reference_height=match.feature_height,
+            )
+        if _rgb_requires_even_dimensions(output_rgb):
+            output_rgb = _crop_rgb_to_even_dimensions(output_rgb)
+        return _build_video_frame_from_rgb(frame, output_rgb)
 
 
 class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
@@ -370,7 +401,12 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 while len(self._buffer) > SERVER_TRACK_MAX_BUFFERED_VIDEO_FRAMES:
                     self._buffer.popleft()
                 self._frame_available.set()
-        except Exception:
+        except Exception as exc:
+            logger.warning(
+                "rtc source track reader stopped: %s: %s",
+                type(exc).__name__,
+                exc,
+            )
             self._source_ended = True
             self._frame_available.set()
 
@@ -530,6 +566,9 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         )
         tracking_ms = (time.perf_counter() - stage_started_at) * 1000.0
         if tracking_result is None:
+            output_rgb = frame_rgb
+            if _rgb_requires_even_dimensions(output_rgb):
+                output_rgb = _crop_rgb_to_even_dimensions(output_rgb)
             total_ms = (time.perf_counter() - total_started_at) * 1000.0
             self._record_pipeline_timing(
                 seq=next_seq,
@@ -545,7 +584,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 from_ndarray_ms=0.0,
                 no_face=True,
             )
-            return frame
+            return _build_video_frame_from_rgb(frame, output_rgb)
         feature = tracking_result.feature
 
         self._state.server_processed_seq = next_seq
@@ -623,10 +662,10 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             acceleration_preference=self._settings.render_acceleration,
         )
         compose_ms = (time.perf_counter() - stage_started_at) * 1000.0
+        if _rgb_requires_even_dimensions(rendered_rgb):
+            rendered_rgb = _crop_rgb_to_even_dimensions(rendered_rgb)
         stage_started_at = time.perf_counter()
-        next_frame = VideoFrame.from_ndarray(rendered_rgb, format="rgb24")
-        next_frame.pts = frame.pts
-        next_frame.time_base = frame.time_base
+        next_frame = _build_video_frame_from_rgb(frame, rendered_rgb)
         from_ndarray_ms = (time.perf_counter() - stage_started_at) * 1000.0
         total_ms = (time.perf_counter() - total_started_at) * 1000.0
         self._record_pipeline_timing(
@@ -793,22 +832,28 @@ def _maybe_switch_asset(
 
 def _build_rtc_processors(app: FastAPI, settings: Settings) -> tuple[ServerFaceTracker, BaldPreprocessor | None, bool]:
     if not settings.rtc_session_local_processors:
-        return app.state.face_tracker, getattr(app.state, "bald_processor", None), False
+        return (
+            app.state.face_tracker,
+            getattr(app.state, "bald_processor", None) if settings.rtc_bald_enabled else None,
+            False,
+        )
 
     face_tracker = ServerFaceTracker(
         settings.face_landmarker_model_path,
         delegate_preference=settings.mediapipe_delegate,
         running_mode=settings.rtc_face_landmarker_running_mode,
     )
-    bald_processor = BaldPreprocessor(
-        settings.hair_segmenter_model_path,
-        delegate_preference=settings.mediapipe_delegate,
-        running_mode=settings.rtc_hair_segmenter_running_mode,
-    )
+    bald_processor = None
+    if settings.rtc_bald_enabled:
+        bald_processor = BaldPreprocessor(
+            settings.hair_segmenter_model_path,
+            delegate_preference=settings.mediapipe_delegate,
+            running_mode=settings.rtc_hair_segmenter_running_mode,
+        )
     logger.info(
         "rtc session processors initialized: face_delegate=%s bald_delegate=%s",
         face_tracker.acceleration,
-        bald_processor.acceleration,
+        "disabled" if bald_processor is None else bald_processor.acceleration,
     )
     return face_tracker, bald_processor, True
 

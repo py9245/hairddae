@@ -4,6 +4,8 @@ type AuthListener = () => void
 
 const listeners = new Set<AuthListener>()
 const BaseUrl = '/api'
+const shouldSimulateSignup = import.meta.env.VITE_SIMULATE_SIGNUP === 'true'
+const shouldSimulateLogin = import.meta.env.VITE_SIMULATE_LOGIN === 'true'
 
 function notifyListeners() {
   for (const listener of listeners) {
@@ -58,6 +60,15 @@ export type SignUpResponse = {
 export async function signUpApi(
   payload: SignUpRequest,
 ): Promise<SignUpResponse> {
+  if (shouldSimulateSignup) {
+    await new Promise((resolve) => window.setTimeout(resolve, 500))
+
+    return {
+      message: '회원가입이 완료되었습니다.',
+      userID: payload.userID,
+    }
+  }
+
   const res = await fetch(`${BaseUrl}/accounts/signin/`, {
     method: 'POST',
     headers: {
@@ -88,6 +99,18 @@ export type LoginResponse = {
 }
 
 export async function loginApi(payload: LoginRequest): Promise<LoginResponse> {
+  if (shouldSimulateLogin) {
+    await new Promise((resolve) => window.setTimeout(resolve, 500))
+
+    return {
+      code: 200,
+      message: '로그인에 성공했습니다.',
+      userID: payload.userID,
+      accessToken: 'mock-access-token',
+      refreshToken: 'mock-refresh-token',
+    }
+  }
+
   const res = await fetch(`${BaseUrl}/accounts/login/`, {
     method: 'POST',
     headers: {

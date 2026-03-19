@@ -14,7 +14,7 @@ const mockModalContent: ApplyStyleModalContent = {
   ],
 }
 
-function ProgressBar({ value }: { value: number }) {
+export function ProgressBar({ value }: { value: number }) {
   return (
     <div className="h-3 w-full rounded-full bg-gray-300 p-[2px]">
       <div
@@ -22,7 +22,7 @@ function ProgressBar({ value }: { value: number }) {
         style={{
           width: `${value}%`,
           borderRadius: '30px',
-          background: 'linear-gradient(90deg, #FFA7A6 0%, #EA7589 100%)',
+          background: 'var(--primary-gradient)',
         }}
       />
     </div>

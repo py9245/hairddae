@@ -4,8 +4,9 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 
 import { HairSelector } from '@/components/Camera/hair-selector'
 import { ApplyStyleModal } from '@/components/Camera/modal'
-import { useHairRtcSession } from '@/hooks/Camera/useHairRtcSession'
-import { useViewportCaptureStream } from '@/hooks/Camera/useViewportCaptureStream'
+import { Header } from '@/components/header'
+import { Button } from '@/components/ui/button'
+import { useHairWebSocket } from '@/hooks/Camera/useHairWebSocket'
 import { captureCompositedImage } from '@/lib/Camera/capture'
 import { HAIR_ITEMS } from '@/lib/Camera/HairItem'
 import { RTC_CAPTURE_FPS } from '@/lib/Camera/runtime'
@@ -136,17 +137,29 @@ export default function FaceLandmarksView({
           className={`pointer-events-none absolute inset-0 z-10 h-full w-full ${shouldMirrorDisplay ? '-scale-x-100' : ''}`}
         />
 
-        <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 pt-5">
-          <button
-            type="button"
-            onClick={handleTopLeftAction}
-            aria-label={isFrameFrozen ? '캡처 취소' : '닫기'}
-          >
-            <X className="h-10 w-10 text-white" />
-          </button>
-
-          <Settings className="h-10 w-10 text-white" />
-        </div>
+        <Header
+          leftAction={
+            <Button
+              type="button"
+              variant="camera-back"
+              size="camera-icon"
+              onClick={handleTopLeftAction}
+              aria-label={isFrameFrozen ? '캡처 취소' : '닫기'}
+            >
+              <X className="size-12 text-white" />
+            </Button>
+          }
+          rightAction={
+            <Button
+              type="button"
+              variant="camera-setting"
+              size="camera-icon"
+              aria-label="설정 열기"
+            >
+              <Settings className="size-12 text-white" />
+            </Button>
+          }
+        />
 
         {transport === 'rtc' && hairRtc.error ? (
           <div className="absolute inset-x-4 top-18 z-20 rounded-xl bg-black/55 px-3 py-2 text-sm text-white">

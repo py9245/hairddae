@@ -1,4 +1,5 @@
 import { Download } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { HairSelectorItem } from '@/components/ui/hair-selector-item'
 import { useHairSelectorController } from '@/hooks/Camera/useHairSelectorController'
 import type { HairItem } from '@/lib/Camera/HairItem'
@@ -71,21 +72,15 @@ export function HairSelector(props: HairSelectorProps) {
 
           {frozen ? (
             <div className="flex items-center justify-center">
-              <button
+              <Button
                 type="button"
+                variant="hair-download"
+                size="camera-download"
                 onClick={handleDownloadClick}
                 aria-label="캡처 다운로드"
-                className="flex items-center justify-center"
               >
-                <div
-                  className={cn(
-                    'relative flex items-center justify-center overflow-hidden rounded-full border border-white bg-white transition-all duration-300',
-                    'h-24 w-24 shadow-[0_0_0_6px_rgba(255,255,255,0.25)]',
-                  )}
-                >
-                  <Download className="h-10 w-10 text-slate-700" />
-                </div>
-              </button>
+                <Download className="size-12 text-slate-700" />
+              </Button>
             </div>
           ) : showSkeleton ? (
             <div className={trackClassName}>

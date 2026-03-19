@@ -1,6 +1,7 @@
 import { Link, useRouter } from '@tanstack/react-router'
 import { Eye, EyeClosed } from 'lucide-react'
 import { useState } from 'react'
+import { LoginButton } from '@/components/Auth/login-button'
 import { useLoginMutation } from '@/hooks/Auth/Login/useLoginMutation'
 import { auth } from '@/lib/auth'
 
@@ -100,17 +101,11 @@ export default function Login() {
             </p>
           )}
 
-          <button
-            type="submit"
-            disabled={!isFormValid || loginMutation.isPending}
-            className={`mt-4 h-12 w-full rounded-2xl text-lg font-bold text-white transition ${
-              !isFormValid || loginMutation.isPending
-                ? 'cursor-not-allowed bg-primary-100'
-                : 'cursor-pointer bg-primary-300 hover:bg-primary-200'
-            }`}
-          >
-            {loginMutation.isPending ? '로그인 중...' : '로그인'}
-          </button>
+          <LoginButton
+            className="mt-4"
+            disabled={!isFormValid}
+            isPending={loginMutation.isPending}
+          />
         </form>
 
         <p className="mt-10 text-center text-sm font-medium text-slate-500">

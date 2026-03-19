@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { fn } from 'storybook/test'
 import { StyleAdsCard, StyleAdsCardSkeleton } from '@/components/ui/style-ads-card'
 
 const meta = {
@@ -24,8 +25,8 @@ type Story = StoryObj<typeof meta>
 
 const baseArgs = {
   hairImgpath: '/hiar-style/style-02-image.png',
-  hairName: '레이어드컷',
-  hairSlug: '봄의 시작을 알리는 여신머리',
+  hairName: '레이어컷',
+  hairSlug: '분위기 시작의 허리까지 긴 생머리',
 }
 
 export const Default: Story = {
@@ -50,6 +51,7 @@ function InteractiveStyleAdsCard() {
       {...baseArgs}
       liked={liked}
       onLikeToggle={() => setLiked((prev) => !prev)}
+      onApply={fn()}
     />
   )
 }
@@ -62,8 +64,23 @@ export const Interactive: Story = {
   render: () => <InteractiveStyleAdsCard />,
 }
 
+export const WithApplyAction: Story = {
+  args: {
+    ...baseArgs,
+    liked: false,
+    onApply: fn(),
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          '카드 하단에 `적용하기` 버튼이 고정 노출됩니다.',
+      },
+    },
+  },
+}
+
 export const Skeleton: Story = {
   args: { ...baseArgs },
   render: () => <StyleAdsCardSkeleton />,
 }
-

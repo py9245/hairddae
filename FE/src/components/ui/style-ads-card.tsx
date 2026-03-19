@@ -30,6 +30,7 @@ type StyleAdsCardProps = {
   priority?: boolean
   className?: string
   onLikeToggle?: () => void
+  onApply?: () => void
 }
 
 export function StyleAdsCard({
@@ -40,6 +41,7 @@ export function StyleAdsCard({
   priority = false,
   className,
   onLikeToggle,
+  onApply,
 }: StyleAdsCardProps) {
   const heartIconSrc = liked ? '/icon/heart-fill.svg' : '/icon/hair-empty.svg'
   const heartLabel = liked ? '찜 해제' : '찜하기'
@@ -65,19 +67,32 @@ export function StyleAdsCard({
       <div className="absolute bottom-0 left-0 right-0 rounded-b-lg bg-gradient-to-t from-white/95 via-white/70 to-transparent px-3 pb-3 pt-10">
         <div className="flex items-end justify-between">
           <div className="min-w-0">
-            <h3 className="line-clamp-2 text-xl font-extrabold text-[#4E4E4E] leading-snug">
+            <h3 className="line-clamp-2 text-xl font-extrabold leading-snug text-neutral-800">
               {hairSlug}
             </h3>
             {hairName && (
               <p className="mt-0.5 text-sm text-labels-secondary">{hairName}</p>
             )}
           </div>
+        </div>
+        <div className="mt-3 flex items-center justify-between">
+          <button
+            type="button"
+            aria-label="적용하기"
+            className="rounded-full bg-primary-300 px-5 py-2 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20 focus-visible:ring-offset-2"
+            onClick={onApply}
+          >
+            적용하기
+          </button>
           <button
             type="button"
             aria-label={heartLabel}
             aria-pressed={liked}
-            className="ml-2 flex size-[18px] shrink-0 items-center justify-center rounded-full bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20 focus-visible:ring-offset-2"
-            onClick={onLikeToggle}
+            className="relative z-30 ml-2 flex size-[18px] shrink-0 items-center justify-center rounded-full bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20 focus-visible:ring-offset-2"
+            onClick={(event) => {
+              event.stopPropagation()
+              onLikeToggle?.()
+            }}
           >
             <img
               src={heartIconSrc}

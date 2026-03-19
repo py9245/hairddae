@@ -1,0 +1,9 @@
+#!/bin/sh
+
+# Run FE build only when FE files are staged
+FE_STAGED=$(git diff --cached --name-only | grep "^FE/")
+
+if [ -n "$FE_STAGED" ]; then
+  echo "FE changes detected. Running pnpm run build..."
+  cd FE && pnpm run build
+fi

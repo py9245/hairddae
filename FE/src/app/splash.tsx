@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { SplashStartButton } from '@/components/splash-start-button'
 
 const slides = [
   {
@@ -34,10 +34,10 @@ export default function Splash() {
   const currentSlide = slides[activeSlide]
 
   return (
-    <main className="app-frame-page flex flex-col overflow-hidden bg-bg-primary px-6 pt-16 text-[#2f2f2f]">
+    <main className="app-frame-page flex flex-col overflow-hidden bg-bg-primary px-6 pt-16 text-text-dark">
       <div className="mx-auto flex w-full max-w-[390px] flex-1 flex-col">
         <section className="flex flex-col items-center">
-          <h1 className="whitespace-pre-line px-8 text-center text-[20px] leading-[1.35] font-semibold tracking-[-0.03em] text-[#2f2f2f]">
+          <h1 className="whitespace-pre-line px-8 text-center text-[20px] leading-[1.35] font-semibold tracking-[-0.03em] text-text-dark">
             {currentSlide.title}
           </h1>
 
@@ -59,7 +59,9 @@ export default function Splash() {
               <span
                 key={slide.imageSrc}
                 className={`block size-[10px] rounded-full transition-colors ${
-                  index === activeSlide ? 'bg-[#f39ca6]' : 'bg-[#e3e3e8]'
+                  index === activeSlide
+                    ? 'bg-indicator-active'
+                    : 'bg-indicator-inactive'
                 }`}
               />
             ))}
@@ -67,12 +69,9 @@ export default function Splash() {
         </section>
 
         <div className="mt-auto">
-          <Button
-            asChild
-            className="h-14 w-full rounded-[8px] bg-[#ea7589] px-6 py-4 text-base font-medium leading-[1.4] text-[#f2f2f7] hover:bg-[#e1637b]"
-          >
+          <SplashStartButton asChild>
             <Link to="/auth/login">헤어 어때 시작하기</Link>
-          </Button>
+          </SplashStartButton>
         </div>
       </div>
     </main>

@@ -1,16 +1,53 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { Settings, X } from 'lucide-react'
 
+import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
-import { TopNav } from '@/components/top-nav'
 
 const meta = {
-  title: 'Navigation/TopNav',
-  component: TopNav,
+  title: 'Navigation/Header',
+  component: Header,
   tags: ['autodocs'],
   parameters: {
     layout: 'fullscreen',
   },
+} satisfies Meta<typeof Header>
+
+export default meta
+
+type Story = StoryObj<typeof meta>
+
+const PageWrapper = ({ children }: { children: React.ReactNode }) => (
+  <div className="flex items-center justify-center">
+    <div className="w-[430px] max-w-full bg-[#f5f5f5]">{children}</div>
+  </div>
+)
+
+export const MainHeader: Story = {
+  render: () => (
+    <PageWrapper>
+      <Header label="헤어때" labelClassName="text-primary-200" />
+    </PageWrapper>
+  ),
+}
+
+export const HairListHeader: Story = {
+  render: () => (
+    <PageWrapper>
+      <Header label="단발컷" labelClassName="text-[#525252]"/>
+    </PageWrapper>
+  ),
+}
+
+export const MyPageHeader: Story = {
+  render: () => (
+    <PageWrapper>
+      <Header label="내정보" labelClassName="text-[#525252]"/>
+    </PageWrapper>
+  ),
+}
+
+export const CameraActions: Story = {
   decorators: [
     (Story) => (
       <div className="flex items-center justify-center">
@@ -20,15 +57,8 @@ const meta = {
       </div>
     ),
   ],
-} satisfies Meta<typeof TopNav>
-
-export default meta
-
-type Story = StoryObj<typeof meta>
-
-export const CameraActions: Story = {
   render: () => (
-    <TopNav
+    <Header
       leftAction={
         <Button
           type="button"
@@ -52,3 +82,4 @@ export const CameraActions: Story = {
     />
   ),
 }
+

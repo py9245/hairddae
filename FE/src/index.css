@@ -1,6 +1,21 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@font-face {
+  font-family: "Hakgyoansim Byeolbichhaneul";
+  src: url("/font/Hakgyoansim Byeolbichhaneul TTF B.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Hakgyoansim Byeolbichhaneul";
+  src: url("/font/Hakgyoansim Byeolbichhaneul TTF L.ttf") format("truetype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -136,6 +151,7 @@
   --color-error: #ff3b30;
   --font-sans:
     "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  --font-display: "Hakgyoansim Byeolbichhaneul", sans-serif;
 }
 
 @layer base {

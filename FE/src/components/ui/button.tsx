@@ -9,7 +9,11 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary-200',
+        default: 'bg-primary-200 text-primary-foreground hover:bg-primary-200',
+        splash:
+          'bg-primary-300 text-[#f2f2f7] hover:bg-[#e1637b] disabled:cursor-not-allowed disabled:bg-[#f1aab7] disabled:text-[#f2f2f7] disabled:opacity-100',
+        login:
+          'bg-primary-300 text-[#f2f2f7] hover:bg-[#e1637b] disabled:cursor-not-allowed disabled:bg-[#f1aab7] disabled:text-[#f2f2f7] disabled:opacity-100',
         destructive:
           'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40',
         outline:
@@ -20,6 +24,9 @@ const buttonVariants = cva(
           'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
         link: 'text-primary underline-offset-4 hover:underline',
         logout: 'bg-[#D9D9D9] text-white hover:bg-[#C0C0C0]',
+        'camera-back': 'text-white/85 hover:text-white',
+        'camera-setting': 'text-white/85 hover:text-white',
+        'hair-download': 'border border-white bg-white text-slate-700',
       },
       size: {
         default: 'h-9 px-4 py-2 has-[>svg]:px-3',
@@ -31,6 +38,10 @@ const buttonVariants = cva(
         'icon-sm': 'size-8',
         'icon-lg': 'size-10',
         full: 'h-[52px] w-full rounded-xl px-6 text-base',
+        splash: 'h-14 w-full rounded-[8px] px-6 py-4 text-base font-medium',
+        'camera-icon': 'h-12 w-12',
+        'camera-download':
+          'h-24 w-24 rounded-full shadow-[0_0_0_6px_rgba(255,255,255,0.25)]',
       },
     },
     defaultVariants: {

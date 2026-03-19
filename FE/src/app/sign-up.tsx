@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { AgreementCheckbox } from '@/components/Auth/agreement-checkbox'
 import { BirthDatePicker } from '@/components/Auth/birth-date-picker'
 import { GenderSelect } from '@/components/Auth/gender-select'
+import { SignUpButton } from '@/components/Auth/sign-up-button'
 import { useSignUpForm } from '@/hooks/Auth/SignUp/useSignUpForm'
 import { useSignUpMutation } from '@/hooks/Auth/SignUp/useSignUpMutation'
 
@@ -228,17 +229,11 @@ export default function SignUp() {
             </p>
           )}
 
-          <button
-            type="submit"
-            disabled={!isFormValid || signUpMutation.isPending}
-            className={`mt-4 h-12 w-full rounded-2xl text-lg font-bold text-white transition ${
-              !isFormValid || signUpMutation.isPending
-                ? 'cursor-not-allowed bg-primary-300'
-                : 'cursor-pointer bg-primary-300 hover:bg-primary-200'
-            }`}
-          >
-            {signUpMutation.isPending ? '가입 중...' : '가입하기'}
-          </button>
+          <SignUpButton
+            className="mt-4"
+            disabled={!isFormValid}
+            isPending={signUpMutation.isPending}
+          />
         </form>
 
         <p className="mt-10 text-center text-sm font-medium text-slate-500">

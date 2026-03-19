@@ -44,6 +44,7 @@
   --labels-secondary: #737373;
   /* Brand */
   --brand: #ea7589;
+  --primary-gradient: linear-gradient(90deg, #ffa7a6 0%, #ea7589 100%);
 }
 
 .dark {
@@ -82,6 +83,7 @@
   --sidebar-ring: oklch(0.556 0 0);
   /* Brand (dark) */
   --brand: #ea7589;
+  --primary-gradient: linear-gradient(90deg, #ffa7a6 0%, #ea7589 100%);
 }
 
 @theme inline {

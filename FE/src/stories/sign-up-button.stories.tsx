@@ -1,68 +1,39 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
 
-type SignUpButtonPreviewProps = {
-  isValid: boolean
-  initialPending?: boolean
-  pendingOnClick?: boolean
-}
-
-function SignUpButtonPreview({
-  isValid,
-  initialPending = false,
-  pendingOnClick = true,
-}: SignUpButtonPreviewProps) {
-  const [isPending, setIsPending] = useState(initialPending)
-
-  const disabled = !isValid || isPending
-  const className = `mt-4 h-12 w-80 rounded-2xl text-lg font-bold text-white transition ${
-    disabled
-      ? 'bg-primary-100 cursor-not-allowed'
-      : 'bg-primary-300 hover:bg-primary-200 cursor-pointer'
-  }`
-
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      className={className}
-      aria-busy={isPending || undefined}
-      onClick={() => {
-        if (!disabled && pendingOnClick) {
-          setIsPending(true)
-          setTimeout(() => setIsPending(false), 1200)
-        }
-      }}
-    >
-      {isPending ? '가입 중...' : '가입하기'}
-    </button>
-  )
-}
+import { SignUpButton } from '@/components/Auth/sign-up-button'
 
 const meta = {
   title: 'UI/Button/SignUpButton',
-  component: SignUpButtonPreview,
+  component: SignUpButton,
   parameters: { layout: 'centered' },
   tags: ['autodocs'],
+  decorators: [
+    (Story) => (
+      <div className="w-[340px]">
+        <Story />
+      </div>
+    ),
+  ],
   args: {
-    isValid: true,
-    initialPending: false,
-    pendingOnClick: true,
+    disabled: false,
+    isPending: false,
   },
   argTypes: {
-    isValid: { control: 'boolean' },
-    initialPending: { control: 'boolean' },
-    pendingOnClick: { control: 'boolean' },
+    disabled: { control: 'boolean' },
+    isPending: { control: 'boolean' },
   },
-} satisfies Meta<typeof SignUpButtonPreview>
+} satisfies Meta<typeof SignUpButton>
 
 export default meta
 
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {}
-export const Disabled: Story = { args: { isValid: false } }
-export const Pending: Story = {
-  args: { initialPending: true, pendingOnClick: false },
+
+export const Disabled: Story = {
+  args: { disabled: true },
 }
 
+export const Pending: Story = {
+  args: { isPending: true },
+}

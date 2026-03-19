@@ -1,103 +1,85 @@
-import { useEffect, useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { fn } from 'storybook/test'
-import { HairSelector } from '@/components/Camera/hair-selector'
-import { HAIR_ITEMS } from '@/lib/Camera/HairItem'
+import { HairSelectorItem } from '@/components/ui/hair-selector-item'
 import type { HairItem } from '@/lib/Camera/HairItem'
 
-type HairSelectorStoryProps = {
-  items: HairItem[]
-  initialSelectedId: number
-  loading?: boolean
-  onCapture?: () => void
+const emptyHairItem: HairItem = {
+  id: 0,
+  img: '',
+  thumb: '',
+  label: 'None',
 }
 
-function HairSelectorStory({
-  items,
-  initialSelectedId,
-  loading = false,
-  onCapture,
-}: HairSelectorStoryProps) {
-  const [selectedId, setSelectedId] = useState(initialSelectedId)
-
-  useEffect(() => {
-    setSelectedId(initialSelectedId)
-  }, [initialSelectedId])
-
-  useEffect(() => {
-    if (!items.some((item) => item.id === selectedId) && items.length > 0) {
-      setSelectedId(items[0].id)
-    }
-  }, [items, selectedId])
-
-  return (
-    <HairSelector
-      items={items}
-      selectedId={selectedId}
-      loading={loading}
-      onSelect={setSelectedId}
-      onCapture={onCapture}
-    />
-  )
+const sampleHairItem: HairItem = {
+  id: 1,
+  img: '/hair/hair.png',
+  thumb: '/hair/hair.png',
+  label: 'Hair 1',
 }
 
 const meta = {
-  title: 'UI/Selector/HairSelector',
-  component: HairSelectorStory,
+  title: 'UI/Selector/HairSelectorItem',
+  component: HairSelectorItem,
   tags: ['autodocs'],
   parameters: {
-    layout: 'fullscreen',
+    layout: 'centered',
     docs: {
       description: {
         component: `
-카메라 화면 하단에 위치하는 헤어 선택 셀렉터입니다.
+카메라 화면 하단 셀렉터에 사용되는 개별 헤어 아이템 버튼입니다.
 
-- 좌우 스와이프 또는 버튼 선택으로 헤어 스타일을 탐색할 수 있습니다.
-- 선택된 아이템은 중앙에 강조되어 표시됩니다.
-- 로딩 중에는 스켈레톤 상태를 표시합니다.
-- 캡처 액션과 연결될 수 있도록 onCapture 콜백을 받을 수 있습니다.
+- 선택 상태에 따라 썸네일 크기와 강조 스타일이 달라집니다.
+- 비활성화 상태를 지원합니다.
+- 빈 아이템(id 0)은 금지 아이콘으로 렌더링됩니다.
         `,
       },
     },
   },
+  decorators: [
+    (Story) => (
+      <div className="bg-black px-6 py-10">
+        <Story />
+      </div>
+    ),
+  ],
   args: {
-    items: HAIR_ITEMS,
-    initialSelectedId: 1,
-    loading: false,
-    onCapture: fn(),
+    item: sampleHairItem,
+    selected: false,
+    disabled: false,
+    onClick: fn(),
   },
   argTypes: {
-    items: {
+    item: {
       control: 'object',
-      description: '하단 Controls에서 HairItem 배열을 직접 수정합니다.',
+      description: '헤어 아이템 데이터입니다.',
       table: {
-        type: { summary: 'HairItem[]' },
+        type: { summary: 'HairItem' },
       },
     },
-    initialSelectedId: {
-      control: { type: 'number' },
-      description: '초기 선택 hair id입니다.',
+    selected: {
+      control: 'boolean',
+      description: '선택 여부입니다.',
       table: {
-        type: { summary: 'number' },
+        type: { summary: 'boolean' },
       },
     },
-    loading: {
-      control: { type: 'boolean' },
-      description: '헤어 버튼 대신 스켈레톤을 먼저 표시합니다.',
+    disabled: {
+      control: 'boolean',
+      description: '비활성화 여부입니다.',
       table: {
         type: { summary: 'boolean' },
         defaultValue: { summary: 'false' },
       },
     },
-    onCapture: {
-      description: '캡처 버튼 클릭 시 실행되는 콜백 함수입니다.',
-      action: 'captured',
+    onClick: {
+      description: '아이템 클릭 시 실행되는 콜백 함수입니다.',
+      action: 'clicked',
       table: {
         type: { summary: '() => void' },
       },
     },
   },
-} satisfies Meta<typeof HairSelectorStory>
+} satisfies Meta<typeof HairSelectorItem>
 
 export default meta
 
@@ -107,22 +89,46 @@ export const Default: Story = {
   parameters: {
     docs: {
       description: {
-        story: '기본 헤어 선택 상태입니다.',
+        story: '기본 비선택 헤어 아이템 상태입니다.',
       },
     },
   },
 }
 
-export const Skeleton: Story = {
+export const Selected: Story = {
   args: {
-    items: [],
-    loading: true,
-    initialSelectedId: 0,
+    selected: true,
   },
   parameters: {
     docs: {
       description: {
-        story: '헤어 목록을 불러오기 전 스켈레톤 상태입니다.',
+        story: '선택된 헤어 아이템 상태입니다.',
+      },
+    },
+  },
+}
+
+export const Disabled: Story = {
+  args: {
+    disabled: true,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: '비활성화된 헤어 아이템 상태입니다.',
+      },
+    },
+  },
+}
+
+export const Empty: Story = {
+  args: {
+    item: emptyHairItem,
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: '헤어를 선택하지 않는 빈 아이템 상태입니다.',
       },
     },
   },

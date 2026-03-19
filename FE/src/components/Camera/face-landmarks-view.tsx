@@ -1,22 +1,21 @@
-import { useMutation } from '@tanstack/react-query'
+import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 import { useRouter } from '@tanstack/react-router'
 import { Settings, X } from 'lucide-react'
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 
 import { HairSelector } from '@/components/Camera/hair-selector'
 import { ApplyStyleModal } from '@/components/Camera/modal'
-import { Header } from '@/components/header'
-import { Button } from '@/components/ui/button'
-import { useHairWebSocket } from '@/hooks/Camera/useHairWebSocket'
+import { useHairInferenceSession } from '@/hooks/Camera/useHairInferenceSession'
+import { useHairRtcSession } from '@/hooks/Camera/useHairRtcSession'
+import { useHairOverlayCanvas } from '@/hooks/Camera/useHairOverlayCanvas'
 import { captureCompositedImage } from '@/lib/Camera/capture'
-import { HAIR_ITEMS } from '@/lib/Camera/HairItem'
-import { postHairApplyStart } from '@/lib/Camera/hairApply'
-
-type LandmarkPoint = {
-  x: number
-  y: number
-  z: number
-}
+import { HAIR_ITEMS, fetchHairItems, type HairItem } from '@/lib/Camera/HairItem'
+import {
+  RTC_CAPTURE_FPS,
+  RTC_CAPTURE_HEIGHT,
+  RTC_CAPTURE_WIDTH,
+  RTC_SENDER_MAX_BITRATE,
+} from '@/lib/Camera/runtime'
 
 type Pose = {
   yaw: number
@@ -24,60 +23,189 @@ type Pose = {
   roll: number
 }
 
+const REMOTE_DISPLAY_SETTLE_MS = 40
+
 type FaceLandmarksViewProps = {
+  stream: MediaStream | null
+  transport: 'ws' | 'rtc'
   videoRef: RefObject<HTMLVideoElement | null>
   canvasRef: RefObject<HTMLCanvasElement | null>
   overlayCanvasRef: RefObject<HTMLCanvasElement | null>
-  landmarks: LandmarkPoint[] | null
   pose: Pose | null
+  landmarks: NormalizedLandmark[] | null
 }
 
 export default function FaceLandmarksView({
+  stream,
+  transport,
   videoRef,
   canvasRef,
   overlayCanvasRef,
-  landmarks,
   pose,
+  landmarks,
 }: FaceLandmarksViewProps) {
   const router = useRouter()
   const wrapRef = useRef<HTMLDivElement | null>(null)
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
 
   const [selectedHairId, setSelectedHairId] = useState(0)
   const [pendingHairId, setPendingHairId] = useState<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
-  const [applySessionId, setApplySessionId] = useState<string | null>(null)
-  const [isFrameFrozen, setIsFrameFrozen] = useState(false)
+  const [hairItems, setHairItems] = useState<HairItem[]>(HAIR_ITEMS)
+  const [remoteVideoReady, setRemoteVideoReady] = useState(false)
+  const [remoteDisplayReady, setRemoteDisplayReady] = useState(false)
+  const [remoteVideoSize, setRemoteVideoSize] = useState<{
+    width: number
+    height: number
+  } | null>(null)
 
   const displayHairId = pendingHairId ?? selectedHairId
 
-  const hairApplyMutation = useMutation({
-    mutationFn: postHairApplyStart,
+  const hairInference = useHairInferenceSession({
+    enabled: transport === 'ws' && displayHairId > 0,
+    hairId: displayHairId,
+    pose,
+    landmarks,
+    videoRef,
   })
 
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
+  const hairRtc = useHairRtcSession({
+    enabled: transport === 'rtc' && displayHairId > 0,
+    hairId: displayHairId,
+    stream,
+  })
 
-    if (isFrameFrozen) {
-      video.pause()
+  const overlayMetrics = useHairOverlayCanvas({
+    canvasRef: overlayCanvasRef,
+    videoRef,
+    landmarks,
+    asset: transport === 'ws' ? hairInference.asset : null,
+  })
+
+  const activeRemoteStream = transport === 'rtc' ? hairRtc.remoteStream : null
+  const hasRemoteVideo = transport === 'rtc' && remoteDisplayReady
+
+  const activeAsset =
+    transport === 'rtc'
+      ? hairRtc.asset
+      : hairInference.asset
+
+  const activeMetrics =
+    transport === 'rtc'
+      ? hairRtc.metrics
+      : hairInference.metrics
+
+  const activeError =
+    transport === 'rtc'
+      ? hairRtc.error
+      : hairInference.error
+  const activeConnected =
+    transport === 'rtc'
+      ? hairRtc.isConnected
+      : hairInference.isConnected
+  const targetQualityLabel = `${RTC_CAPTURE_WIDTH}x${RTC_CAPTURE_HEIGHT}@${RTC_CAPTURE_FPS} ${(
+    RTC_SENDER_MAX_BITRATE / 1_000_000
+  ).toFixed(1)}Mbps`
+  const currentQualityLabel = remoteVideoSize
+    ? `${remoteVideoSize.width}x${remoteVideoSize.height}`
+    : '-'
+
+  useEffect(() => {
+    const remoteVideo = remoteVideoRef.current
+    if (!remoteVideo) {
       return
     }
 
-    void video.play().catch(() => {})
-  }, [isFrameFrozen, videoRef])
+    setRemoteVideoReady(false)
+    setRemoteVideoSize(null)
+    remoteVideo.srcObject = activeRemoteStream
+    if (!activeRemoteStream) {
+      return () => {
+        remoteVideo.srcObject = null
+      }
+    }
 
-  useHairWebSocket({
-    enabled: !!applySessionId && !isFrameFrozen,
-    applySessionId,
-    pose: isFrameFrozen ? null : pose,
-    landmarks: isFrameFrozen ? null : landmarks,
-    selectedHairId: displayHairId,
-  })
+    const markReady = () => {
+      if (remoteVideo.videoWidth <= 0 || remoteVideo.videoHeight <= 0) {
+        return
+      }
+      setRemoteVideoReady(true)
+      setRemoteVideoSize({
+        width: remoteVideo.videoWidth,
+        height: remoteVideo.videoHeight,
+      })
+    }
+
+    const markWaiting = () => {
+      setRemoteVideoReady(false)
+      setRemoteVideoSize(null)
+    }
+
+    remoteVideo.addEventListener('loadedmetadata', markReady)
+    remoteVideo.addEventListener('loadeddata', markReady)
+    remoteVideo.addEventListener('playing', markReady)
+    remoteVideo.addEventListener('resize', markReady)
+    remoteVideo.addEventListener('emptied', markWaiting)
+    remoteVideo.addEventListener('pause', markWaiting)
+
+    if (activeRemoteStream.getVideoTracks().length > 0) {
+      void remoteVideo.play().catch(() => {})
+    }
+
+    return () => {
+      remoteVideo.removeEventListener('loadedmetadata', markReady)
+      remoteVideo.removeEventListener('loadeddata', markReady)
+      remoteVideo.removeEventListener('playing', markReady)
+      remoteVideo.removeEventListener('resize', markReady)
+      remoteVideo.removeEventListener('emptied', markWaiting)
+      remoteVideo.removeEventListener('pause', markWaiting)
+      setRemoteVideoReady(false)
+      setRemoteVideoSize(null)
+      remoteVideo.srcObject = null
+    }
+  }, [activeRemoteStream])
+
+  useEffect(() => {
+    if (transport !== 'rtc') {
+      setRemoteDisplayReady(false)
+      return
+    }
+    if (!remoteVideoReady || !hairRtc.isRenderReady) {
+      setRemoteDisplayReady(false)
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setRemoteDisplayReady(true)
+    }, REMOTE_DISPLAY_SETTLE_MS)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+      setRemoteDisplayReady(false)
+    }
+  }, [hairRtc.isRenderReady, remoteVideoReady, transport])
 
   const handleHairSelect = useCallback((hairId: number) => {
-    setIsFrameFrozen(false)
-    setPendingHairId(hairId)
-    setModalOpen(true)
+    setPendingHairId(null)
+    setModalOpen(false)
+    setSelectedHairId(hairId)
+  }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+
+    fetchHairItems(controller.signal)
+      .then((items) => {
+        setHairItems(items.length > 1 ? items : HAIR_ITEMS)
+      })
+      .catch((error) => {
+        console.error('hair item load failed:', error)
+        setHairItems(HAIR_ITEMS)
+      })
+
+    return () => {
+      controller.abort()
+    }
   }, [])
 
   const handleModalComplete = useCallback(() => {
@@ -88,40 +216,24 @@ export default function FaceLandmarksView({
 
     const nextHairId = pendingHairId
 
-    hairApplyMutation.mutate(nextHairId, {
-      onSuccess: (data) => {
-        setSelectedHairId(nextHairId)
-        setApplySessionId(data?.applySessionId ?? null)
-      },
-      onError: (error) => {
-        console.error('헤어 적용 시작 실패', error)
-      },
-    })
-
+    setSelectedHairId(nextHairId)
     setPendingHairId(null)
     setModalOpen(false)
-  }, [pendingHairId, hairApplyMutation])
+  }, [pendingHairId])
 
   const handleCapture = useCallback(() => {
     captureCompositedImage({
-      videoRef,
+      videoRef: hasRemoteVideo ? remoteVideoRef : videoRef,
       overlayCanvasRef,
       wrapRef,
-      hairItems: HAIR_ITEMS,
+      hairItems,
       selectedHairId: displayHairId,
     })
+  }, [displayHairId, hairItems, hasRemoteVideo, overlayCanvasRef, videoRef])
 
-    setIsFrameFrozen(false)
-  }, [displayHairId, overlayCanvasRef, videoRef])
-
-  const handleTopLeftAction = useCallback(() => {
-    if (isFrameFrozen) {
-      setIsFrameFrozen(false)
-      return
-    }
-
+  const handleClose = useCallback(() => {
     void router.navigate({ to: '/main' })
-  }, [isFrameFrozen, router])
+  }, [router])
 
   return (
     <div className="grid h-[100dvh] w-full place-items-center bg-neutral-100">
@@ -134,7 +246,23 @@ export default function FaceLandmarksView({
           autoPlay
           playsInline
           muted
-          className="block h-full w-full object-cover -scale-x-100"
+          className={
+            hasRemoteVideo
+              ? 'absolute inset-0 h-full w-full object-cover -scale-x-100 opacity-0'
+              : 'block h-full w-full object-cover -scale-x-100'
+          }
+        />
+
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          muted
+          className={
+            hasRemoteVideo
+              ? 'absolute inset-0 z-10 h-full w-full object-cover -scale-x-100'
+              : 'hidden'
+          }
         />
 
         <canvas
@@ -144,40 +272,98 @@ export default function FaceLandmarksView({
 
         <canvas
           ref={overlayCanvasRef}
-          className="pointer-events-none absolute inset-0 z-10 h-full w-full -scale-x-100"
+          className={
+            transport === 'ws'
+              ? 'pointer-events-none absolute inset-0 z-10 h-full w-full -scale-x-100'
+              : 'hidden'
+          }
         />
 
-        <Header
-          leftAction={
-            <Button
-              type="button"
-              variant="camera-back"
-              size="camera-icon"
-              onClick={handleTopLeftAction}
-              aria-label={isFrameFrozen ? '캡처 취소' : '닫기'}
-            >
-              <X className="size-12 text-white" />
-            </Button>
-          }
-          rightAction={
-            <Button
-              type="button"
-              variant="camera-setting"
-              size="camera-icon"
-              aria-label="설정 열기"
-            >
-              <Settings className="size-12 text-white" />
-            </Button>
-          }
-        />
+        <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between px-4 pt-5">
+          <button type="button" onClick={handleClose}>
+            <X className="h-10 w-10 text-white" />
+          </button>
+
+          <Settings className="h-10 w-10 text-white" />
+        </div>
+
+        <div className="absolute top-2 left-2 z-20 rounded bg-black/60 px-2 py-1 text-xs text-white">
+          {activeError
+            ? activeError
+            : activeConnected
+              ? transport === 'rtc'
+                ? 'RTC 연결됨'
+                : '소켓 연결됨'
+              : displayHairId > 0
+                ? transport === 'rtc'
+                  ? 'RTC 연결 중'
+                  : '소켓 연결 중'
+                : '헤어 선택 전'}
+        </div>
+
+        <div className="absolute top-10 left-2 z-20 rounded bg-black/60 px-2 py-1 text-[10px] text-white">
+          {activeAsset
+            ? `asset ${activeAsset.poseKey}`
+            : '준비 완료'}
+        </div>
+
+        <div className="absolute top-[4.5rem] left-2 z-20 rounded bg-black/60 px-2 py-1 text-[10px] text-white">
+          {transport === 'rtc'
+            ? `rtc ${hairRtc.connectionState} / rtt ${
+                activeMetrics.inferenceRttMs == null
+                  ? '-'
+                  : `${Math.round(activeMetrics.inferenceRttMs)}ms`
+              }`
+            : `draw ${
+                overlayMetrics.drawFps == null
+                  ? '-'
+                  : overlayMetrics.drawFps.toFixed(1)
+              } fps / rtt ${
+                activeMetrics.inferenceRttMs == null
+                  ? '-'
+                  : `${Math.round(activeMetrics.inferenceRttMs)}ms`
+              }`}
+        </div>
+
+        <div className="absolute top-[6rem] left-2 z-20 rounded bg-black/60 px-2 py-1 text-[10px] text-white">
+          {transport === 'rtc'
+            ? `proc ${
+                activeMetrics.processedFps == null
+                  ? '-'
+                  : activeMetrics.processedFps.toFixed(1)
+              } fps / remote ${
+                hasRemoteVideo
+                ? 'ready'
+                  : remoteVideoReady && hairRtc.isRenderReady
+                    ? 'settling'
+                    : remoteVideoReady
+                    ? 'warming'
+                    : 'waiting'
+              }`
+            : `proc ${
+                activeMetrics.processedFps == null
+                  ? '-'
+                  : activeMetrics.processedFps.toFixed(1)
+              } fps / bundle ${
+                overlayMetrics.bundleReady
+                  ? overlayMetrics.bundleLoadMs == null
+                    ? 'ready'
+                    : `${Math.round(overlayMetrics.bundleLoadMs)}ms`
+                  : 'loading'
+              }`}
+        </div>
+
+        <div className="absolute top-[7.5rem] left-2 z-20 rounded bg-black/60 px-2 py-1 text-[10px] text-white">
+          {transport === 'rtc'
+            ? `quality ${currentQualityLabel} / target ${targetQualityLabel}`
+            : `quality target ${targetQualityLabel}`}
+        </div>
 
         <HairSelector
-          items={HAIR_ITEMS}
+          items={hairItems}
           selectedId={displayHairId}
-          frozen={isFrameFrozen}
           onSelect={handleHairSelect}
           onCapture={handleCapture}
-          onFreezeChange={setIsFrameFrozen}
         />
       </div>
 

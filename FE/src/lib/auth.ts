@@ -1,4 +1,5 @@
 const AUTH_STORAGE_KEY = 'ssafy-authenticated'
+const ACCESS_TOKEN_STORAGE_KEY = 'ssafy-access-token'
 
 type AuthListener = () => void
 
@@ -19,16 +20,28 @@ function readStorage() {
   return window.localStorage.getItem(AUTH_STORAGE_KEY) === 'true'
 }
 
+export function getStoredAccessToken() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
+}
+
 export const auth = {
   isAuthenticated() {
     return readStorage()
   },
-  login() {
+  login(accessToken?: string | null) {
     window.localStorage.setItem(AUTH_STORAGE_KEY, 'true')
+    if (accessToken) {
+      window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken)
+    }
     notifyListeners()
   },
   logout() {
     window.localStorage.removeItem(AUTH_STORAGE_KEY)
+    window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
     notifyListeners()
   },
   subscribe(listener: AuthListener) {

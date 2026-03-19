@@ -1,0 +1,61 @@
+pipeline {
+  agent any
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+  }
+
+  environment {
+    INFERENCE_IMAGE = 'inference-app:local'
+    DEPLOY_ROOT = '/home/ubuntu/S14P21M101/Inference'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('Test') {
+      steps {
+        dir('Inference') {
+          sh '''
+            set -eu
+            export PATH="$HOME/.local/bin:$PATH"
+            uv sync --dev --frozen
+            uv run pytest
+          '''
+        }
+      }
+    }
+
+    stage('Build Image') {
+      steps {
+        sh '''
+          set -eu
+          docker build -t "$INFERENCE_IMAGE" -f "$WORKSPACE/Inference/Dockerfile" "$WORKSPACE/Inference"
+        '''
+      }
+    }
+
+    stage('Sync Deploy Files') {
+      steps {
+        sh '''
+          set -eu
+          mkdir -p "$DEPLOY_ROOT"
+          cp -f "$WORKSPACE/Inference/pyproject.toml" "$DEPLOY_ROOT/pyproject.toml"
+          cp -f "$WORKSPACE/Inference/uv.lock" "$DEPLOY_ROOT/uv.lock"
+          cp -f "$WORKSPACE/Inference/Dockerfile" "$DEPLOY_ROOT/Dockerfile"
+        '''
+      }
+    }
+  }
+
+  post {
+    always {
+      echo "Inference pipeline finished: ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+    }
+  }
+}

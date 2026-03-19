@@ -36,7 +36,7 @@ public class MypageController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size,
             @RequestParam(defaultValue = "recent") String sort) {
-        return ResponseEntity.ok(mypageService.getRecent(authentication.getName()));
+        return ResponseEntity.ok(mypageService.getRecent(authentication.getName(), minViewSec, page, size));
     }
 
     @GetMapping("/user")
@@ -52,6 +52,6 @@ public class MypageController {
             @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size,
             @RequestParam(defaultValue = "recent") String sort,
             @RequestParam(defaultValue = "false") boolean onlyActive) {
-        return ResponseEntity.ok(mypageService.getBookmarks(authentication.getName()));
+        return ResponseEntity.ok(mypageService.getBookmarks(authentication.getName(), page, size, onlyActive));
     }
 }

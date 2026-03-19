@@ -10,6 +10,7 @@ import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.example.beapp.common.api.ApiErrorResponse;
 import com.example.beapp.common.api.FieldValidationError;
@@ -79,6 +80,14 @@ public class GlobalExceptionHandler {
                         "%s 헤더가 필요합니다.".formatted(exception.getHeaderName()),
                         List.of(new FieldValidationError(exception.getHeaderName(), null, "필수 헤더 누락")),
                         request.getRequestURI()));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiErrorResponse> handleNoResourceFound(
+            NoResourceFoundException exception,
+            HttpServletRequest request) {
+        return ResponseEntity.status(404)
+                .body(ApiErrorResponse.of(404, "요청한 경로를 찾을 수 없습니다.", List.of(), request.getRequestURI()));
     }
 
     @ExceptionHandler(Exception.class)

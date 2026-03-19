@@ -4,7 +4,7 @@ import {
   type LandmarkerLike,
   useFaceLandmarksLoop,
 } from '@/hooks/Camera/useFaceLandmarkersLoop'
-import { useFacePose } from '@/hooks/Camera/useFacePose'
+import { deriveFacePose, useFacePose } from '@/hooks/Camera/useFacePose'
 import {
   drawLandmarksCover,
   drawRedPointsCover,
@@ -13,7 +13,11 @@ import {
 import { updateFrameRef } from '@/lib/Camera/frame'
 import { isFaceInsideGuide } from '@/lib/Camera/guide'
 import { classifyPose } from '@/lib/Camera/pose'
+import { CAMERA_FRAME_INTERVAL_MS } from '@/lib/Camera/runtime'
 import type { FaceFrame, PoseStatus } from '@/lib/Camera/types'
+
+const FRAME_INTERVAL_MS = CAMERA_FRAME_INTERVAL_MS
+const LOST_FACE_RESET_MS = FRAME_INTERVAL_MS * 2
 
 export function useFaceTrackingLoop({
   videoRef,
@@ -22,6 +26,8 @@ export function useFaceTrackingLoop({
   enabled,
   yawSign = 1,
   frameRef,
+  drawDebugOverlay = true,
+  publishState = true,
 }: {
   videoRef: React.RefObject<HTMLVideoElement | null>
   canvasRef: React.RefObject<HTMLCanvasElement | null>
@@ -29,6 +35,8 @@ export function useFaceTrackingLoop({
   enabled: boolean
   yawSign?: number
   frameRef?: React.RefObject<FaceFrame | null>
+  drawDebugOverlay?: boolean
+  publishState?: boolean
 }) {
   const rafRef = useRef<number | null>(null)
   const lastUpdateRef = useRef(0)
@@ -39,33 +47,17 @@ export function useFaceTrackingLoop({
     NormalizedLandmark[] | null
   >(null)
 
-  const { result, landmarks } = useFaceLandmarksLoop({
+  const { result, resultRef, landmarksRef } = useFaceLandmarksLoop({
     videoRef,
     landmarkerRef,
     enabled,
+    publishState,
   })
 
-  const { ftm, pose, poseNorm } = useFacePose({
+  const { pose, poseNorm } = useFacePose({
     result,
     yawSign,
   })
-
-  // Keep latest rapidly changing values in refs to avoid re-creating the rAF loop
-  const landmarksRef = useRef<NormalizedLandmark[] | null>(null)
-  const poseRef = useRef<typeof pose>(null)
-  const ftmRef = useRef<typeof ftm>(null)
-
-  useEffect(() => {
-    landmarksRef.current = landmarks
-  }, [landmarks])
-
-  useEffect(() => {
-    poseRef.current = pose
-  }, [pose])
-
-  useEffect(() => {
-    ftmRef.current = ftm
-  }, [ftm])
 
   useEffect(() => {
     const video = videoRef.current
@@ -82,27 +74,34 @@ export function useFaceTrackingLoop({
       const videoH = video.videoHeight
       if (videoW <= 0 || videoH <= 0) return
 
-      syncCanvasSize(canvas)
+      if (drawDebugOverlay) {
+        syncCanvasSize(canvas)
+      }
 
       const now = performance.now()
 
+      const currentResult = resultRef.current
+      const { ftm: loopFtm, pose: loopPose } = deriveFacePose(
+        currentResult,
+        yawSign,
+      )
       const lms = landmarksRef.current
-      const p = poseRef.current
-      const f = ftmRef.current
+      const p = loopPose
+      const f = loopFtm
 
       updateFrameRef(frameRef, now, videoW, videoH, lms, p)
 
       if (lms) {
         const guideOk = isFaceInsideGuide(lms)
 
-        if (now - lastUpdateRef.current > 120) {
+        if (publishState && now - lastUpdateRef.current > FRAME_INTERVAL_MS) {
           setInGuide(guideOk)
           setStatus(guideOk && f && p ? classifyPose(p) : 'none')
           setLandmarksState(lms)
           lastUpdateRef.current = now
         }
       } else {
-        if (now - lastUpdateRef.current > 200) {
+        if (publishState && now - lastUpdateRef.current > LOST_FACE_RESET_MS) {
           setInGuide(false)
           setStatus('none')
           setLandmarksState(null)
@@ -110,10 +109,12 @@ export function useFaceTrackingLoop({
         }
       }
 
-      drawLandmarksCover(canvas, lms ?? [], videoW, videoH)
+      if (drawDebugOverlay) {
+        drawLandmarksCover(canvas, lms ?? [], videoW, videoH)
 
-      if (lms) {
-        drawRedPointsCover(canvas, lms, [10], videoW, videoH)
+        if (lms) {
+          drawRedPointsCover(canvas, lms, [10], videoW, videoH)
+        }
       }
     }
 
@@ -123,7 +124,17 @@ export function useFaceTrackingLoop({
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       rafRef.current = null
     }
-  }, [enabled, videoRef, canvasRef, frameRef])
+  }, [
+    canvasRef,
+    drawDebugOverlay,
+    enabled,
+    frameRef,
+    landmarksRef,
+    publishState,
+    resultRef,
+    videoRef,
+    yawSign,
+  ])
 
   return { status, inGuide, pose, poseNorm, landmarks: landmarksState }
 }

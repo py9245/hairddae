@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { fn } from 'storybook/test'
 import { HairStyleCard } from '@/components/ui/hair-style-card'
 
 const meta = {
@@ -36,19 +37,6 @@ export const Default: Story = {
   },
 }
 
-export const Liked: Story = {
-  args: {
-    ...baseArgs,
-    liked: true,
-  },
-}
-
-export const Priority: Story = {
-  args: {
-    ...baseArgs,
-    priority: true,
-  },
-}
 
 function InteractiveHairStyleCard() {
   const [liked, setLiked] = useState(false)
@@ -58,6 +46,7 @@ function InteractiveHairStyleCard() {
       {...baseArgs}
       liked={liked}
       onLikeToggle={() => setLiked((prev) => !prev)}
+      onApply={fn()}
     />
   )
 }
@@ -69,3 +58,4 @@ export const Interactive: Story = {
   },
   render: () => <InteractiveHairStyleCard />,
 }
+

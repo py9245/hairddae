@@ -67,7 +67,7 @@ export function StyleAdsCard({
       <div className="absolute bottom-0 left-0 right-0 rounded-b-lg bg-gradient-to-t from-white/95 via-white/70 to-transparent px-3 pb-3 pt-10">
         <div className="flex items-end justify-between">
           <div className="min-w-0">
-            <h3 className="line-clamp-2 text-xl font-extrabold leading-snug text-[#4E4E4E]">
+            <h3 className="line-clamp-2 text-xl font-extrabold leading-snug text-neutral-800">
               {hairSlug}
             </h3>
             {hairName && (

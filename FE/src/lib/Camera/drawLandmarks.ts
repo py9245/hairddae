@@ -61,8 +61,9 @@ export function drawLandmarksCover(
   ctx.clearRect(0, 0, W, H)
   if (!lms.length) return
 
+  const LANDMARK_COLOR = '#8BFF5A'
   ctx.save()
-  ctx.fillStyle = '#8BFF5A'
+  ctx.fillStyle = LANDMARK_COLOR
 
   for (const lm of lms) {
     const { x, y } = lmToCoverXY(lm, videoW, videoH, W, H)

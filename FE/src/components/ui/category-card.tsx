@@ -18,9 +18,7 @@ export function CategoryCard({
       <div
         className={cn(
           'relative h-[44px] w-[44px] overflow-hidden rounded-[8px] border transition',
-          active
-            ? 'border-[#ff9aad] shadow-[0_8px_18px_rgba(255,154,173,0.32)]'
-            : 'border-transparent',
+          active ? 'border-primary-400' : 'border-transparent',
         )}
       >
         {imageSrc ? (
@@ -45,7 +43,7 @@ export function CategoryCard({
           <div className="h-full w-full bg-primary-200" />
         )}
       </div>
-      <p className="w-[44px] break-all text-center text-[12px] leading-[1.2] text-[#6a4f4f]">
+      <p className="w-[44px] break-all text-center text-[12px] leading-[1.2] text-text-warm-200">
         {label}
       </p>
     </div>

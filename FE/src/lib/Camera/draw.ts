@@ -8,8 +8,9 @@ export function drawLandmarks(
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
+  const DRAW_COLOR = 'rgba(0, 255, 0, 0.9)'
   ctx.clearRect(0, 0, canvas.width, canvas.height)
-  ctx.fillStyle = 'rgba(0, 255, 0, 0.9)'
+  ctx.fillStyle = DRAW_COLOR
   const r = 2
 
   ctx.beginPath()

@@ -23,7 +23,12 @@ export function Header({
     return (
       <div className={cn('flex items-end gap-3 px-4 py-3', className)}>
         <img src="/icon/logo.svg" alt={`${label} 로고`} className="size-12" />
-        <span className={cn('font-display text-[32px] font-bold leading-none', labelClassName)}>
+        <span
+          className={cn(
+            'font-display text-[32px] font-bold leading-none',
+            labelClassName,
+          )}
+        >
           {label}
         </span>
       </div>

@@ -5,7 +5,7 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 
 import { HairSelector } from '@/components/Camera/hair-selector'
 import { ApplyStyleModal } from '@/components/Camera/modal'
-import { TopNav } from '@/components/top-nav'
+import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
 import { useHairWebSocket } from '@/hooks/Camera/useHairWebSocket'
 import { captureCompositedImage } from '@/lib/Camera/capture'
@@ -147,7 +147,7 @@ export default function FaceLandmarksView({
           className="pointer-events-none absolute inset-0 z-10 h-full w-full -scale-x-100"
         />
 
-        <TopNav
+        <Header
           leftAction={
             <Button
               type="button"

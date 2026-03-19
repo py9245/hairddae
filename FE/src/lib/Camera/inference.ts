@@ -1,12 +1,11 @@
 import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 import { z } from 'zod'
-
+import { buildApiUrl } from '@/lib/api'
+import { getStoredAccessToken } from '@/lib/auth'
 import {
   buildFaceAnchorPoints,
   buildFaceBoundingBox,
 } from '@/lib/Camera/anchors'
-import { buildApiUrl } from '@/lib/api'
-import { getStoredAccessToken } from '@/lib/auth'
 import type { PoseAngles } from '@/lib/Camera/types'
 
 const DEVICE_ID_STORAGE_KEY = 'hairapply-device-id'
@@ -311,7 +310,9 @@ export type InferenceFeatureMessage = {
   anchors: ReturnType<typeof buildFaceAnchorPoints>
 }
 
-function normalizeAsset(raw: z.infer<typeof RawInferenceAssetBundleSchema>): InferenceAssetBundle {
+function normalizeAsset(
+  raw: z.infer<typeof RawInferenceAssetBundleSchema>,
+): InferenceAssetBundle {
   return {
     assetBundleSchemaVersion: raw.asset_bundle_schema_version,
     assetId: raw.asset_id,
@@ -362,8 +363,7 @@ function resolveLocalRtcOfferUrl(rawOfferUrl: string): string {
   }
 
   const hostname = window.location.hostname
-  const isLocalhost =
-    hostname === '127.0.0.1' || hostname === 'localhost'
+  const isLocalhost = hostname === '127.0.0.1' || hostname === 'localhost'
   if (!isLocalhost) {
     return rawOfferUrl
   }
@@ -445,7 +445,10 @@ export async function postRtcOffer({
     let message = 'RTC 연결 협상에 실패했습니다.'
 
     try {
-      const json = (await response.json()) as { detail?: string; message?: string }
+      const json = (await response.json()) as {
+        detail?: string
+        message?: string
+      }
       if (json.detail) {
         message = json.detail
       } else if (json.message) {

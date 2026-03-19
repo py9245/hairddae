@@ -145,4 +145,3 @@ function HairListPage() {
     </div>
   )
 }
-

@@ -120,7 +120,12 @@ export function buildFaceAnchorPoints(
       pointToPixel(landmarks, FACE_LANDMARK_INDEX.left_ear_root, width, height),
     ),
     right_ear_root: toAnchor(
-      pointToPixel(landmarks, FACE_LANDMARK_INDEX.right_ear_root, width, height),
+      pointToPixel(
+        landmarks,
+        FACE_LANDMARK_INDEX.right_ear_root,
+        width,
+        height,
+      ),
     ),
     left_side: toAnchor(
       pointToPixel(landmarks, FACE_LANDMARK_INDEX.left_side, width, height),

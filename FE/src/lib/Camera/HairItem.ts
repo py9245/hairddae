@@ -38,7 +38,9 @@ const HairListResponseSchema = z.object({
   hairList: z.array(HairCardSchema),
 })
 
-export async function fetchHairItems(signal?: AbortSignal): Promise<HairItem[]> {
+export async function fetchHairItems(
+  signal?: AbortSignal,
+): Promise<HairItem[]> {
   const response = await fetch(buildApiUrl('/hairs?page=0&size=20&sort=id'), {
     credentials: 'include',
     signal,
@@ -48,7 +50,9 @@ export async function fetchHairItems(signal?: AbortSignal): Promise<HairItem[]> 
     throw new Error(`hair list load failed: ${response.status}`)
   }
 
-  const payload = HairListResponseSchema.parse((await response.json()) as unknown)
+  const payload = HairListResponseSchema.parse(
+    (await response.json()) as unknown,
+  )
   return [
     HAIR_ITEMS[0],
     ...payload.hairList.map((item) => ({

@@ -19,7 +19,7 @@ type Story = StoryObj<typeof meta>
 
 const PageWrapper = ({ children }: { children: React.ReactNode }) => (
   <div className="flex items-center justify-center">
-    <div className="w-[430px] max-w-full bg-[#f5f5f5]">{children}</div>
+    <div className="w-[430px] max-w-full bg-bg-primary">{children}</div>
   </div>
 )
 
@@ -34,7 +34,7 @@ export const MainHeader: Story = {
 export const HairListHeader: Story = {
   render: () => (
     <PageWrapper>
-      <Header label="단발컷" labelClassName="text-[#525252]"/>
+      <Header label="단발컷" labelClassName="text-neutral-700"/>
     </PageWrapper>
   ),
 }
@@ -42,7 +42,7 @@ export const HairListHeader: Story = {
 export const MyPageHeader: Story = {
   render: () => (
     <PageWrapper>
-      <Header label="내정보" labelClassName="text-[#525252]"/>
+      <Header label="내정보" labelClassName="text-neutral-700"/>
     </PageWrapper>
   ),
 }

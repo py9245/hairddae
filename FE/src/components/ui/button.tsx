@@ -11,9 +11,9 @@ const buttonVariants = cva(
       variant: {
         default: 'bg-primary-200 text-primary-foreground hover:bg-primary-200',
         splash:
-          'bg-primary-300 text-[#f2f2f7] hover:bg-[#e1637b] disabled:cursor-not-allowed disabled:bg-[#f1aab7] disabled:text-[#f2f2f7] disabled:opacity-100',
+          'bg-primary-300 text-neutral-100 hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-primary-disabled disabled:text-neutral-100 disabled:opacity-100',
         login:
-          'bg-primary-300 text-[#f2f2f7] hover:bg-[#e1637b] disabled:cursor-not-allowed disabled:bg-[#f1aab7] disabled:text-[#f2f2f7] disabled:opacity-100',
+          'bg-primary-300 text-neutral-100 hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-primary-disabled disabled:text-neutral-100 disabled:opacity-100',
         destructive:
           'bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40',
         outline:
@@ -23,7 +23,7 @@ const buttonVariants = cva(
         ghost:
           'hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50',
         link: 'text-primary underline-offset-4 hover:underline',
-        logout: 'bg-[#D9D9D9] text-white hover:bg-[#C0C0C0]',
+        logout: 'bg-neutral-300 text-white hover:bg-neutral-400',
         'camera-back': 'text-white/85 hover:text-white',
         'camera-setting': 'text-white/85 hover:text-white',
         'hair-download': 'border border-white bg-white text-slate-700',

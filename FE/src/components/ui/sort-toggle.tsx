@@ -16,7 +16,9 @@ function SortToggle<T extends string>({
   className,
 }: SortToggleProps<T>) {
   return (
-    <div className={cn('inline-flex rounded-full bg-[#f18b90] p-1', className)}>
+    <div
+      className={cn('inline-flex rounded-full bg-primary-200 p-1', className)}
+    >
       {options.map((option) => (
         <button
           key={option.value}
@@ -25,7 +27,7 @@ function SortToggle<T extends string>({
           className={cn(
             'rounded-full px-4 py-1 text-sm font-medium transition-colors',
             option.value === value
-              ? 'bg-white text-[#ea7589]'
+              ? 'bg-white text-primary-300'
               : 'bg-transparent text-white',
           )}
         >

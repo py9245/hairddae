@@ -29,38 +29,38 @@ export function HairStyleCard({
   return (
     <article
       className={cn(
-        'relative isolate w-[170px] overflow-hidden rounded-[8px] bg-[#ea7589]',
+        'group relative isolate w-[170px] overflow-hidden rounded-[14px] bg-primary-150 p-[2px] transition-all duration-300 hover:shadow-pink-card',
         className,
       )}
     >
-      <div className="relative w-[170px]">
+      <div className="relative aspect-[3/4] w-full overflow-hidden rounded-[12px]">
         <img
           src={imageSrc}
           alt={imageAlt}
-          width={166}
           loading={priority ? 'eager' : 'lazy'}
           decoding="async"
           fetchPriority={priority ? 'high' : 'auto'}
-          className="mx-[2px] mt-[2px] block w-[166px] rounded-[8px] object-cover object-center"
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
           draggable={false}
         />
 
-        <div className="absolute inset-x-0 bottom-0 rounded-b-[8px] bg-[linear-gradient(180deg,rgba(255,162,159,0)_0%,rgba(255,162,159,0.45)_28%,rgba(255,167,165,0.78)_62%,#FFAEAC_100%)] px-[10px] pb-[10px] pt-[12px]">
-          <div className="flex flex-col gap-[8px]">
-            <div className="flex w-[150px] flex-col items-start text-white">
-              <h3 className="w-[140px] whitespace-pre-line text-[17px] leading-[1.15] font-semibold tracking-[-0.02em]">
+        {/* Smoother Gradient Overlay with Brand Tint */}
+        <div className="absolute inset-x-0 bottom-0 flex flex-col justify-end bg-gradient-to-t from-black/80 via-black/30 to-transparent p-[10px] pt-[40px]">
+          <div className="flex flex-col gap-[10px]">
+            <div className="flex flex-col items-start text-white">
+              <h3 className="font-medium w-full whitespace-pre-line text-[19px] leading-[1.2] font-bold tracking-tight drop-shadow-md">
                 {title}
               </h3>
-              <p className="mt-[3px] self-stretch text-[11px] leading-[1.2] font-normal text-[#f8f8f8]">
+              <p className="mt-[2px] text-[11px] font-medium text-white/90 drop-shadow-sm">
                 {subtitle}
               </p>
             </div>
 
-            <div className="pointer-events-auto flex w-[150px] items-center justify-between">
+            <div className="flex items-center justify-between">
               <button
                 type="button"
                 aria-label="적용하기"
-                className="rounded-full bg-primary-300 px-[18px] py-[6px] text-[14px] leading-none font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                className="rounded-full bg-brand px-[16px] py-[6px] text-[13px] font-bold text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
                 onClick={onApply}
               >
                 적용하기
@@ -69,7 +69,7 @@ export function HairStyleCard({
                 type="button"
                 aria-label={heartLabel}
                 aria-pressed={liked}
-                className="relative z-30 flex size-[18px] shrink-0 items-center justify-center rounded-full bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                className="relative z-30 flex items-center justify-center rounded-full bg-white/10 p-1.5 backdrop-blur-md transition-all hover:bg-white/20 active:scale-90"
                 onClick={(event) => {
                   event.stopPropagation()
                   onLikeToggle?.()
@@ -79,7 +79,10 @@ export function HairStyleCard({
                   src={heartIconSrc}
                   alt=""
                   aria-hidden="true"
-                  className="size-[18px] object-contain"
+                  className={cn(
+                    'size-[16px] object-contain transition-transform',
+                    liked && 'animate-heartbeat',
+                  )}
                 />
               </button>
             </div>

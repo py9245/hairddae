@@ -1,6 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
-import { Button } from '@/components/ui/button'
+import { SplashStartButton } from '@/components/splash-start-button'
 
 const slides = [
   {
@@ -67,12 +67,9 @@ export default function Splash() {
         </section>
 
         <div className="mt-auto">
-          <Button
-            asChild
-            className="h-14 w-full rounded-[8px] bg-[#ea7589] px-6 py-4 text-base font-medium leading-[1.4] text-[#f2f2f7] hover:bg-[#e1637b]"
-          >
+          <SplashStartButton asChild>
             <Link to="/auth/login">헤어 어때 시작하기</Link>
-          </Button>
+          </SplashStartButton>
         </div>
       </div>
     </main>

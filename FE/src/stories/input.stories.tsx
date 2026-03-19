@@ -4,7 +4,7 @@ import { Eye, EyeClosed } from 'lucide-react'
 import { validateField, type FormValues } from '@/lib/Auth/SignUp/signupValidation'
 import { userEvent, within } from 'storybook/test'
 
-type LabelKind = '아이디' | '비밀번호' | '비밀번호 확인'
+type LabelKind = '라벨을 입력하세요' | '아이디' | '비밀번호' | '비밀번호 확인'
 
 type InputPreviewProps = {
   label: LabelKind
@@ -116,12 +116,12 @@ const meta = {
   argTypes: {
     label: {
       control: { type: 'select' },
-      options: ['아이디', '비밀번호', '비밀번호 확인', '나이'],
+      options: ['아이디', '비밀번호', '비밀번호 확인'],
     },
     placeholder: { control: 'text' },
     confirmTarget: {
       control: 'text',
-      description: "라벨이 '비밀번호 확인'일 때 원 비밀번호를 넣어주세요.",
+      description: "라벨이 '비밀번호 확인'일 때 원래 비밀번호를 넣어주세요.",
     },
   },
 } satisfies Meta<typeof InputPreview>
@@ -130,14 +130,16 @@ export default meta
 
 type Story = StoryObj<typeof meta>
 
-export const Default: Story = {}
+export const Default: Story = {
+  args: { label: '라벨을 입력하세요', placeholder: '플레이스홀더를 입력하세요' },
+}
 
 export const Password: Story = {
-  args: { label: '비밀번호' },
+  args: { label: '비밀번호', placeholder: '비밀번호를 입력하세요' },
 }
 
 export const PasswordConfirm: Story = {
-  args: { label: '비밀번호 확인', confirmTarget: 'Password1!' },
+  args: { label: '비밀번호 확인', placeholder: '비밀번호를 다시 입력하세요', confirmTarget: 'Password1!' },
 }
 
 export const UserIdError: Story = {

@@ -74,6 +74,18 @@ class Settings:
     rtc_ice_servers: tuple[dict[str, object], ...]
     rtc_internal_ice_servers: tuple[dict[str, object], ...]
     rtc_process_max_dimension: int
+    rtc_process_min_dimension: int
+    rtc_process_step_dimension: int
+    rtc_target_frame_latency_ms: int
+    rtc_bald_cache_max_reuse_frames: int
+    rtc_bald_cache_pose_delta_threshold_deg: float
+    rtc_bald_cache_bbox_iou_threshold: float
+    rtc_user_parsing_max_reuse_frames: int
+    rtc_user_parsing_latency_max_reuse_frames: int
+    rtc_user_parsing_pose_delta_threshold_deg: float
+    rtc_user_parsing_center_delta_threshold_norm: float
+    rtc_user_parsing_size_delta_threshold_norm: float
+    rtc_user_parsing_bbox_iou_threshold: float
     http_test_enabled: bool
     http_test_default_dataset_code: str
     http_test_jpeg_quality: int
@@ -133,6 +145,36 @@ class Settings:
                 "[]",
             ),
             rtc_process_max_dimension=_env_int("INFERENCE_RTC_PROCESS_MAX_DIMENSION", 960),
+            rtc_process_min_dimension=_env_int("INFERENCE_RTC_PROCESS_MIN_DIMENSION", 640),
+            rtc_process_step_dimension=_env_int("INFERENCE_RTC_PROCESS_STEP_DIMENSION", 160),
+            rtc_target_frame_latency_ms=_env_int("INFERENCE_RTC_TARGET_FRAME_LATENCY_MS", 95),
+            rtc_bald_cache_max_reuse_frames=_env_int("INFERENCE_RTC_BALD_CACHE_MAX_REUSE_FRAMES", 1),
+            rtc_bald_cache_pose_delta_threshold_deg=float(
+                _env_str("INFERENCE_RTC_BALD_CACHE_POSE_DELTA_THRESHOLD_DEG", "1.5")
+            ),
+            rtc_bald_cache_bbox_iou_threshold=float(
+                _env_str("INFERENCE_RTC_BALD_CACHE_BBOX_IOU_THRESHOLD", "0.92")
+            ),
+            rtc_user_parsing_max_reuse_frames=_env_int(
+                "INFERENCE_RTC_USER_PARSING_MAX_REUSE_FRAMES",
+                1,
+            ),
+            rtc_user_parsing_latency_max_reuse_frames=_env_int(
+                "INFERENCE_RTC_USER_PARSING_LATENCY_MAX_REUSE_FRAMES",
+                2,
+            ),
+            rtc_user_parsing_pose_delta_threshold_deg=float(
+                _env_str("INFERENCE_RTC_USER_PARSING_POSE_DELTA_THRESHOLD_DEG", "1.2")
+            ),
+            rtc_user_parsing_center_delta_threshold_norm=float(
+                _env_str("INFERENCE_RTC_USER_PARSING_CENTER_DELTA_THRESHOLD_NORM", "0.018")
+            ),
+            rtc_user_parsing_size_delta_threshold_norm=float(
+                _env_str("INFERENCE_RTC_USER_PARSING_SIZE_DELTA_THRESHOLD_NORM", "0.018")
+            ),
+            rtc_user_parsing_bbox_iou_threshold=float(
+                _env_str("INFERENCE_RTC_USER_PARSING_BBOX_IOU_THRESHOLD", "0.86")
+            ),
             http_test_enabled=_env_bool("INFERENCE_HTTP_TEST_ENABLED", False),
             http_test_default_dataset_code=_env_str("INFERENCE_HTTP_TEST_DEFAULT_DATASET_CODE", "0001"),
             http_test_jpeg_quality=_env_int("INFERENCE_HTTP_TEST_JPEG_QUALITY", 88),

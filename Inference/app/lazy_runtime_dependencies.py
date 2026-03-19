@@ -10,15 +10,16 @@ from app.face_tracking import ServerFaceTracker, TrackingResult
 
 
 class LazyFaceTracker:
-    def __init__(self, model_path: Path) -> None:
+    def __init__(self, model_path: Path, num_faces: int = 1) -> None:
         self._model_path = model_path
+        self._num_faces = max(1, int(num_faces))
         self._lock = Lock()
         self._tracker: ServerFaceTracker | None = None
 
     def _instance(self) -> ServerFaceTracker:
         with self._lock:
             if self._tracker is None:
-                self._tracker = ServerFaceTracker(self._model_path)
+                self._tracker = ServerFaceTracker(self._model_path, num_faces=self._num_faces)
             return self._tracker
 
     def close(self) -> None:

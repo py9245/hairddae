@@ -92,6 +92,23 @@ class HairOverlayRuntime:
         }
         self.session_ttl_sec = max(60, int(os.environ.get("LOCAL_DEMO_SESSION_TTL_SEC", "180")))
         self.session_limit = max(4, int(os.environ.get("LOCAL_DEMO_SESSION_LIMIT", "128")))
+        self.user_mask_max_reuse_frames = max(0, int(os.environ.get("LOCAL_DEMO_USER_MASK_MAX_REUSE_FRAMES", "1")))
+        self.user_mask_latency_max_reuse_frames = max(
+            self.user_mask_max_reuse_frames,
+            int(os.environ.get("LOCAL_DEMO_USER_MASK_LATENCY_MAX_REUSE_FRAMES", "2")),
+        )
+        self.user_mask_reuse_pose_delta_max = float(
+            os.environ.get("LOCAL_DEMO_USER_MASK_REUSE_POSE_DELTA_MAX", "1.2")
+        )
+        self.user_mask_reuse_center_delta_max = float(
+            os.environ.get("LOCAL_DEMO_USER_MASK_REUSE_CENTER_DELTA_MAX", "0.018")
+        )
+        self.user_mask_reuse_size_delta_max = float(
+            os.environ.get("LOCAL_DEMO_USER_MASK_REUSE_SIZE_DELTA_MAX", "0.018")
+        )
+        self.user_mask_reuse_bbox_iou_min = float(
+            os.environ.get("LOCAL_DEMO_USER_MASK_REUSE_BBOX_IOU_MIN", "0.86")
+        )
         self._lock = threading.Lock()
         self._landmarker = build_landmarker(self.model_path, num_faces=3)
         self._user_parser: RuntimeFaceParsing | None = None
@@ -186,6 +203,15 @@ class HairOverlayRuntime:
             self._sessions[normalized_session_id] = session
         session.last_seen_monotonic = now_monotonic
         return session
+
+    def reference_face_bbox(self, session_id: str | None) -> dict[str, Any] | None:
+        with self._lock:
+            session = self._get_or_create_session(session_id)
+            user_row = session.smoothed_user_row
+            if not user_row:
+                return None
+            face_bbox = user_row.get("face_bbox")
+            return face_bbox if isinstance(face_bbox, dict) else None
 
     @property
     def _smoothed_user_row(self) -> dict[str, Any] | None:
@@ -566,7 +592,7 @@ class HairOverlayRuntime:
         pose = user_row.get("pose", {}) if isinstance(user_row, dict) else {}
         yaw_value = abs(float(pose.get("yaw_1deg", 0.0)))
         pitch_value = abs(float(pose.get("pitch_1deg", 0.0)))
-        return yaw_value >= 14.0 or pitch_value >= 8.0
+        return yaw_value >= 10.0 or pitch_value >= 6.0
 
     @staticmethod
     def _bbox_iou(lhs_bbox: dict[str, Any] | None, rhs_bbox: dict[str, Any] | None) -> float:
@@ -722,24 +748,27 @@ class HairOverlayRuntime:
         )
         suspicious_jump = (
             not fast_motion
-            and bbox_iou >= 0.45
+            and bbox_iou >= 0.55
             and (
-                hair_ratio_scale < 0.58
-                or hair_ratio_scale > 1.72
-                or blur_ratio_scale < 0.56
-                or blur_ratio_scale > 1.78
+                hair_ratio_scale < 0.68
+                or hair_ratio_scale > 1.48
+                or blur_ratio_scale < 0.66
+                or blur_ratio_scale > 1.52
             )
         )
         if suspicious_jump:
             self._user_mask_bundle = previous_bundle
-            self._user_mask_reuse_age = min(self._user_mask_reuse_age + 1, 2)
+            self._user_mask_reuse_age = min(
+                self._user_mask_reuse_age + 1,
+                max(self.user_mask_latency_max_reuse_frames, self.user_mask_max_reuse_frames),
+            )
             return previous_bundle, "hold_previous_mask"
 
         if fast_motion or bbox_iou < 0.30:
             stabilized_bundle = mask_bundle
             status = "ok"
         else:
-            current_alpha = 0.80 if moderate_motion else 0.48
+            current_alpha = 0.88 if moderate_motion else 0.68
             stabilized_bundle: dict[str, Any] = {}
             blend_keys = {
                 "hair_confidence",
@@ -768,23 +797,36 @@ class HairOverlayRuntime:
         self._user_mask_reuse_age = 0
         return stabilized_bundle, status
 
-    def _can_reuse_user_masks(self, user_row: dict[str, Any], renderer_name: str) -> bool:
+    def _can_reuse_user_masks(
+        self,
+        user_row: dict[str, Any],
+        renderer_name: str,
+        *,
+        prefer_latency: bool,
+    ) -> bool:
         if not self._renderer_requires_user_parsing(renderer_name, user_row):
             return False
         if self._stable_user_mask_bundle is None or self._stable_user_mask_row is None:
             return False
-        if self._user_mask_reuse_age >= 2:
+        if int(user_row.get("candidate_face_count") or 1) > 1:
+            return False
+        max_reuse_frames = (
+            self.user_mask_latency_max_reuse_frames
+            if prefer_latency
+            else self.user_mask_max_reuse_frames
+        )
+        if self._user_mask_reuse_age >= max_reuse_frames:
             return False
         motion = user_row.get("_motion", {})
         if bool(motion.get("fast")):
             return False
-        if float(motion.get("pose_delta") or 0.0) > 1.8:
+        if float(motion.get("pose_delta") or 0.0) > self.user_mask_reuse_pose_delta_max:
             return False
-        if float(motion.get("center_delta_norm") or 0.0) > 0.028:
+        if float(motion.get("center_delta_norm") or 0.0) > self.user_mask_reuse_center_delta_max:
             return False
-        if float(motion.get("size_delta_norm") or 0.0) > 0.025:
+        if float(motion.get("size_delta_norm") or 0.0) > self.user_mask_reuse_size_delta_max:
             return False
-        if self._bbox_iou(self._stable_user_mask_row.get("face_bbox"), user_row.get("face_bbox")) < 0.78:
+        if self._bbox_iou(self._stable_user_mask_row.get("face_bbox"), user_row.get("face_bbox")) < self.user_mask_reuse_bbox_iou_min:
             return False
         return True
 
@@ -793,6 +835,8 @@ class HairOverlayRuntime:
         frame_bgr: np.ndarray,
         user_row: dict[str, Any],
         renderer_name: str,
+        *,
+        prefer_latency: bool,
     ) -> tuple[dict[str, Any] | None, str, float]:
         if not self._renderer_requires_user_parsing(renderer_name, user_row):
             self._user_mask_bundle = None
@@ -801,16 +845,23 @@ class HairOverlayRuntime:
         if not self.user_parsing_ready or self._user_parser is None:
             self._user_mask_bundle = None
             return None, "unavailable", 0.0
-        if self._can_reuse_user_masks(user_row, renderer_name):
+        if self._can_reuse_user_masks(user_row, renderer_name, prefer_latency=prefer_latency):
             self._user_mask_reuse_age += 1
             self._user_mask_bundle = self._stable_user_mask_bundle
-            return self._stable_user_mask_bundle, "reuse_stable_mask", 0.0
+            return (
+                self._stable_user_mask_bundle,
+                "reuse_stable_mask_latency" if prefer_latency else "reuse_stable_mask",
+                0.0,
+            )
         started_at = time.perf_counter()
         mask_bundle = self._user_parser.parse_frame(frame_bgr, user_row)
         latency_ms = round((time.perf_counter() - started_at) * 1000.0, 3)
         if mask_bundle is None:
             if self._stable_user_mask_bundle is not None:
-                self._user_mask_reuse_age = min(self._user_mask_reuse_age + 1, 2)
+                self._user_mask_reuse_age = min(
+                    self._user_mask_reuse_age + 1,
+                    max(self.user_mask_latency_max_reuse_frames, self.user_mask_max_reuse_frames),
+                )
                 self._user_mask_bundle = self._stable_user_mask_bundle
                 return self._stable_user_mask_bundle, "hold_previous_mask", latency_ms
             self._user_mask_bundle = None
@@ -853,7 +904,12 @@ class HairOverlayRuntime:
         severe_jump = center_delta_norm > 0.72 or size_delta_norm > 0.58
         pose_break = pose_delta > 26.0 and center_delta_norm > 0.18
         identity_break = center_delta_norm > 0.40 and size_delta_norm > 0.30
-        return bool(severe_jump or pose_break or identity_break)
+        multi_face_break = (
+            max(int(raw_user_row.get("candidate_face_count") or 1), int(prev_row.get("candidate_face_count") or 1)) > 1
+            and (center_delta_norm > 0.24 or size_delta_norm > 0.20)
+            and self._bbox_iou(prev_bbox, raw_bbox) < 0.58
+        )
+        return bool(severe_jump or pose_break or identity_break or multi_face_break)
 
     def _hold_previous_tracking_frame(
         self,
@@ -913,17 +969,17 @@ class HairOverlayRuntime:
             abs(float(raw_bbox["h"]) - float(prev_bbox["h"])) / max(1.0, float(prev_bbox["h"])),
         )
 
-        pose_alpha = 0.52
+        pose_alpha = 0.64
         if pose_delta >= 7.0 or center_delta_norm >= 0.12:
-            pose_alpha = 0.92
+            pose_alpha = 0.96
         elif pose_delta >= 3.0 or center_delta_norm >= 0.05:
-            pose_alpha = 0.74
+            pose_alpha = 0.82
 
-        geometry_alpha = 0.78
+        geometry_alpha = 0.86
         if pose_delta >= 7.0 or center_delta_norm >= 0.10 or size_delta_norm >= 0.09:
             geometry_alpha = 1.0
         elif pose_delta >= 2.5 or center_delta_norm >= 0.04 or size_delta_norm >= 0.04:
-            geometry_alpha = 0.90
+            geometry_alpha = 0.95
 
         smoothed_pose = {
             "yaw_float": round(lerp(float(prev_pose["yaw_float"]), float(raw_pose["yaw_float"]), pose_alpha), 6),
@@ -1443,17 +1499,17 @@ class HairOverlayRuntime:
             3.2
         )
         if fast_motion:
-            hold_margin = 1.2
+            hold_margin = 1.0
         elif moderate_motion:
-            hold_margin = 3.2 if side_view else 3.0 if vertical_view else 2.4
+            hold_margin = 2.8 if side_view else 2.6 if vertical_view else 2.1
         else:
             hold_margin = (
-                5.2 if vertical_view and current_asset["pose_key"] == best_asset["pose_key"] else
-                4.6 if vertical_view else
-                4.2 if side_view and current_asset["pose_key"] == best_asset["pose_key"] else
-                3.2 if side_view else
-                4.2 if current_asset["pose_key"] == best_asset["pose_key"] else
-                3.4
+                4.6 if vertical_view and current_asset["pose_key"] == best_asset["pose_key"] else
+                4.0 if vertical_view else
+                3.8 if side_view and current_asset["pose_key"] == best_asset["pose_key"] else
+                2.9 if side_view else
+                3.8 if current_asset["pose_key"] == best_asset["pose_key"] else
+                3.0
             )
         if current_yaw_gap >= 2 and current_pitch_gap >= 1:
             hold_margin -= 0.8 if moderate_motion else 1.0
@@ -1509,11 +1565,11 @@ class HairOverlayRuntime:
                 "from_asset_id": current_asset["asset_id"],
                 "step": 0,
                 "steps": (
-                    4
+                    3
                     if (vertical_view and pitch_dominant and not side_view) or (current_yaw_gap >= 2 and current_pitch_gap >= 1)
-                    else 3
-                    if side_view or vertical_view
                     else 2
+                    if side_view or vertical_view
+                    else 1
                 ),
             }
         self._selected_asset = best_asset
@@ -1563,6 +1619,8 @@ class HairOverlayRuntime:
         frame_bgr: np.ndarray,
         renderer_name: str | None = None,
         render_frame_bgr: np.ndarray | None = None,
+        tracked_user_row: dict[str, Any] | None = None,
+        prefer_latency: bool = False,
         session_id: str | None = None,
     ) -> dict[str, Any]:
         started_at = time.perf_counter()
@@ -1579,14 +1637,18 @@ class HairOverlayRuntime:
                     and render_frame_bgr.shape == frame_bgr.shape
                     else frame_bgr
                 )
-                reference_face_bbox = None if self._smoothed_user_row is None else self._smoothed_user_row.get("face_bbox")
-                raw_user_row = extract_feature_from_frame_bgr(
-                    frame_bgr,
-                    self._landmarker,
-                    file_name="runtime_frame.jpg",
-                    reference_face_bbox=reference_face_bbox,
-                )
-                feature_latency_ms = round((time.perf_counter() - feature_started_at) * 1000.0, 3)
+                if tracked_user_row is not None:
+                    raw_user_row = dict(tracked_user_row)
+                    feature_latency_ms = 0.0
+                else:
+                    reference_face_bbox = None if self._smoothed_user_row is None else self._smoothed_user_row.get("face_bbox")
+                    raw_user_row = extract_feature_from_frame_bgr(
+                        frame_bgr,
+                        self._landmarker,
+                        file_name="runtime_frame.jpg",
+                        reference_face_bbox=reference_face_bbox,
+                    )
+                    feature_latency_ms = round((time.perf_counter() - feature_started_at) * 1000.0, 3)
 
                 user_row = raw_user_row
                 selected_asset_id = None
@@ -1627,6 +1689,7 @@ class HairOverlayRuntime:
                                 frame_bgr,
                                 user_row,
                                 resolved_renderer,
+                                prefer_latency=prefer_latency,
                             )
                             user_row = self._attach_runtime_fit_context(user_row, user_mask_bundle)
                             best_asset, score, selection_mode, blend_assets = self._select_asset(user_row)
@@ -1648,6 +1711,7 @@ class HairOverlayRuntime:
                             frame_bgr,
                             user_row,
                             resolved_renderer,
+                            prefer_latency=prefer_latency,
                         )
                         user_row = self._attach_runtime_fit_context(user_row, user_mask_bundle)
                         best_asset, score, selection_mode, blend_assets = self._select_asset(user_row)

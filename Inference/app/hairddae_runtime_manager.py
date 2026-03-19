@@ -46,6 +46,24 @@ class HairddaeRuntimeManager:
         os.environ["FACE_PARSING_REPO_DIR"] = str(repo_dir)
         os.environ["FACE_PARSING_WEIGHTS"] = str(weights_path)
         os.environ["FACE_LANDMARKER_TASK"] = str(self._settings.face_landmarker_model_path)
+        os.environ["LOCAL_DEMO_USER_MASK_MAX_REUSE_FRAMES"] = str(
+            self._settings.rtc_user_parsing_max_reuse_frames
+        )
+        os.environ["LOCAL_DEMO_USER_MASK_LATENCY_MAX_REUSE_FRAMES"] = str(
+            self._settings.rtc_user_parsing_latency_max_reuse_frames
+        )
+        os.environ["LOCAL_DEMO_USER_MASK_REUSE_POSE_DELTA_MAX"] = str(
+            self._settings.rtc_user_parsing_pose_delta_threshold_deg
+        )
+        os.environ["LOCAL_DEMO_USER_MASK_REUSE_CENTER_DELTA_MAX"] = str(
+            self._settings.rtc_user_parsing_center_delta_threshold_norm
+        )
+        os.environ["LOCAL_DEMO_USER_MASK_REUSE_SIZE_DELTA_MAX"] = str(
+            self._settings.rtc_user_parsing_size_delta_threshold_norm
+        )
+        os.environ["LOCAL_DEMO_USER_MASK_REUSE_BBOX_IOU_MIN"] = str(
+            self._settings.rtc_user_parsing_bbox_iou_threshold
+        )
 
     def _runtime_for_dataset(self, dataset_code: str) -> HairOverlayRuntime:
         with self._lock:
@@ -70,6 +88,8 @@ class HairddaeRuntimeManager:
         dataset_code: str,
         frame_bgr: np.ndarray,
         render_frame_bgr: np.ndarray | None = None,
+        tracked_user_row: dict[str, Any] | None = None,
+        prefer_latency: bool = False,
         session_id: str,
     ) -> dict[str, Any]:
         runtime = self._runtime_for_dataset(dataset_code)
@@ -77,8 +97,14 @@ class HairddaeRuntimeManager:
             frame_bgr,
             renderer_name="mesh_v3",
             render_frame_bgr=render_frame_bgr,
+            tracked_user_row=tracked_user_row,
+            prefer_latency=prefer_latency,
             session_id=session_id,
         )
+
+    def reference_face_bbox(self, dataset_code: str, session_id: str) -> dict[str, Any] | None:
+        runtime = self._runtime_for_dataset(dataset_code)
+        return runtime.reference_face_bbox(session_id)
 
     def health(self, dataset_code: str) -> dict[str, Any]:
         runtime = self._runtime_for_dataset(dataset_code)

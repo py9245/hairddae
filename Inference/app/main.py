@@ -18,7 +18,7 @@ def create_app() -> FastAPI:
     settings = Settings.from_env()
     replay_store = build_replay_store(settings)
     catalog = AssetCatalog(settings)
-    face_tracker = LazyFaceTracker(settings.face_landmarker_model_path)
+    face_tracker = LazyFaceTracker(settings.face_landmarker_model_path, num_faces=3)
     bald_processor = LazyBaldPreprocessor(settings.hair_segmenter_model_path)
     hair_runtime_manager = HairddaeRuntimeManager(settings)
 

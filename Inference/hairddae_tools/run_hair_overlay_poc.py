@@ -884,6 +884,148 @@ def crop_runtime_mask_layer(
     return cropped
 
 
+def _resize_runtime_mask_layer(
+    mask_layer: np.ndarray | None,
+    image_shape: tuple[int, int],
+) -> np.ndarray | None:
+    if mask_layer is None:
+        return None
+    image_height, image_width = image_shape
+    array = np.asarray(mask_layer)
+    if array.size == 0:
+        return None
+    if array.shape[:2] != (image_height, image_width):
+        interpolation = cv2.INTER_LINEAR if array.dtype.kind == "f" else cv2.INTER_NEAREST
+        array = cv2.resize(array, (image_width, image_height), interpolation=interpolation)
+    return array
+
+
+def _scaled_points_about_pivot(
+    points: np.ndarray,
+    scale: float,
+    pivot: tuple[float, float],
+) -> np.ndarray:
+    if points.size == 0 or abs(scale - 1.0) < 1e-4:
+        return points
+    pivot_array = np.array(pivot, dtype=np.float32).reshape(1, 2)
+    return ((points.astype(np.float32) - pivot_array) * float(scale) + pivot_array).astype(np.float32)
+
+
+def _scaled_affine_about_pivot(
+    matrix: np.ndarray,
+    scale: float,
+    pivot: tuple[float, float],
+) -> np.ndarray:
+    if abs(scale - 1.0) < 1e-4:
+        return matrix
+    pivot_x, pivot_y = pivot
+    scale_matrix = np.array(
+        [
+            [float(scale), 0.0, (1.0 - float(scale)) * float(pivot_x)],
+            [0.0, float(scale), (1.0 - float(scale)) * float(pivot_y)],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+    matrix_3x3 = np.vstack([matrix.astype(np.float32), np.array([0.0, 0.0, 1.0], dtype=np.float32)])
+    return (scale_matrix @ matrix_3x3)[:2, :]
+
+
+def compute_conservative_head_size_scale(
+    user_row: dict[str, Any],
+    user_mask_bundle: dict[str, Any] | None,
+    image_shape: tuple[int, int],
+) -> tuple[float, tuple[float, float]]:
+    anchors = user_row.get("anchors", {})
+    face_bbox = user_row.get("face_bbox", {})
+    face_width = max(
+        1.0,
+        float(face_bbox.get("w", 0.0))
+        or abs(float(anchors["right_temple"]["x"]) - float(anchors["left_temple"]["x"])),
+    )
+    face_height = max(
+        1.0,
+        float(face_bbox.get("h", 0.0))
+        or abs(float(anchors["neck_left"]["y"]) - float(anchors["crown"]["y"])),
+    )
+    temple_span = max(
+        1.0,
+        abs(float(anchors["right_temple"]["x"]) - float(anchors["left_temple"]["x"])),
+    )
+    face_center_x = (
+        float(anchors["left_temple"]["x"])
+        + float(anchors["right_temple"]["x"])
+        + float(anchors["lower_left"]["x"])
+        + float(anchors["lower_right"]["x"])
+        + float(anchors["forehead_center"]["x"])
+    ) / 5.0
+    forehead_y = float(anchors["forehead_center"]["y"])
+    crown_y = float(anchors["crown"]["y"])
+    jaw_y = 0.5 * (float(anchors["lower_left"]["y"]) + float(anchors["lower_right"]["y"]))
+    pivot = (face_center_x, forehead_y + 0.14 * face_height)
+    pose = user_row.get("pose", {})
+    if abs(float(pose.get("yaw_1deg", 0.0))) > 16.0 or abs(float(pose.get("pitch_1deg", 0.0))) > 10.0:
+        return 1.0, pivot
+    if int(user_row.get("candidate_face_count") or 1) > 1:
+        return 1.0, pivot
+
+    if user_mask_bundle is None:
+        return 1.0, pivot
+    metrics = user_mask_bundle.get("metrics") or {}
+    head_area_ratio = float(metrics.get("head_area_ratio") or 0.0)
+    if head_area_ratio <= 0.02 or head_area_ratio >= 0.42:
+        return 1.0, pivot
+
+    head_mask = _resize_runtime_mask_layer(
+        user_mask_bundle.get("head_silhouette_mask"),
+        image_shape,
+    )
+    if head_mask is None:
+        return 1.0, pivot
+
+    head_layer = smooth_mask_layer(head_mask, sigma=4.2, grow_radius=1)
+    if head_layer is None:
+        return 1.0, pivot
+
+    binary_mask = np.asarray(head_layer, dtype=np.float32) > 0.34
+    if not np.any(binary_mask):
+        return 1.0, pivot
+
+    image_height, image_width = image_shape
+    focus_x0 = max(0, int(round(face_center_x - 0.92 * face_width)))
+    focus_x1 = min(image_width, int(round(face_center_x + 0.92 * face_width)))
+    focus_y0 = max(0, int(round(crown_y - 0.08 * face_height)))
+    focus_y1 = min(image_height, int(round(jaw_y + 0.06 * face_height)))
+    if focus_x1 <= focus_x0 or focus_y1 <= focus_y0:
+        return 1.0, pivot
+
+    focus_mask = binary_mask[focus_y0:focus_y1, focus_x0:focus_x1]
+    if np.count_nonzero(focus_mask) < 48:
+        return 1.0, pivot
+    focus_area = max(1, (focus_y1 - focus_y0) * (focus_x1 - focus_x0))
+    focus_occupancy = float(np.count_nonzero(focus_mask)) / float(focus_area)
+    if focus_occupancy >= 0.72:
+        return 1.0, pivot
+
+    ys, xs = np.where(focus_mask)
+    observed_width = float(xs.max() - xs.min() + 1)
+    observed_height = float(ys.max() - ys.min() + 1)
+    expected_width = max(face_width * 1.12, temple_span * 1.16, 1.0)
+    expected_height = max((forehead_y - crown_y) + 0.54 * face_height, 0.82 * face_height, 1.0)
+    width_ratio = observed_width / expected_width
+    height_ratio = observed_height / expected_height
+    combined_ratio = 0.62 * width_ratio + 0.38 * height_ratio
+
+    if combined_ratio >= 0.995:
+        return 1.0, pivot
+
+    # Only allow a subtle shrink. Expanding based on the user's current silhouette
+    # can easily overestimate head volume because the silhouette already contains hair.
+    conservative_scale = 1.0 + 0.22 * (combined_ratio - 1.0)
+    conservative_scale = float(np.clip(conservative_scale, 0.965, 1.0))
+    return conservative_scale, pivot
+
+
 def apply_user_mask_occlusion_gain(
     user_row: dict[str, Any],
     roi: tuple[int, int, int, int],
@@ -1624,6 +1766,7 @@ def build_legacy_overlay_layer(
     user_row: dict[str, Any],
     user_image: np.ndarray,
     asset_bundle: dict[str, Any],
+    user_mask_bundle: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     asset_image = asset_bundle["image"]
     asset_alpha = asset_bundle["alpha"]
@@ -1633,6 +1776,12 @@ def build_legacy_overlay_layer(
 
     height, width = user_image.shape[:2]
     matrix = estimate_transform(asset_anchors, user_row["anchors"])
+    head_size_scale, head_scale_pivot = compute_conservative_head_size_scale(
+        user_row,
+        user_mask_bundle,
+        (height, width),
+    )
+    matrix = _scaled_affine_about_pivot(matrix, head_size_scale, head_scale_pivot)
     src_corners = np.array(
         [
             [src_x0, src_y0],
@@ -1715,7 +1864,12 @@ def build_mesh_overlay_layer(
     source_points = asset_bundle[f"{mesh_key}_source_points"] if mesh_key == "mesh_v2" else asset_bundle["mesh_source_points"]
     mesh_triangles = asset_bundle[f"{mesh_key}_triangles"] if mesh_key == "mesh_v2" else asset_bundle["mesh_triangles"]
     if not mesh_triangles:
-        return build_legacy_overlay_layer(user_row, user_image, asset_bundle)
+        return build_legacy_overlay_layer(
+            user_row,
+            user_image,
+            asset_bundle,
+            user_mask_bundle=user_mask_bundle,
+        )
 
     asset_image = asset_bundle["image"]
     asset_alpha = asset_bundle["alpha"]
@@ -1728,9 +1882,19 @@ def build_mesh_overlay_layer(
 
     height, width = user_image.shape[:2]
     matrix = estimate_transform(asset_anchors, user_row["anchors"])
+    head_size_scale, head_scale_pivot = compute_conservative_head_size_scale(
+        user_row,
+        user_mask_bundle,
+        (height, width),
+    )
+    matrix = _scaled_affine_about_pivot(matrix, head_size_scale, head_scale_pivot)
     control_point_count = len(MESH_V2_CONTROL_POINT_SPECS) if dense_mesh_renderer else len(MESH_ANCHOR_NAMES)
     boundary_points = source_points[control_point_count:]
-    target_control_points = np.float32(build_mesh_target_points(user_row, renderer_name))
+    target_control_points = _scaled_points_about_pivot(
+        np.float32(build_mesh_target_points(user_row, renderer_name)),
+        head_size_scale,
+        head_scale_pivot,
+    )
     transformed_boundary = transform_points(matrix, np.float32([[x_value + src_x0, y_value + src_y0] for x_value, y_value in boundary_points]))
     all_target_points = np.vstack([target_control_points, transformed_boundary])
 
@@ -1766,7 +1930,12 @@ def build_mesh_overlay_layer(
             or distortion["extreme_fraction"] > 0.18
             or distortion["collapsed_fraction"] > 0.12
         ):
-            legacy_layer = build_legacy_overlay_layer(user_row, user_image, asset_bundle)
+            legacy_layer = build_legacy_overlay_layer(
+                user_row,
+                user_image,
+                asset_bundle,
+                user_mask_bundle=user_mask_bundle,
+            )
             if legacy_layer is not None:
                 legacy_layer["render_kind"] = f"{renderer_name}_fallback_legacy"
                 legacy_layer["fallback_reason"] = "distortion_guard"
@@ -1860,7 +2029,12 @@ def build_mesh_overlay_layer(
         else:
             effective_alpha = apply_user_mask_occlusion_gain(user_row, roi, effective_alpha, user_mask_bundle, strength_scale=0.58)
         if mesh_v3_requires_silhouette_fallback(user_row, roi, effective_alpha):
-            legacy_layer = build_legacy_overlay_layer(user_row, user_image, asset_bundle)
+            legacy_layer = build_legacy_overlay_layer(
+                user_row,
+                user_image,
+                asset_bundle,
+                user_mask_bundle=user_mask_bundle,
+            )
             if legacy_layer is not None:
                 legacy_layer["render_kind"] = f"{renderer_name}_fallback_legacy"
                 legacy_layer["fallback_reason"] = "silhouette_guard"
@@ -1868,7 +2042,12 @@ def build_mesh_overlay_layer(
     if dense_mesh_renderer:
         alpha_coverage = float(np.mean(effective_alpha > 0.015))
         if alpha_coverage < 0.01:
-            legacy_layer = build_legacy_overlay_layer(user_row, user_image, asset_bundle)
+            legacy_layer = build_legacy_overlay_layer(
+                user_row,
+                user_image,
+                asset_bundle,
+                user_mask_bundle=user_mask_bundle,
+            )
             if legacy_layer is not None:
                 legacy_layer["render_kind"] = f"{renderer_name}_fallback_legacy"
                 legacy_layer["fallback_reason"] = "alpha_guard"
@@ -1930,7 +2109,12 @@ def compose_overlay_legacy_frame(
     user_mask_bundle: dict[str, Any] | None = None,
 ) -> np.ndarray:
     asset_bundle = load_asset_bundle(str(asset_root), asset_row["metadata_path"])
-    layer = build_legacy_overlay_layer(user_row, user_image, asset_bundle)
+    layer = build_legacy_overlay_layer(
+        user_row,
+        user_image,
+        asset_bundle,
+        user_mask_bundle=user_mask_bundle,
+    )
     if layer is None:
         return user_image.copy()
     return composite_effective_layer(user_image.copy(), layer["roi"], layer["rgb"], layer["alpha"])

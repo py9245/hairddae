@@ -1,5 +1,6 @@
 import { useMemo, useRef } from 'react'
 import FaceLandmarksView from '@/components/Camera/face-landmarks-view'
+import { useCroppedRtcStream } from '@/hooks/Camera/useCroppedRtcStream'
 import { useUserMedia } from '@/hooks/Camera/useUserMedia'
 import {
   RTC_CAPTURE_FPS,
@@ -27,9 +28,16 @@ export default function Camera() {
 
   const cam = useUserMedia({ videoRef, constraints: mediaConstraints })
 
+  const rtcStream = useCroppedRtcStream({
+    sourceStream: cam.stream,
+    targetAspect: 9 / 20,
+    outputWidth: 720,
+    fps: RTC_CAPTURE_FPS,
+  })
+
   return (
     <FaceLandmarksView
-      stream={cam.stream}
+      stream={rtcStream}
       videoRef={videoRef}
       canvasRef={canvasRef}
       overlayCanvasRef={overlayCanvasRef}

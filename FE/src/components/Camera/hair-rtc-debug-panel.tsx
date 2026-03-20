@@ -1,9 +1,4 @@
-import {
-  RTC_CAPTURE_FPS,
-  RTC_CAPTURE_HEIGHT,
-  RTC_CAPTURE_WIDTH,
-  RTC_SENDER_MAX_BITRATE,
-} from '@/lib/Camera/runtime'
+import type { RtcVideoSettings } from '@/lib/Camera/rtc-settings'
 
 type HairRtcDebugPanelProps = {
   error?: string | null
@@ -24,6 +19,7 @@ type HairRtcDebugPanelProps = {
     width: number
     height: number
   } | null
+  targetVideoSettings: RtcVideoSettings
 }
 
 function DebugBadge({
@@ -53,9 +49,10 @@ export function HairRtcDebugPanel({
   remoteVideoReady,
   isRenderReady,
   remoteVideoSize,
+  targetVideoSettings,
 }: HairRtcDebugPanelProps) {
-  const targetQualityLabel = `${RTC_CAPTURE_WIDTH}x${RTC_CAPTURE_HEIGHT}@${RTC_CAPTURE_FPS} ${(
-    RTC_SENDER_MAX_BITRATE / 1_000_000
+  const targetQualityLabel = `${targetVideoSettings.captureWidth}x${targetVideoSettings.captureHeight}@${targetVideoSettings.fps} ${(
+    targetVideoSettings.senderMaxBitrate / 1_000_000
   ).toFixed(1)}Mbps`
 
   const currentQualityLabel = remoteVideoSize
@@ -68,14 +65,14 @@ export function HairRtcDebugPanel({
         {error
           ? error
           : isConnected
-            ? 'RTC 연결됨'
+            ? 'RTC connected'
             : displayHairId > 0
-              ? 'RTC 연결 중'
-              : '헤어 선택 전'}
+              ? 'RTC connecting'
+              : 'hair not selected'}
       </DebugBadge>
 
       <DebugBadge className="top-10 text-[10px]">
-        {asset ? `asset ${asset.poseKey}` : '준비 완료'}
+        {asset ? `asset ${asset.poseKey}` : 'asset pending'}
       </DebugBadge>
 
       <DebugBadge className="top-[4.5rem] text-[10px]">

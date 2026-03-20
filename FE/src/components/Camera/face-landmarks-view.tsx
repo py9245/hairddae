@@ -3,7 +3,6 @@ import { Settings, X } from 'lucide-react'
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 
 import { HairCameraStage } from '@/components/Camera/hair-camera-stage'
-import { HairRtcDebugPanel } from '@/components/Camera/hair-rtc-debug-panel'
 import { HairSelector } from '@/components/Camera/hair-selector'
 import { ApplyStyleModal } from '@/components/Camera/modal'
 import { CameraSettingsModal } from '@/components/Camera/settings-modal'
@@ -17,12 +16,21 @@ import {
   HAIR_ITEMS,
   type HairItem,
 } from '@/lib/Camera/HairItem'
+import {
+  buildRtcVideoSettings,
+  findRtcResolutionOption,
+  RTC_CAPTURE_RESOLUTION_OPTIONS,
+  RTC_FPS_OPTIONS,
+  type RtcVideoSettings,
+} from '@/lib/Camera/rtc-settings'
 
 type FaceLandmarksViewProps = {
   stream: MediaStream | null
   videoRef: RefObject<HTMLVideoElement | null>
   canvasRef: RefObject<HTMLCanvasElement | null>
   overlayCanvasRef: RefObject<HTMLCanvasElement | null>
+  videoSettings: RtcVideoSettings
+  onVideoSettingsChange: (value: RtcVideoSettings) => void
 }
 
 const BASE_UI_WIDTH = 430
@@ -33,6 +41,8 @@ export default function FaceLandmarksView({
   videoRef,
   canvasRef,
   overlayCanvasRef,
+  videoSettings,
+  onVideoSettingsChange,
 }: FaceLandmarksViewProps) {
   const router = useRouter()
   const wrapRef = useRef<HTMLDivElement | null>(null)
@@ -47,17 +57,23 @@ export default function FaceLandmarksView({
   const [isFrameFrozen, setIsFrameFrozen] = useState(false)
 
   const displayHairId = pendingHairId ?? selectedHairId
+  const selectedResolution = findRtcResolutionOption(
+    videoSettings.captureWidth,
+    videoSettings.captureHeight,
+  )
+
   const hairRtc = useHairRtcSession({
     enabled: displayHairId > 0,
     hairId: displayHairId,
     stream,
+    senderConfig: {
+      maxBitrate: videoSettings.senderMaxBitrate,
+      maxFramerate: videoSettings.senderMaxFramerate,
+    },
   })
 
   const {
     remoteVideoRef,
-    remoteVideoReady,
-    remoteDisplayReady,
-    remoteVideoSize,
     hasRemoteVideo,
   } = useHairRtcDisplay({
     localVideoRef: videoRef,
@@ -156,6 +172,36 @@ export default function FaceLandmarksView({
     void router.navigate({ to: '/main' })
   }, [isFrameFrozen, router])
 
+  const handleResolutionChange = useCallback(
+    (resolutionId: string) => {
+      const nextResolution = RTC_CAPTURE_RESOLUTION_OPTIONS.find(
+        (option) => option.id === resolutionId,
+      )
+      if (!nextResolution) return
+
+      onVideoSettingsChange(
+        buildRtcVideoSettings(nextResolution, videoSettings.fps),
+      )
+    },
+    [onVideoSettingsChange, videoSettings.fps],
+  )
+
+  const handleFpsChange = useCallback(
+    (fpsValue: string) => {
+      const nextFps = Number(fpsValue)
+      if (
+        !RTC_FPS_OPTIONS.includes(nextFps as (typeof RTC_FPS_OPTIONS)[number])
+      ) {
+        return
+      }
+
+      onVideoSettingsChange(
+        buildRtcVideoSettings(selectedResolution, nextFps),
+      )
+    },
+    [onVideoSettingsChange, selectedResolution],
+  )
+
   return (
     <div className="grid h-[100dvh] w-full place-items-center bg-neutral-100">
       <div
@@ -208,6 +254,7 @@ export default function FaceLandmarksView({
               }
             />
 
+            {/* 
             <HairRtcDebugPanel
               error={hairRtc.error}
               isConnected={hairRtc.isConnected}
@@ -219,7 +266,9 @@ export default function FaceLandmarksView({
               remoteVideoReady={remoteVideoReady}
               isRenderReady={hairRtc.isRenderReady}
               remoteVideoSize={remoteVideoSize}
+              targetVideoSettings={videoSettings}
             />
+            */}
 
             <HairSelector
               items={hairItems}
@@ -248,6 +297,12 @@ export default function FaceLandmarksView({
           open={settingsOpen}
           mirrored={isMirrored}
           onMirroredChange={setIsMirrored}
+          selectedResolutionId={selectedResolution.id}
+          selectedFps={videoSettings.fps}
+          resolutionOptions={RTC_CAPTURE_RESOLUTION_OPTIONS}
+          fpsOptions={[...RTC_FPS_OPTIONS]}
+          onResolutionChange={handleResolutionChange}
+          onFpsChange={handleFpsChange}
           onClose={() => {
             setSettingsOpen(false)
           }}

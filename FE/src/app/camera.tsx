@@ -1,30 +1,38 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import FaceLandmarksView from '@/components/Camera/face-landmarks-view'
 import { useCroppedRtcStream } from '@/hooks/Camera/useCroppedRtcStream'
 import { useUserMedia } from '@/hooks/Camera/useUserMedia'
 import {
-  RTC_CAPTURE_FPS,
-  RTC_CAPTURE_HEIGHT,
-  RTC_CAPTURE_WIDTH,
-} from '@/lib/Camera/runtime'
+  DEFAULT_RTC_VIDEO_SETTINGS,
+  type RtcVideoSettings,
+} from '@/lib/Camera/rtc-settings'
 
 export default function Camera() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const rtcPreviewRef = useRef<HTMLVideoElement | null>(null)
+  const [videoSettings, setVideoSettings] = useState<RtcVideoSettings>(
+    DEFAULT_RTC_VIDEO_SETTINGS,
+  )
 
   const mediaConstraints = useMemo<MediaStreamConstraints>(
     () => ({
       video: {
         facingMode: 'user',
-        width: { ideal: RTC_CAPTURE_WIDTH, max: RTC_CAPTURE_WIDTH },
-        height: { ideal: RTC_CAPTURE_HEIGHT, max: RTC_CAPTURE_HEIGHT },
-        frameRate: { ideal: RTC_CAPTURE_FPS, max: RTC_CAPTURE_FPS },
+        width: {
+          ideal: videoSettings.captureWidth,
+          max: videoSettings.captureWidth,
+        },
+        height: {
+          ideal: videoSettings.captureHeight,
+          max: videoSettings.captureHeight,
+        },
+        frameRate: { ideal: videoSettings.fps, max: videoSettings.fps },
       },
       audio: false,
     }),
-    [],
+    [videoSettings],
   )
 
   const cam = useUserMedia({ videoRef, constraints: mediaConstraints })
@@ -32,8 +40,8 @@ export default function Camera() {
   const rtcStream = useCroppedRtcStream({
     sourceStream: cam.stream,
     targetAspect: 9 / 20,
-    outputWidth: 720,
-    fps: RTC_CAPTURE_FPS,
+    outputWidth: videoSettings.outputWidth,
+    fps: videoSettings.fps,
   })
 
   useEffect(() => {
@@ -61,6 +69,8 @@ export default function Camera() {
         videoRef={videoRef}
         canvasRef={canvasRef}
         overlayCanvasRef={overlayCanvasRef}
+        videoSettings={videoSettings}
+        onVideoSettingsChange={setVideoSettings}
       />
     </div>
   )

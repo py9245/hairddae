@@ -17,7 +17,10 @@ export default function Adsense({ loading = false }: AdsenseProps) {
     if (loading || initializedRef.current) return
 
     try {
-      ;(window.adsbygoogle = window.adsbygoogle || []).push({})
+      const adsbygoogle = window.adsbygoogle || []
+      window.adsbygoogle = adsbygoogle
+      adsbygoogle.push({})
+
       initializedRef.current = true
     } catch (e) {
       console.error('AdSense error:', e)

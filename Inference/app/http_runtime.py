@@ -250,6 +250,8 @@ def attach_http_runtime_routes(app: FastAPI) -> None:
                 "rtc_hair_segmenter_running_mode": settings.rtc_hair_segmenter_running_mode,
                 "rtc_session_local_processors": settings.rtc_session_local_processors,
                 "rtc_bald_enabled": settings.rtc_bald_enabled,
+                "rtc_wait_for_ice_gathering": settings.rtc_wait_for_ice_gathering,
+                "rtc_ice_gathering_timeout_ms": settings.rtc_ice_gathering_timeout_ms,
                 "default_dataset_code": settings.http_test_default_dataset_code,
                 "dataset": summary,
             }

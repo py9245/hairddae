@@ -9,6 +9,14 @@ type UseViewportCaptureStreamArgs = {
   wrapRef: React.RefObject<HTMLDivElement | null>
 }
 
+function normalizeEvenDimension(size: number) {
+  const normalized = Math.max(0, Math.round(size))
+  if (normalized <= 1) {
+    return 0
+  }
+  return normalized - (normalized % 2)
+}
+
 export function useViewportCaptureStream({
   enabled = true,
   fps,
@@ -64,8 +72,8 @@ export function useViewportCaptureStream({
 
       const nextSourceVideo = sourceVideoRef.current
       const nextWrap = wrapRef.current
-      const width = Math.round(nextWrap?.clientWidth ?? 0)
-      const height = Math.round(nextWrap?.clientHeight ?? 0)
+      const width = normalizeEvenDimension(nextWrap?.clientWidth ?? 0)
+      const height = normalizeEvenDimension(nextWrap?.clientHeight ?? 0)
       const videoWidth = nextSourceVideo?.videoWidth ?? 0
       const videoHeight = nextSourceVideo?.videoHeight ?? 0
 
@@ -80,8 +88,6 @@ export function useViewportCaptureStream({
           canvas.width = width
           canvas.height = height
         }
-
-        context.clearRect(0, 0, width, height)
 
         const { offsetX, offsetY, scale } = getVideoCoverLayout(
           width,

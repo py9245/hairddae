@@ -60,6 +60,9 @@ SERVER_FEATURE_LOG_INTERVAL_MS = 1000.0
 async def _wait_for_ice_gathering_complete(peer_connection: Any, timeout_seconds: float = 8.0) -> None:
     if getattr(peer_connection, "iceGatheringState", None) == "complete":
         return
+    if timeout_seconds <= 0:
+        logger.info("rtc skipping ICE gathering wait because timeout is non-positive")
+        return
 
     loop = asyncio.get_running_loop()
     future: asyncio.Future[None] = loop.create_future()
@@ -174,6 +177,8 @@ class PipelineTimingWindow:
     frame_count: int = 0
     no_face_count: int = 0
     total_ms: float = 0.0
+    wait_frame_ms: float = 0.0
+    server_processing_ms: float = 0.0
     to_ndarray_ms: float = 0.0
     tracking_ms: float = 0.0
     selection_ms: float = 0.0
@@ -479,6 +484,8 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         frame_width: int,
         frame_height: int,
         total_ms: float,
+        wait_frame_ms: float,
+        server_processing_ms: float,
         to_ndarray_ms: float,
         tracking_ms: float,
         selection_ms: float,
@@ -495,6 +502,8 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         window.frame_count += 1
         window.no_face_count += int(no_face)
         window.total_ms += total_ms
+        window.wait_frame_ms += wait_frame_ms
+        window.server_processing_ms += server_processing_ms
         window.to_ndarray_ms += to_ndarray_ms
         window.tracking_ms += tracking_ms
         window.selection_ms += selection_ms
@@ -519,6 +528,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         logger.info(
             (
                 "rtc pipeline timing: frames=%s fps=%.2f avg_total_ms=%.1f max_total_ms=%.1f "
+                "avg_wait_frame_ms=%.1f avg_server_ms=%.1f "
                 "to_ndarray_ms=%.1f tracking_ms=%.1f selection_ms=%.1f channel_ms=%.1f "
                 "bald_ms=%.1f compose_ms=%.1f from_ndarray_ms=%.1f no_face=%s "
                 "last_seq=%s frame_size=%sx%s face_delegate=%s bald_delegate=%s render_accel=%s"
@@ -527,6 +537,8 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             window.frame_count / window_seconds,
             window.total_ms / frame_count,
             window.max_total_ms,
+            window.wait_frame_ms / frame_count,
+            window.server_processing_ms / frame_count,
             window.to_ndarray_ms / frame_count,
             window.tracking_ms / frame_count,
             window.selection_ms / frame_count,
@@ -546,7 +558,10 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
 
     async def recv(self) -> Any:
         total_started_at = time.perf_counter()
+        wait_started_at = total_started_at
         frame = await self._next_latest_frame()
+        wait_frame_ms = (time.perf_counter() - wait_started_at) * 1000.0
+        processing_started_at = time.perf_counter()
         frame_width = int(getattr(frame, "width", 0) or 0)
         frame_height = int(getattr(frame, "height", 0) or 0)
 
@@ -569,12 +584,15 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             output_rgb = frame_rgb
             if _rgb_requires_even_dimensions(output_rgb):
                 output_rgb = _crop_rgb_to_even_dimensions(output_rgb)
+            server_processing_ms = (time.perf_counter() - processing_started_at) * 1000.0
             total_ms = (time.perf_counter() - total_started_at) * 1000.0
             self._record_pipeline_timing(
                 seq=next_seq,
                 frame_width=frame_width,
                 frame_height=frame_height,
                 total_ms=total_ms,
+                wait_frame_ms=wait_frame_ms,
+                server_processing_ms=server_processing_ms,
                 to_ndarray_ms=to_ndarray_ms,
                 tracking_ms=tracking_ms,
                 selection_ms=0.0,
@@ -631,21 +649,6 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             self._state.render_ready = True
 
         self._log_server_feature(feature, selection_feature, selected, changed)
-        stage_started_at = time.perf_counter()
-        self._emit_channel_payload(
-            {
-                "type": "processed",
-                "apply_session_id": self._claims.apply_session_id,
-                "accepted_seq": feature.seq,
-                "processed_seq": feature.seq,
-                "changed": changed,
-                "queue_depth": 0,
-                "dropped_pending_count": 0,
-                "overloaded": False,
-                "asset": selected.to_message(),
-            }
-        )
-        channel_ms = (time.perf_counter() - stage_started_at) * 1000.0
 
         render_input_rgb = frame_rgb
         bald_ms = 0.0
@@ -667,12 +670,32 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         stage_started_at = time.perf_counter()
         next_frame = _build_video_frame_from_rgb(frame, rendered_rgb)
         from_ndarray_ms = (time.perf_counter() - stage_started_at) * 1000.0
+        server_processing_ms = (time.perf_counter() - processing_started_at) * 1000.0
+        stage_started_at = time.perf_counter()
+        self._emit_channel_payload(
+            {
+                "type": "processed",
+                "apply_session_id": self._claims.apply_session_id,
+                "accepted_seq": feature.seq,
+                "processed_seq": feature.seq,
+                "changed": changed,
+                "queue_depth": 0,
+                "dropped_pending_count": 0,
+                "overloaded": False,
+                "server_ms": round(server_processing_ms, 3),
+                "wait_frame_ms": round(wait_frame_ms, 3),
+                "asset": selected.to_message(),
+            }
+        )
+        channel_ms = (time.perf_counter() - stage_started_at) * 1000.0
         total_ms = (time.perf_counter() - total_started_at) * 1000.0
         self._record_pipeline_timing(
             seq=feature.seq,
             frame_width=frame_width,
             frame_height=frame_height,
             total_ms=total_ms,
+            wait_frame_ms=wait_frame_ms,
+            server_processing_ms=server_processing_ms,
             to_ndarray_ms=to_ndarray_ms,
             tracking_ms=tracking_ms,
             selection_ms=selection_ms,
@@ -974,7 +997,13 @@ def attach_rtc_routes(app: FastAPI) -> None:
         )
         answer = await peer_connection.createAnswer()
         await peer_connection.setLocalDescription(answer)
-        await _wait_for_ice_gathering_complete(peer_connection)
+        if settings.rtc_wait_for_ice_gathering:
+            await _wait_for_ice_gathering_complete(
+                peer_connection,
+                timeout_seconds=max(settings.rtc_ice_gathering_timeout_ms, 0) / 1000.0,
+            )
+        else:
+            logger.info("rtc skipping server-side ICE gathering wait before answer")
 
         local_description = peer_connection.localDescription
         if local_description is None:

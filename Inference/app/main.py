@@ -70,6 +70,8 @@ def create_app() -> FastAPI:
                     "bald_processor_delegate": bald_processor.acceleration,
                     "bald_processor_warning": getattr(bald_processor, "initialization_warning", None),
                     "rtc_bald_enabled": settings.rtc_bald_enabled,
+                    "rtc_wait_for_ice_gathering": settings.rtc_wait_for_ice_gathering,
+                    "rtc_ice_gathering_timeout_ms": settings.rtc_ice_gathering_timeout_ms,
                     "render_acceleration": settings.render_acceleration,
                     "face_tracker_running_mode": settings.http_face_landmarker_running_mode,
                     "bald_processor_running_mode": settings.http_hair_segmenter_running_mode,

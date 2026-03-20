@@ -25,6 +25,14 @@ _NVENC_PROBE_WIDTH = 432
 _NVENC_PROBE_HEIGHT = 240
 _TIMING_LOG_ENABLED = False
 _TIMING_LOG_INTERVAL_MS = 1000
+_NVENC_LOW_LATENCY_OPTIONS = {
+    "preset": "p1",
+    "tune": "ull",
+    "rc": "cbr_ld_hq",
+    "zerolatency": "1",
+    "forced-idr": "1",
+    "bf": "0",
+}
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -139,6 +147,7 @@ def _probe_h264_nvenc() -> bool:
         codec.pix_fmt = "yuv420p"
         codec.framerate = fractions.Fraction(h264_module.MAX_FRAME_RATE, 1)
         codec.time_base = fractions.Fraction(1, h264_module.MAX_FRAME_RATE)
+        codec.options = dict(_NVENC_LOW_LATENCY_OPTIONS)
         # NVENC rejects very small probe frames, so keep the probe near real RTC sizes.
         frame = av.VideoFrame(_NVENC_PROBE_WIDTH, _NVENC_PROBE_HEIGHT, "yuv420p")
         frame.pts = 0
@@ -179,6 +188,7 @@ def get_rtc_h264_acceleration_state() -> dict[str, object]:
         "nvenc_probe_ok": _probe_h264_nvenc(),
         "timing_logging_enabled": _TIMING_LOG_ENABLED,
         "timing_log_interval_ms": _TIMING_LOG_INTERVAL_MS,
+        "nvenc_low_latency_options": dict(_NVENC_LOW_LATENCY_OPTIONS),
     }
 
 
@@ -251,7 +261,9 @@ class GPUAwareH264Encoder(h264_module.H264Encoder):
         codec.pix_fmt = "yuv420p"
         codec.framerate = fractions.Fraction(h264_module.MAX_FRAME_RATE, 1)
         codec.time_base = fractions.Fraction(1, h264_module.MAX_FRAME_RATE)
-        if codec_name == "libx264":
+        if codec_name == "h264_nvenc":
+            codec.options = dict(_NVENC_LOW_LATENCY_OPTIONS)
+        elif codec_name == "libx264":
             codec.options = {
                 "level": "31",
                 "tune": "zerolatency",

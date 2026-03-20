@@ -30,4 +30,3 @@ services:
     network_mode: host
     volumes:
       - ../static:/srv/static:ro
-      - ./models:/app/models:ro

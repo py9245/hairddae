@@ -133,7 +133,10 @@ export default function Main() {
                   type="button"
                   className="shrink-0"
                   onClick={() => {
-                    navigate({ to: '/hairlist' })
+                    navigate({
+                      to: '/hairlist',
+                      search: { category: category.id },
+                    })
                   }}
                 >
                   <CategoryCard

@@ -1,15 +1,8 @@
-import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 import { z } from 'zod'
 import { buildApiUrl } from '@/lib/api'
 import { getStoredAccessToken } from '@/lib/auth'
-import {
-  buildFaceAnchorPoints,
-  buildFaceBoundingBox,
-} from '@/lib/Camera/anchors'
-import type { PoseAngles } from '@/lib/Camera/types'
 
 const DEVICE_ID_STORAGE_KEY = 'hairapply-device-id'
-export const INFERENCE_WS_PROTOCOL = 'hairapply.v2'
 
 const BoundingBoxSchema = z.object({
   x: z.number().int(),
@@ -131,26 +124,6 @@ const RawHairApplyV2ResponseSchema = z.object({
   }),
 })
 
-const RawHairAssetIndexItemSchema = z.object({
-  asset_id: z.string(),
-  pose_key: z.string(),
-  hair_rgba_url: z.string().nullable(),
-  hair_mask_url: z.string().nullable(),
-  anchors_url: z.string().nullable(),
-  metadata_url: z.string().nullable(),
-  hair_bbox: BoundingBoxSchema.nullable(),
-  revision: z.string(),
-})
-
-const RawHairAssetIndexResponseSchema = z.object({
-  code: z.number().int(),
-  message: z.string(),
-  hair_id: z.number().int(),
-  dataset_code: z.string(),
-  asset_bundle_schema_version: z.number().int(),
-  items: z.array(RawHairAssetIndexItemSchema),
-})
-
 export type InferenceRenderTask = {
   renderTaskSchemaVersion: number
   mode: 'affine_crop_v1'
@@ -216,26 +189,6 @@ export type HairApplyV2Response = {
   }
 }
 
-export type HairAssetIndexBundle = {
-  assetId: string
-  poseKey: string
-  hairRgbaUrl: string | null
-  hairMaskUrl: string | null
-  anchorsUrl: string | null
-  metadataUrl: string | null
-  hairBBox: { x: number; y: number; w: number; h: number } | null
-  revision: string
-}
-
-export type HairAssetIndexResponse = {
-  code: number
-  message: string
-  hairId: number
-  datasetCode: string
-  assetBundleSchemaVersion: number
-  items: HairAssetIndexBundle[]
-}
-
 export type RtcOfferResponse = {
   sdp: string
   type: RTCSdpType
@@ -279,37 +232,6 @@ export type InferenceIncomingMessage =
   | InferenceHeartbeatAckMessage
   | InferenceErrorMessage
 
-export type InferenceFeatureMessage = {
-  type: 'feature'
-  feature_schema_version: number
-  coordinate_space: 'pixel_v1'
-  anchor_set: 'face_anchor_v1'
-  transform_version: string
-  seq: number
-  ts_ms: number
-  apply_session_id: string
-  hair_id: number
-  image_size: {
-    width: number
-    height: number
-  }
-  pose: {
-    yaw_float: number
-    pitch_float: number
-    roll_float: number
-    yaw_1deg: number
-    pitch_1deg: number
-    roll_1deg: number
-  }
-  face_bbox: {
-    x: number
-    y: number
-    w: number
-    h: number
-  }
-  anchors: ReturnType<typeof buildFaceAnchorPoints>
-}
-
 function normalizeAsset(
   raw: z.infer<typeof RawInferenceAssetBundleSchema>,
 ): InferenceAssetBundle {
@@ -339,21 +261,6 @@ function normalizeAsset(
       : null,
     revision: raw.revision,
     score: raw.score,
-  }
-}
-
-function normalizeHairAssetIndexBundle(
-  raw: z.infer<typeof RawHairAssetIndexItemSchema>,
-): HairAssetIndexBundle {
-  return {
-    assetId: raw.asset_id,
-    poseKey: raw.pose_key,
-    hairRgbaUrl: raw.hair_rgba_url,
-    hairMaskUrl: raw.hair_mask_url,
-    anchorsUrl: raw.anchors_url,
-    metadataUrl: raw.metadata_url,
-    hairBBox: raw.hair_bbox,
-    revision: raw.revision,
   }
 }
 
@@ -467,33 +374,6 @@ export async function postRtcOffer({
     .parse((await response.json()) as unknown)
 }
 
-export async function fetchHairAssetIndex(
-  assetIndexUrl: string,
-  signal?: AbortSignal,
-): Promise<HairAssetIndexResponse> {
-  const response = await fetch(assetIndexUrl, {
-    credentials: 'include',
-    signal,
-  })
-
-  if (!response.ok) {
-    throw new Error(`asset index load failed: ${response.status}`)
-  }
-
-  const raw = RawHairAssetIndexResponseSchema.parse(
-    (await response.json()) as unknown,
-  )
-
-  return {
-    code: raw.code,
-    message: raw.message,
-    hairId: raw.hair_id,
-    datasetCode: raw.dataset_code,
-    assetBundleSchemaVersion: raw.asset_bundle_schema_version,
-    items: raw.items.map(normalizeHairAssetIndexBundle),
-  }
-}
-
 export function getOrCreateDeviceId() {
   if (typeof window === 'undefined') {
     return 'server-device'
@@ -605,55 +485,4 @@ export function parseInferenceMessage(raw: unknown): InferenceIncomingMessage {
   }
 
   throw new Error('unknown inference message')
-}
-
-export function buildInferenceFeatureMessage({
-  applySessionId,
-  hairId,
-  featureSchemaVersion,
-  transformVersion,
-  videoWidth,
-  videoHeight,
-  landmarks,
-  pose,
-  seq,
-}: {
-  applySessionId: string
-  hairId: number
-  featureSchemaVersion: number
-  transformVersion: string
-  videoWidth: number
-  videoHeight: number
-  landmarks: NormalizedLandmark[]
-  pose: PoseAngles
-  seq: number
-}): InferenceFeatureMessage {
-  const anchors = buildFaceAnchorPoints(landmarks, videoWidth, videoHeight)
-  const faceBBox = buildFaceBoundingBox(landmarks, videoWidth, videoHeight)
-
-  return {
-    type: 'feature',
-    feature_schema_version: featureSchemaVersion,
-    coordinate_space: 'pixel_v1',
-    anchor_set: 'face_anchor_v1',
-    transform_version: transformVersion,
-    seq,
-    ts_ms: Date.now(),
-    apply_session_id: applySessionId,
-    hair_id: hairId,
-    image_size: {
-      width: videoWidth,
-      height: videoHeight,
-    },
-    pose: {
-      yaw_float: pose.yaw,
-      pitch_float: pose.pitch,
-      roll_float: pose.roll,
-      yaw_1deg: Math.round(pose.yaw),
-      pitch_1deg: Math.round(pose.pitch),
-      roll_1deg: Math.round(pose.roll),
-    },
-    face_bbox: faceBBox,
-    anchors,
-  }
 }

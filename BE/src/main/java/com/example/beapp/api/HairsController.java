@@ -59,7 +59,7 @@ public class HairsController {
         return ResponseEntity.ok(hairCatalogService.recommend(hairId, yaw1deg, pitch1deg, roll1deg));
     }
 
-    @GetMapping({"/{hairId}/asset-index", "/{hairId}/asset-index-v2"})
+    @GetMapping("/{hairId}/asset-index")
     public ResponseEntity<HairAssetIndexV2Response> assetIndexV2(
             @PathVariable Long hairId) {
         return ResponseEntity.ok(hairAssetBundleIndexService.getAssetIndex(hairId));
@@ -72,7 +72,7 @@ public class HairsController {
         return ResponseEntity.ok(hairCatalogService.getHairDetail(userId(authentication), hairId));
     }
 
-    @PostMapping("/{hairId}/likes")
+    @PostMapping({"/{hairId}/like", "/{hairId}/like/"})
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<HairLikeResponse> like(
             Authentication authentication,
@@ -80,7 +80,7 @@ public class HairsController {
         return ResponseEntity.ok(hairCatalogService.like(authentication.getName(), hairId));
     }
 
-    @DeleteMapping("/{hairId}/likes")
+    @DeleteMapping({"/{hairId}/like", "/{hairId}/like/"})
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<HairLikeResponse> unlike(
             Authentication authentication,

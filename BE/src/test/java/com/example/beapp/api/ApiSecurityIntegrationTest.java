@@ -71,7 +71,9 @@ class ApiSecurityIntegrationTest {
         mockMvc.perform(get("/api/mypage/user/")
                         .cookie(extractCookie(loginResult, AuthCookieManager.ACCESS_TOKEN_COOKIE)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userID").value("TestUser01"));
+                .andExpect(jsonPath("$.userID").value("TestUser01"))
+                .andExpect(jsonPath("$.birthDate").value("2000-01-01"))
+                .andExpect(jsonPath("$.gender").value("M"));
     }
 
     @Test
@@ -181,8 +183,38 @@ class ApiSecurityIntegrationTest {
     }
 
     @Test
+    void refreshAllowsInvalidAccessCookieWhenRefreshTokenIsValid() throws Exception {
+        MvcResult loginResult = mockMvc.perform(post("/api/accounts/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "userID": "TestUser01",
+                                  "password": "P@ssw0rd1"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        MockCookie invalidAccessTokenCookie = new MockCookie(
+                AuthCookieManager.ACCESS_TOKEN_COOKIE,
+                "invalid.access.token");
+
+        mockMvc.perform(post("/api/accounts/refreshToken")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .cookie(invalidAccessTokenCookie)
+                        .cookie(extractCookie(loginResult, AuthCookieManager.REFRESH_TOKEN_COOKIE))
+                        .content("""
+                                {
+                                  "rotate": true
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
+    }
+
+    @Test
     void signupValidationReturnsCommonErrorShape() throws Exception {
-        mockMvc.perform(post("/api/accounts/signin")
+        mockMvc.perform(post("/api/accounts/signup")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -201,7 +233,7 @@ class ApiSecurityIntegrationTest {
 
     @Test
     void signupRejectsPasswordConfirmationMismatch() throws Exception {
-        mockMvc.perform(post("/api/accounts/signin")
+        mockMvc.perform(post("/api/accounts/signup")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -219,7 +251,7 @@ class ApiSecurityIntegrationTest {
 
     @Test
     void signupReturnsDuplicateIdMessageWithoutSeparateCheckApi() throws Exception {
-        mockMvc.perform(post("/api/accounts/signin")
+        mockMvc.perform(post("/api/accounts/signup")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -233,6 +265,53 @@ class ApiSecurityIntegrationTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value(409))
                 .andExpect(jsonPath("$.message").value("이미 사용 중인 아이디입니다."));
+    }
+
+    @Test
+    void publicHomeApisExposeNewResponseShape() throws Exception {
+        mockMvc.perform(get("/api/home/normalrank"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.best").isArray())
+                .andExpect(jsonPath("$.latest").isArray());
+
+        mockMvc.perform(get("/api/home/categorylist"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categoryList").isArray())
+                .andExpect(jsonPath("$.categoryList[0].categoryID").exists())
+                .andExpect(jsonPath("$.categoryList[0].categoryName").exists());
+
+        mockMvc.perform(get("/api/home/categorycardlist").param("categoryId", "all"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.categoryID").value("all"))
+                .andExpect(jsonPath("$.cardList").isArray());
+    }
+
+    @Test
+    void authenticatedMypageApisExposeAppliedAndLikeLists() throws Exception {
+        MvcResult loginResult = mockMvc.perform(post("/api/accounts/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "userID": "TestUser01",
+                                  "password": "P@ssw0rd1"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        MockCookie accessTokenCookie = extractCookie(loginResult, AuthCookieManager.ACCESS_TOKEN_COOKIE);
+
+        mockMvc.perform(get("/api/mypage/appliedlist")
+                        .cookie(accessTokenCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userID").value("TestUser01"))
+                .andExpect(jsonPath("$.appliedList").isArray());
+
+        mockMvc.perform(get("/api/mypage/likelist")
+                        .cookie(accessTokenCookie))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userID").value("TestUser01"))
+                .andExpect(jsonPath("$.likeList").isArray());
     }
 
     @Test
@@ -278,6 +357,27 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.static.dataset_code").value("0001"))
                 .andExpect(jsonPath("$.static.asset_bundle_schema_version").value(1))
                 .andExpect(jsonPath("$.static.preload_asset_ids").isArray());
+    }
+
+    @Test
+    void hairApplyBootstrapAllowsAnonymousCameraSession() throws Exception {
+        mockMvc.perform(post("/api/home/hairapplybootstrap")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "hair_id": 1,
+                                  "device_id": "anon-browser-device",
+                                  "client_capabilities": {
+                                    "feature_schema_version": 2,
+                                    "transform_version": "affine_v1"
+                                  }
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.apply_session_id").isString())
+                .andExpect(jsonPath("$.rtc.enabled").value(true))
+                .andExpect(jsonPath("$.rtc.connect_ticket").isString());
     }
 
     @Test

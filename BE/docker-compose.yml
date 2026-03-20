@@ -30,7 +30,7 @@ services:
     env_file:
       - .env
     environment:
-      INFERENCE_UPSTREAM_HOST: ${INFERENCE_UPSTREAM_HOST:-43.202.157.94}
+      INFERENCE_UPSTREAM_HOST: ${INFERENCE_UPSTREAM_HOST:-15.164.169.221}
       INFERENCE_UPSTREAM_PORT: ${INFERENCE_UPSTREAM_PORT:-8090}
     depends_on:
       - app

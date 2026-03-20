@@ -3,9 +3,6 @@ package com.example.beapp.service;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.LocalDate;
-import java.time.OffsetDateTime;
-import java.time.Period;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -15,6 +12,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import com.example.beapp.api.dto.home.CategoryCardListResponse;
+import com.example.beapp.api.dto.home.CategoryListResponse;
 import com.example.beapp.api.dto.home.CustomRankResponse;
 import com.example.beapp.api.dto.home.HairApplyResumeV2Request;
 import com.example.beapp.api.dto.home.HairApplyStartV2Request;
@@ -65,30 +64,40 @@ public class HomeService {
         this.objectMapper = objectMapper;
     }
 
-    public CustomRankResponse getCustomRank(String userId, String ageCategory, Integer gender, int size) {
-        UserAccount userAccount = userAccountRepository.findByUserId(userId)
-                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
-
-        Integer resolvedGender = gender != null ? gender : toGenderCode(userAccount.gender());
-        Integer resolvedAge = resolveAge(userAccount.birthDate());
-        String resolvedAgeCategory = StringUtils.hasText(ageCategory) ? ageCategory : resolveAgeCategory(resolvedAge);
-
+    public CustomRankResponse getCustomRank(String userId, int size) {
+        verifyUserExists(userId);
         return CustomRankResponse.ok(
-                userId,
-                resolvedGender,
-                userAccount.birthDate(),
-                resolvedAgeCategory,
                 hairCatalogService != null
-                        ? hairCatalogService.getCustomRankItems(userId, size)
-                        : sampleHairRepository.findCustomRankItems());
+                        ? hairCatalogService.getCustomRankCards(userId, size)
+                        : sampleHairRepository.findCustomRankCards());
     }
 
-    public NormalRankResponse getNormalRank(String category, String sort, int size) {
+    public NormalRankResponse getNormalRank(String userId, int size) {
         return NormalRankResponse.ok(
-                4000,
                 hairCatalogService != null
-                        ? hairCatalogService.getNormalRankItems(category, sort, size)
-                        : sampleHairRepository.findNormalRankItems());
+                        ? hairCatalogService.getBestRankCards(userId, size)
+                        : sampleHairRepository.findBestRankCards(),
+                hairCatalogService != null
+                        ? hairCatalogService.getLatestRankCards(userId, size)
+                        : sampleHairRepository.findLatestRankCards());
+    }
+
+    public CategoryListResponse getCategoryList() {
+        return CategoryListResponse.ok(
+                hairCatalogService != null
+                        ? hairCatalogService.getCategoryItems()
+                        : sampleHairRepository.findCategoryItems());
+    }
+
+    public CategoryCardListResponse getCategoryCardList(String userId, String categoryId, int size) {
+        String resolvedCategoryId = StringUtils.hasText(categoryId) ? categoryId : "all";
+        String resolvedCategoryName = "all".equalsIgnoreCase(resolvedCategoryId) ? "전체" : resolvedCategoryId;
+        return CategoryCardListResponse.ok(
+                resolvedCategoryId,
+                resolvedCategoryName,
+                hairCatalogService != null
+                        ? hairCatalogService.getCategoryCards(userId, resolvedCategoryId, size)
+                        : sampleHairRepository.findCategoryCards(resolvedCategoryId));
     }
 
     public HairApplyV2Response startHairApplyV2(HairApplyStartV2Request request, String userId) {
@@ -127,27 +136,9 @@ public class HomeService {
         return RecodeHairResponse.ok();
     }
 
-    private int toGenderCode(String gender) {
-        return "M".equalsIgnoreCase(gender) ? 1 : 0;
-    }
-
-    private Integer resolveAge(LocalDate birthDate) {
-        if (birthDate == null) {
-            return 25;
-        }
-        return Math.max(0, Period.between(birthDate, LocalDate.now()).getYears());
-    }
-
-    private String resolveAgeCategory(Integer age) {
-        int safeAge = age == null ? 25 : age;
-        int start = (safeAge / 5) * 5;
-        int end = Math.min(start + 4, 119);
-        return "%02d_%02d".formatted(start, end);
-    }
-
-    private java.util.UUID parseJobId(String applySessionId) {
+    private UUID parseJobId(String applySessionId) {
         try {
-            return java.util.UUID.fromString(applySessionId);
+            return UUID.fromString(applySessionId);
         } catch (IllegalArgumentException exception) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "작업 ID 형식이 올바르지 않습니다.");
         }
@@ -232,7 +223,7 @@ public class HomeService {
 
         try {
             JsonNode itemsNode = objectMapper.readTree(assetIndexPath.toFile()).path("items");
-            List<PreloadAssetCandidate> candidates = new java.util.ArrayList<>();
+            List<PreloadAssetCandidate> candidates = new ArrayList<>();
             for (JsonNode itemNode : itemsNode) {
                 candidates.add(new PreloadAssetCandidate(
                         itemNode.path("asset_id").asText(),
@@ -276,6 +267,15 @@ public class HomeService {
 
     private String trimTrailingSlash(String value) {
         return value != null && value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+    }
+
+    private void verifyUserExists(String userId) {
+        getRequiredUser(userId);
+    }
+
+    private UserAccount getRequiredUser(String userId) {
+        return userAccountRepository.findByUserId(userId)
+                .orElseThrow(() -> new ApiException(ErrorCode.USER_NOT_FOUND));
     }
 
     private record ResolvedHairBootstrap(

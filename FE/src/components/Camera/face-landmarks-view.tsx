@@ -1,4 +1,3 @@
-// face-landmarks-view.tsx
 import { useRouter } from '@tanstack/react-router'
 import { Settings, X } from 'lucide-react'
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
@@ -124,6 +123,12 @@ export default function FaceLandmarksView({
     setModalOpen(false)
   }, [pendingHairId])
 
+  const handleModalClose = useCallback(() => {
+    setPendingHairId(null)
+    setModalOpen(false)
+    setIsFrameFrozen(false)
+  }, [])
+
   const handleCapture = useCallback(() => {
     captureCompositedImage({
       videoRef: hasRemoteVideo ? remoteVideoRef : videoRef,
@@ -230,6 +235,8 @@ export default function FaceLandmarksView({
               open={modalOpen}
               completed={rtcApplyReady}
               onFinish={handleModalFinish}
+              onClose={handleModalClose}
+              scale={uiScale}
             />
           </div>
         )}

@@ -67,10 +67,7 @@ export default function FaceLandmarksView({
   })
 
   const rtcApplyReady =
-    modalOpen &&
-    pendingHairId != null &&
-    hairRtc.isRenderReady &&
-    remoteDisplayReady
+    modalOpen && pendingHairId != null && hairRtc.isAnswerReady
 
   useEffect(() => {
     const controller = new AbortController()

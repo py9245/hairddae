@@ -135,6 +135,7 @@ export function useHairRtcSession({
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null)
   const [asset, setAsset] = useState<InferenceAssetBundle | null>(null)
   const [isRenderReady, setIsRenderReady] = useState(false)
+  const [isAnswerReady, setIsAnswerReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [reconnectVersion, setReconnectVersion] = useState(0)
   const [metrics, setMetrics] = useState<HairRtcMetrics>({
@@ -182,6 +183,7 @@ export function useHairRtcSession({
     processedFpsEmaRef.current = null
     isRenderReadyRef.current = false
     setIsRenderReady(false)
+    setIsAnswerReady(false)
     setMetrics({
       inferenceRttMs: null,
       processedFps: null,
@@ -397,6 +399,7 @@ export function useHairRtcSession({
         }
 
         await peerConnection.setRemoteDescription(answer)
+        setIsAnswerReady(true)
         setError(null)
       } catch (caught) {
         if (bootstrapRequestRef.current !== requestId) {
@@ -434,6 +437,7 @@ export function useHairRtcSession({
     remoteStream,
     asset,
     isRenderReady,
+    isAnswerReady,
     error,
     metrics,
   }

@@ -6,6 +6,7 @@ import { HairCameraStage } from '@/components/Camera/hair-camera-stage'
 import { HairRtcDebugPanel } from '@/components/Camera/hair-rtc-debug-panel'
 import { HairSelector } from '@/components/Camera/hair-selector'
 import { ApplyStyleModal } from '@/components/Camera/modal'
+import { CameraSettingsModal } from '@/components/Camera/settings-modal'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
 import { useHairRtcDisplay } from '@/hooks/Camera/useHairRtcDisplay'
@@ -40,11 +41,12 @@ export default function FaceLandmarksView({
   const [selectedHairId, setSelectedHairId] = useState(0)
   const [pendingHairId, setPendingHairId] = useState<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [isMirrored, setIsMirrored] = useState(true)
   const [hairItems, setHairItems] = useState<HairItem[]>(HAIR_ITEMS)
   const [isFrameFrozen, setIsFrameFrozen] = useState(false)
 
   const displayHairId = pendingHairId ?? selectedHairId
-
   const hairRtc = useHairRtcSession({
     enabled: displayHairId > 0,
     hairId: displayHairId,
@@ -169,6 +171,7 @@ export default function FaceLandmarksView({
           canvasRef={canvasRef}
           overlayCanvasRef={overlayCanvasRef}
           hasRemoteVideo={hasRemoteVideo}
+          mirrored={isMirrored}
         />
 
         <div className="absolute inset-0 z-20 overflow-hidden">
@@ -199,6 +202,9 @@ export default function FaceLandmarksView({
                   variant="camera-setting"
                   size="camera-icon"
                   aria-label="설정 열기"
+                  onClick={() => {
+                    setSettingsOpen(true)
+                  }}
                 >
                   <Settings className="size-12 text-white" />
                 </Button>
@@ -240,6 +246,16 @@ export default function FaceLandmarksView({
             />
           </div>
         )}
+
+        <CameraSettingsModal
+          open={settingsOpen}
+          mirrored={isMirrored}
+          onMirroredChange={setIsMirrored}
+          onClose={() => {
+            setSettingsOpen(false)
+          }}
+          scale={uiScale}
+        />
       </div>
     </div>
   )

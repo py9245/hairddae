@@ -6,6 +6,7 @@ type HairCameraStageProps = {
   canvasRef: RefObject<HTMLCanvasElement | null>
   overlayCanvasRef: RefObject<HTMLCanvasElement | null>
   hasRemoteVideo: boolean
+  mirrored?: boolean
 }
 
 export function HairCameraStage({
@@ -14,39 +15,41 @@ export function HairCameraStage({
   canvasRef,
   overlayCanvasRef,
   hasRemoteVideo,
+  mirrored = true,
 }: HairCameraStageProps) {
   return (
-    <>
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        className={
-          hasRemoteVideo
-            ? 'absolute inset-0 h-full w-full object-cover -scale-x-100 opacity-0'
-            : 'block h-full w-full object-cover -scale-x-100'
-        }
-      />
+    <div className="absolute inset-0 overflow-hidden">
+      <div
+        className="absolute inset-0"
+        style={{
+          transform: mirrored ? 'scaleX(-1)' : 'scaleX(1)',
+          transformOrigin: 'center',
+        }}
+      >
+        {hasRemoteVideo ? (
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : (
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        )}
 
-      <video
-        ref={remoteVideoRef}
-        autoPlay
-        playsInline
-        muted
-        className={
-          hasRemoteVideo
-            ? 'absolute inset-0 z-10 h-full w-full object-cover -scale-x-100'
-            : 'hidden'
-        }
-      />
-
-      <canvas
-        ref={canvasRef}
-        className="pointer-events-none absolute inset-0 hidden h-full w-full -scale-x-100"
-      />
-
-      <canvas ref={overlayCanvasRef} className="hidden" />
-    </>
+        <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+        <canvas
+          ref={overlayCanvasRef}
+          className="absolute inset-0 h-full w-full"
+        />
+      </div>
+    </div>
   )
 }

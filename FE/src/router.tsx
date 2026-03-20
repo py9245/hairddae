@@ -91,16 +91,16 @@ function createProtectedRoute(
   return createRoute({
     getParentRoute: () => rootRoute,
     path,
-    beforeLoad: ({ context, location }) => {
-      if (!context.auth.isAuthenticated()) {
-        throw redirect({
-          to: '/auth/login',
-          search: {
-            redirect: location.href,
-          },
-        })
-      }
-    },
+    // beforeLoad: ({ context, location }) => {
+    //   if (!context.auth.isAuthenticated()) {
+    //     throw redirect({
+    //       to: '/auth/login',
+    //       search: {
+    //         redirect: location.href,
+    //       },
+    //     })
+    //   }
+    // },
     component,
   })
 }

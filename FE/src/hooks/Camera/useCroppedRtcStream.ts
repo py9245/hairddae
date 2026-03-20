@@ -112,7 +112,9 @@ export function useCroppedRtcStream({
         cancelAnimationFrame(frameRef.current)
       }
 
-      stream?.getTracks().forEach((track) => track.stop())
+      stream?.getTracks().forEach((track) => {
+        track.stop()
+      })
       video.pause()
       video.srcObject = null
     }

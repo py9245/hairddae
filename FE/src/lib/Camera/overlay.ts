@@ -87,7 +87,9 @@ function solveLinearSystem(matrix: number[][], vector: number[]) {
   for (let pivot = 0; pivot < n; pivot += 1) {
     let maxRow = pivot
     for (let row = pivot + 1; row < n; row += 1) {
-      if (Math.abs(augmented[row][pivot]) > Math.abs(augmented[maxRow][pivot])) {
+      if (
+        Math.abs(augmented[row][pivot]) > Math.abs(augmented[maxRow][pivot])
+      ) {
         maxRow = row
       }
     }
@@ -209,7 +211,11 @@ function buildDestinationAnchors(
   videoWidth: number,
   videoHeight: number,
 ): FaceAnchorSet {
-  const sourceAnchors = buildFaceAnchorPoints(landmarks, videoWidth, videoHeight)
+  const sourceAnchors = buildFaceAnchorPoints(
+    landmarks,
+    videoWidth,
+    videoHeight,
+  )
   const { scale, offsetX, offsetY } = getVideoCoverLayout(
     canvasWidth,
     canvasHeight,
@@ -229,9 +235,7 @@ function buildDestinationAnchors(
   return Object.fromEntries(mappedEntries) as FaceAnchorSet
 }
 
-function getBundleSourceRect(
-  image: HTMLImageElement,
-) {
+function getBundleSourceRect(image: HTMLImageElement) {
   return {
     x: 0,
     y: 0,
@@ -283,9 +287,7 @@ export function getCachedOverlayAssetBundle(assetId: string) {
   return overlayBundleCache.get(assetId) ?? null
 }
 
-function toOverlayAssetSource(
-  asset: HairAssetIndexBundle,
-): OverlayAssetSource {
+function toOverlayAssetSource(asset: HairAssetIndexBundle): OverlayAssetSource {
   return {
     assetId: asset.assetId,
     hairRgbaUrl: asset.hairRgbaUrl,
@@ -390,7 +392,12 @@ export function drawOverlayFrame({
   ctx.setTransform(1, 0, 0, 1, 0, 0)
   ctx.clearRect(0, 0, width, height)
 
-  if (!bundle || landmarks.length === 0 || videoWidth <= 0 || videoHeight <= 0) {
+  if (
+    !bundle ||
+    landmarks.length === 0 ||
+    videoWidth <= 0 ||
+    videoHeight <= 0
+  ) {
     if (!bundle || videoWidth <= 0 || videoHeight <= 0) {
       return
     }
@@ -444,14 +451,7 @@ export function drawOverlayFrame({
   if (!matrix) return
 
   ctx.save()
-  ctx.setTransform(
-    matrix.a,
-    matrix.b,
-    matrix.c,
-    matrix.d,
-    matrix.e,
-    matrix.f,
-  )
+  ctx.setTransform(matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f)
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(

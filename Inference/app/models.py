@@ -56,11 +56,3 @@ class FeatureMessageModel(BaseModel):
     pose: PoseModel
     face_bbox: FaceBoxModel
     anchors: dict[str, PointModel]
-
-
-class HeartbeatMessageModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    type: Literal["heartbeat"]
-    apply_session_id: str
-    ts_ms: int = Field(ge=0)

@@ -19,6 +19,8 @@ management:
       enabled: false
 
 app:
+  inference:
+    metadata-sync-secret: test-inference-sync-secret
   security:
     jwt:
       secret: hairddae-test-jwt-secret-key-for-local-tests-2026

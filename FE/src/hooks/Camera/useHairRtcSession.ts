@@ -2,13 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   getOrCreateDeviceId,
+  type HairApplyV2Response,
+  type InferenceAssetBundle,
   parseInferenceMessage,
   postHairApplyResumeV2,
   postHairApplyStartV2,
   postRtcOffer,
-  type HairApplyV2Response,
-  type InferenceAssetBundle,
 } from '@/lib/Camera/inference'
+import {
+  RTC_SENDER_MAX_BITRATE,
+  RTC_SENDER_MAX_FRAMERATE,
+} from '@/lib/Camera/runtime'
 
 type UseHairRtcSessionArgs = {
   enabled?: boolean
@@ -27,8 +31,6 @@ const RECONNECT_DELAY_MS = 800
 const ICE_GATHERING_TIMEOUT_MS = 1500
 const REMOTE_READY_MIN_PROCESSED = 1
 const REMOTE_READY_MIN_STABLE_ASSET = 1
-const RTC_SENDER_MAX_BITRATE = 2_500_000
-const RTC_SENDER_MAX_FRAMERATE = 24
 
 async function configureRtcSender(sender: RTCRtpSender) {
   const track = sender.track
@@ -126,6 +128,7 @@ export function useHairRtcSession({
   const remoteStreamRef = useRef<MediaStream | null>(null)
   const reconnectingRef = useRef(false)
   const manualCloseRef = useRef(false)
+  const isRenderReadyRef = useRef(false)
 
   const [connectionState, setConnectionState] =
     useState<RTCPeerConnectionState>('new')
@@ -144,6 +147,7 @@ export function useHairRtcSession({
   latestEnabledRef.current = enabled
   latestHairIdRef.current = hairId ?? null
   latestStreamRef.current = stream
+  isRenderReadyRef.current = isRenderReady
 
   const clearReconnect = useCallback(() => {
     if (reconnectTimerRef.current == null) {
@@ -153,25 +157,22 @@ export function useHairRtcSession({
     reconnectTimerRef.current = null
   }, [])
 
-  const teardownConnection = useCallback(
-    (manual: boolean) => {
-      manualCloseRef.current = manual
+  const teardownConnection = useCallback((manual: boolean) => {
+    manualCloseRef.current = manual
 
-      dataChannelRef.current?.close()
-      dataChannelRef.current = null
+    dataChannelRef.current?.close()
+    dataChannelRef.current = null
 
-      peerConnectionRef.current?.close()
-      peerConnectionRef.current = null
+    peerConnectionRef.current?.close()
+    peerConnectionRef.current = null
 
-      remoteStreamRef.current?.getTracks().forEach((track) => {
-        track.stop()
-      })
-      remoteStreamRef.current = null
-      setRemoteStream(null)
-      setConnectionState('closed')
-    },
-    [],
-  )
+    remoteStreamRef.current?.getTracks().forEach((track) => {
+      track.stop()
+    })
+    remoteStreamRef.current = null
+    setRemoteStream(null)
+    setConnectionState('closed')
+  }, [])
 
   const resetMetrics = useCallback(() => {
     lastProcessedAtRef.current = null
@@ -179,6 +180,7 @@ export function useHairRtcSession({
     stableAssetCountRef.current = 0
     lastAssetIdRef.current = null
     processedFpsEmaRef.current = null
+    isRenderReadyRef.current = false
     setIsRenderReady(false)
     setMetrics({
       inferenceRttMs: null,
@@ -321,7 +323,10 @@ export function useHairRtcSession({
             const message = parseInferenceMessage(
               JSON.parse(String(event.data)) as unknown,
             )
-            if (message.type === 'connected' || message.type === 'heartbeat_ack') {
+            if (
+              message.type === 'connected' ||
+              message.type === 'heartbeat_ack'
+            ) {
               return
             }
             if (message.type === 'error') {
@@ -331,17 +336,20 @@ export function useHairRtcSession({
 
             setAsset(message.asset)
             processedCountRef.current += 1
+
             if (lastAssetIdRef.current === message.asset.assetId) {
               stableAssetCountRef.current += 1
             } else {
               lastAssetIdRef.current = message.asset.assetId
               stableAssetCountRef.current = 1
             }
+
             if (
-              !isRenderReady &&
+              !isRenderReadyRef.current &&
               processedCountRef.current >= REMOTE_READY_MIN_PROCESSED &&
               stableAssetCountRef.current >= REMOTE_READY_MIN_STABLE_ASSET
             ) {
+              isRenderReadyRef.current = true
               setIsRenderReady(true)
             }
 
@@ -394,7 +402,9 @@ export function useHairRtcSession({
         if (bootstrapRequestRef.current !== requestId) {
           return
         }
-        setError(caught instanceof Error ? caught.message : 'RTC 세션 시작 실패')
+        setError(
+          caught instanceof Error ? caught.message : 'RTC 세션 시작 실패',
+        )
         scheduleReconnect('RTC 세션 재시도 중')
       }
     },
@@ -402,6 +412,8 @@ export function useHairRtcSession({
   )
 
   useEffect(() => {
+    void reconnectVersion
+
     if (!enabled || !hairId || hairId <= 0 || !stream) {
       resetRuntime({ clearSession: true })
       return

@@ -14,10 +14,12 @@ RUN apt-get update \
 RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --no-dev
+RUN uv sync --frozen --no-dev
 
 COPY app ./app
+COPY hairddae_tools ./hairddae_tools
+COPY models ./models
 
 EXPOSE 8090
 
-CMD ["uv", "run", "uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8090", "--ws-ping-interval", "15", "--ws-ping-timeout", "10"]
+CMD ["uv", "run", "uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8090"]

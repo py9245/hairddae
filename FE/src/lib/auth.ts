@@ -1,9 +1,12 @@
 const AUTH_STORAGE_KEY = 'ssafy-authenticated'
+const ACCESS_TOKEN_STORAGE_KEY = 'ssafy-access-token'
 
 type AuthListener = () => void
 
 const listeners = new Set<AuthListener>()
 const BaseUrl = '/api'
+const shouldSimulateSignup = import.meta.env.VITE_SIMULATE_SIGNUP === 'true'
+const shouldSimulateLogin = import.meta.env.VITE_SIMULATE_LOGIN === 'true'
 
 function notifyListeners() {
   for (const listener of listeners) {
@@ -19,16 +22,28 @@ function readStorage() {
   return window.localStorage.getItem(AUTH_STORAGE_KEY) === 'true'
 }
 
+export function getStoredAccessToken() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
+}
+
 export const auth = {
   isAuthenticated() {
     return readStorage()
   },
-  login() {
+  login(accessToken?: string | null) {
     window.localStorage.setItem(AUTH_STORAGE_KEY, 'true')
+    if (accessToken) {
+      window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken)
+    }
     notifyListeners()
   },
   logout() {
     window.localStorage.removeItem(AUTH_STORAGE_KEY)
+    window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
     notifyListeners()
   },
   subscribe(listener: AuthListener) {
@@ -46,7 +61,7 @@ export type SignUpRequest = {
   userID: string
   password: string
   passwordCheck: string
-  age?: number
+  birthDate?: string
   gender?: 'M' | 'F'
 }
 
@@ -58,7 +73,16 @@ export type SignUpResponse = {
 export async function signUpApi(
   payload: SignUpRequest,
 ): Promise<SignUpResponse> {
-  const res = await fetch(`${BaseUrl}/accounts/signin/`, {
+  if (shouldSimulateSignup) {
+    await new Promise((resolve) => window.setTimeout(resolve, 500))
+
+    return {
+      message: '회원가입이 완료되었습니다.',
+      userID: payload.userID,
+    }
+  }
+
+  const res = await fetch(`${BaseUrl}/accounts/signup/`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -88,6 +112,18 @@ export type LoginResponse = {
 }
 
 export async function loginApi(payload: LoginRequest): Promise<LoginResponse> {
+  if (shouldSimulateLogin) {
+    await new Promise((resolve) => window.setTimeout(resolve, 500))
+
+    return {
+      code: 200,
+      message: '로그인에 성공했습니다.',
+      userID: payload.userID,
+      accessToken: 'mock-access-token',
+      refreshToken: 'mock-refresh-token',
+    }
+  }
+
   const res = await fetch(`${BaseUrl}/accounts/login/`, {
     method: 'POST',
     headers: {

@@ -1,6 +1,21 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@font-face {
+  font-family: "Hakgyoansim Byeolbichhaneul";
+  src: url("/font/Hakgyoansim Byeolbichhaneul TTF B.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Hakgyoansim Byeolbichhaneul";
+  src: url("/font/Hakgyoansim Byeolbichhaneul TTF L.ttf") format("truetype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -23,6 +38,7 @@
   --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
+  --input-surface: #fff;
   --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
@@ -43,6 +59,13 @@
   --labels-secondary: #737373;
   /* Brand */
   --brand: #ea7589;
+  --primary-gradient: linear-gradient(90deg, #ffa7a6 0%, #ea7589 100%);
+  /* Shadows */
+  --shadow-pink-sm: 0 6px 16px rgba(255, 143, 163, 0.34);
+  --shadow-pink-md: 0 8px 18px rgba(255, 154, 173, 0.32);
+  --shadow-pink-card: 0 4px 12px rgba(227, 194, 194, 0.32);
+  --shadow-dark-sm: 0 4px 12px rgba(15, 23, 42, 0.15);
+  --shadow-dark-md: 0 4px 12px rgba(15, 23, 42, 0.28);
 }
 
 .dark {
@@ -64,6 +87,7 @@
   --destructive-foreground: oklch(0.985 0 0);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
+  --input-surface: #fff;
   --ring: oklch(0.556 0 0);
   --chart-1: oklch(0.488 0.243 264.376);
   --chart-2: oklch(0.696 0.17 162.48);
@@ -80,6 +104,7 @@
   --sidebar-ring: oklch(0.556 0 0);
   /* Brand (dark) */
   --brand: #ea7589;
+  --primary-gradient: linear-gradient(90deg, #ffa7a6 0%, #ea7589 100%);
 }
 
 @theme inline {
@@ -101,6 +126,7 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
+  --color-input-surface: var(--input-surface);
   --color-ring: var(--ring);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -125,11 +151,67 @@
   /* Custom */
   --color-brand: var(--brand);
   /* Primary scale */
+  --color-primary-50: #fff5f6;
   --color-primary-100: #ffdbdb;
+  --color-primary-150: #ffe8eb;
   --color-primary-200: #f18b90;
+  --color-primary-250: #ffa7a6;
   --color-primary-300: #ea7589;
+  --color-primary-400: #ff9aad;
+  --color-primary-500: #ff8fa3;
+  --color-primary-hover: #e1637b;
+  --color-primary-disabled: #f1aab7;
+  --color-primary-light: #ffe7ec;
+  --color-primary-gradient-end: #ffaeac;
+  --color-input-surface: #fff;
+  --color-indicator-active: #f39ca6;
+  --color-indicator-inactive: #e3e3e8;
+  --color-nav-inactive: #d7d7d7;
+  /* Neutral / Warm Gray */
+  --color-neutral-50: #f8f8f8;
+  --color-neutral-100: #f2f2f7;
+  --color-neutral-200: #e6e0db;
+  --color-neutral-300: #d9d9d9;
+  --color-neutral-400: #c0c0c0;
+  --color-neutral-500: #f5f2ef;
+  --color-neutral-600: #d7d7d7;
+  --color-neutral-700: #525252;
+  --color-neutral-800: #4e4e4e;
+  /* Warm Dark Text */
+  --color-text-dark: #2f2f2f;
+  --color-text-warm-100: #7a6a6a;
+  --color-text-warm-200: #6a4f4f;
+  --color-text-warm-300: #8e8383;
+  --color-text-warm-400: #5b4747;
+  --color-text-warm-500: #4f4040;
+  --color-text-warm-600: #3f3030;
+  /* Misc */
+  --color-dark-gradient: #0f172a;
+  --color-canvas-landmark: #8bff5a;
+  --color-canvas-draw: rgba(0, 255, 0, 0.9);
+  --color-error: #ff3b30;
   --font-sans:
     "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
+  --font-display: "Hakgyoansim Byeolbichhaneul", sans-serif;
+
+  --animate-heartbeat: heartbeat 1.5s ease-in-out;
+  @keyframes heartbeat {
+    0% {
+      transform: scale(1);
+    }
+    14% {
+      transform: scale(1.2);
+    }
+    28% {
+      transform: scale(1);
+    }
+    42% {
+      transform: scale(1.2);
+    }
+    70% {
+      transform: scale(1);
+    }
+  }
 }
 
 @layer base {
@@ -170,14 +252,14 @@
     height: 100dvh;
     position: relative;
     flex: 1 1 auto;
-    background: var(--background);
+    background: var(--bg-primary);
     overflow: hidden;
   }
 
   .app-frame-content {
-    min-height: 100dvh;
+    height: 100dvh;
     overflow: hidden;
-    padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
   }
 
   .app-frame-page {

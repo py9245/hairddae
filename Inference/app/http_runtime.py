@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from io import BytesIO
 import json
+from io import BytesIO
 from pathlib import Path
-import time
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
@@ -14,11 +12,8 @@ from fastapi.responses import JSONResponse, Response
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 
-from app.auth import TicketClaims
-from app.catalog import AssetBundle, AssetCatalog
 from app.config import Settings
-from app.face_tracking import ServerFaceTracker
-from app.server_render import compose_bundle_frame
+from app.hairddae_runtime_manager import HairddaeRuntimeManager
 
 
 @dataclass(frozen=True)
@@ -26,18 +21,18 @@ class HttpFrameResult:
     response_bytes: bytes
     media_type: str
     status: str
-    selected_bundle: AssetBundle | None
-    feature: object | None
+    selected_asset_id: str | None
+    selected_pose_key: str | None
+    retrieval_score: float | None
+    yaw_1deg: int | None
+    pitch_1deg: int | None
+    roll_1deg: int | None
     processed_seq: int
     total_latency_ms: float
     tracking_latency_ms: float
     selection_latency_ms: float
     render_latency_ms: float
     dataset_code: str
-
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)
 
 
 def _load_dataset_summary(static_root: Path, dataset_code: str) -> dict[str, object]:
@@ -84,105 +79,68 @@ def _encode_image(image: Image.Image, response_format: Literal["jpeg", "png"], j
     return buffer.getvalue()
 
 
-def _build_http_claims(
-    *,
-    settings: Settings,
-    dataset_code: str,
-    hair_id: int,
-    apply_session_id: str,
-    representative_asset_id: str | None,
-) -> TicketClaims:
-    now = datetime.now(tz=timezone.utc)
-    return TicketClaims(
-        user_id="http-test-user",
-        apply_session_id=apply_session_id,
-        device_id="http-test-device",
-        hair_id=hair_id,
-        node_id=settings.node_id,
-        schema_version=settings.feature_schema_version,
-        dataset_code=dataset_code,
-        representative_asset_id=representative_asset_id,
-        token_id="http-test",
-        expires_at=now + timedelta(hours=1),
-    )
+def _extract_pose_angle(user_row: dict[str, object] | None, key: str) -> int | None:
+    if user_row is None:
+        return None
+    value = user_row.get(key)
+    if not isinstance(value, (int, float)):
+        return None
+    return int(round(float(value)))
 
 
 def _process_http_frame(
     *,
     payload: bytes,
     dataset_code: str,
-    hair_id: int,
     apply_session_id: str,
-    representative_asset_id: str | None,
     response_format: Literal["jpeg", "png"],
     settings: Settings,
-    face_tracker: ServerFaceTracker,
-    catalog: AssetCatalog,
+    hair_runtime_manager: HairddaeRuntimeManager,
 ) -> HttpFrameResult:
-    total_started_at = time.perf_counter()
     image = _decode_image(payload)
     frame_rgb = np.asarray(image)
-    claims = _build_http_claims(
-        settings=settings,
+    frame_bgr = np.ascontiguousarray(frame_rgb[:, :, ::-1])
+    runtime_result = hair_runtime_manager.process_frame(
         dataset_code=dataset_code,
-        hair_id=hair_id,
-        apply_session_id=apply_session_id,
-        representative_asset_id=representative_asset_id,
+        frame_bgr=frame_bgr,
+        session_id=apply_session_id,
     )
 
-    tracking_started_at = time.perf_counter()
-    feature = face_tracker.extract_feature_from_rgb(
-        frame_rgb,
-        claims=claims,
-        settings=settings,
-        seq=1,
-        ts_ms=_now_ms(),
-    )
-    tracking_latency_ms = round((time.perf_counter() - tracking_started_at) * 1000.0, 3)
+    output_frame_bgr = runtime_result.get("output_frame_bgr")
+    if not isinstance(output_frame_bgr, np.ndarray):
+        output_frame_bgr = frame_bgr
 
-    selected_bundle: AssetBundle | None = None
-    selection_latency_ms = 0.0
-    render_started_at = time.perf_counter()
-    status = "no_face"
-    rendered = image
-    processed_seq = 0
-
-    if feature is not None:
-        processed_seq = feature.seq
-        selection_started_at = time.perf_counter()
-        selected_bundle = catalog.recommend(
-            dataset_code=dataset_code,
-            feature=feature,
-            representative_asset_id=representative_asset_id,
-        )
-        selected_bundle = catalog.bundle_for_asset(
-            dataset_code=dataset_code,
-            asset_id=selected_bundle.asset_id,
-            feature=feature,
-        )
-        selection_latency_ms = round((time.perf_counter() - selection_started_at) * 1000.0, 3)
-        rendered = compose_bundle_frame(
-            image,
-            selected_bundle,
-            reference_width=feature.image_size.width,
-            reference_height=feature.image_size.height,
-        )
-        status = "ok"
-
-    render_latency_ms = round((time.perf_counter() - render_started_at) * 1000.0, 3)
+    rendered = Image.fromarray(output_frame_bgr[:, :, ::-1], mode="RGB")
     response_bytes = _encode_image(rendered, response_format, settings.http_test_jpeg_quality)
-    total_latency_ms = round((time.perf_counter() - total_started_at) * 1000.0, 3)
+    user_row = runtime_result.get("user_row") if isinstance(runtime_result.get("user_row"), dict) else None
+
     return HttpFrameResult(
         response_bytes=response_bytes,
         media_type="image/png" if response_format == "png" else "image/jpeg",
-        status=status,
-        selected_bundle=selected_bundle,
-        feature=feature,
-        processed_seq=processed_seq,
-        total_latency_ms=total_latency_ms,
-        tracking_latency_ms=tracking_latency_ms,
-        selection_latency_ms=selection_latency_ms,
-        render_latency_ms=render_latency_ms,
+        status=str(runtime_result.get("status", "error")),
+        selected_asset_id=(
+            None
+            if runtime_result.get("selected_asset_id") in (None, "")
+            else str(runtime_result["selected_asset_id"])
+        ),
+        selected_pose_key=(
+            None
+            if runtime_result.get("selected_pose_key") in (None, "")
+            else str(runtime_result["selected_pose_key"])
+        ),
+        retrieval_score=(
+            None
+            if runtime_result.get("score") is None
+            else float(runtime_result["score"])
+        ),
+        yaw_1deg=_extract_pose_angle(user_row, "face_yaw_deg"),
+        pitch_1deg=_extract_pose_angle(user_row, "face_pitch_deg"),
+        roll_1deg=_extract_pose_angle(user_row, "face_roll_deg"),
+        processed_seq=1,
+        total_latency_ms=round(float(runtime_result.get("latency_ms", 0.0)), 3),
+        tracking_latency_ms=round(float(runtime_result.get("feature_latency_ms", 0.0)), 3),
+        selection_latency_ms=0.0,
+        render_latency_ms=round(float(runtime_result.get("overlay_latency_ms", 0.0)), 3),
         dataset_code=dataset_code,
     )
 
@@ -199,23 +157,52 @@ def _headers_from_result(result: HttpFrameResult, settings: Settings) -> dict[st
         "X-Tracking-Latency-Ms": str(result.tracking_latency_ms),
         "X-Selection-Latency-Ms": str(result.selection_latency_ms),
         "X-Render-Latency-Ms": str(result.render_latency_ms),
-        "X-Selected-Asset-Id": "",
-        "X-Selected-Pose-Key": "",
-        "X-Retrieval-Score": "",
+        "X-Selected-Asset-Id": result.selected_asset_id or "",
+        "X-Selected-Pose-Key": result.selected_pose_key or "",
+        "X-Retrieval-Score": "" if result.retrieval_score is None else str(result.retrieval_score),
         "Cache-Control": "no-store",
     }
-    if result.selected_bundle is not None:
-        headers["X-Selected-Asset-Id"] = result.selected_bundle.asset_id
-        headers["X-Selected-Pose-Key"] = result.selected_bundle.pose_key
-        headers["X-Retrieval-Score"] = str(result.selected_bundle.score)
-    if result.feature is not None:
-        headers["X-User-Yaw-1deg"] = str(result.feature.pose.yaw_1deg)
-        headers["X-User-Pitch-1deg"] = str(result.feature.pose.pitch_1deg)
-        headers["X-User-Roll-1deg"] = str(result.feature.pose.roll_1deg)
+    if result.yaw_1deg is not None:
+        headers["X-User-Yaw-1deg"] = str(result.yaw_1deg)
+    if result.pitch_1deg is not None:
+        headers["X-User-Pitch-1deg"] = str(result.pitch_1deg)
+    if result.roll_1deg is not None:
+        headers["X-User-Roll-1deg"] = str(result.roll_1deg)
     return headers
 
 
 def attach_http_runtime_routes(app: FastAPI) -> None:
+    async def runtime_frame_response(
+        request: Request,
+        *,
+        dataset_code: str | None,
+        apply_session_id: str,
+        response_format: Literal["jpeg", "png"],
+    ) -> Response:
+        settings: Settings = app.state.settings
+        resolved_dataset_code = dataset_code or settings.http_test_default_dataset_code
+        payload = await request.body()
+        try:
+            result = await asyncio.to_thread(
+                _process_http_frame,
+                payload=payload,
+                dataset_code=resolved_dataset_code,
+                apply_session_id=apply_session_id,
+                response_format=response_format,
+                settings=settings,
+                hair_runtime_manager=app.state.hair_runtime_manager,
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        return Response(
+            content=result.response_bytes,
+            media_type=result.media_type,
+            headers=_headers_from_result(result, settings),
+        )
+
     @app.get("/api/runtime/health")
     async def runtime_health(dataset_code: str | None = None) -> JSONResponse:
         settings: Settings = app.state.settings
@@ -247,28 +234,26 @@ def attach_http_runtime_routes(app: FastAPI) -> None:
         settings: Settings = app.state.settings
         if not settings.http_test_enabled:
             raise HTTPException(status_code=404, detail="HTTP runtime test endpoint is disabled")
+        return await runtime_frame_response(
+            request,
+            dataset_code=dataset_code,
+            apply_session_id=apply_session_id,
+            response_format=response_format,
+        )
 
-        payload = await request.body()
-        try:
-            result = await asyncio.to_thread(
-                _process_http_frame,
-                payload=payload,
-                dataset_code=dataset_code or settings.http_test_default_dataset_code,
-                hair_id=hair_id,
-                apply_session_id=apply_session_id,
-                representative_asset_id=representative_asset_id,
-                response_format=response_format,
-                settings=settings,
-                face_tracker=app.state.face_tracker,
-                catalog=app.state.catalog,
-            )
-        except FileNotFoundError as exc:
-            raise HTTPException(status_code=500, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-        return Response(
-            content=result.response_bytes,
-            media_type=result.media_type,
-            headers=_headers_from_result(result, settings),
+    @app.post("/api/runtime/render-frame")
+    @app.post("/v2/api/runtime/render-frame")
+    async def runtime_render_frame(
+        request: Request,
+        dataset_code: str | None = None,
+        hair_id: int = 1,
+        apply_session_id: str = "local-render-session",
+        representative_asset_id: str | None = None,
+        response_format: Literal["jpeg", "png"] = "jpeg",
+    ) -> Response:
+        return await runtime_frame_response(
+            request,
+            dataset_code=dataset_code,
+            apply_session_id=apply_session_id,
+            response_format=response_format,
         )

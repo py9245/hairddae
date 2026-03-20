@@ -52,7 +52,7 @@ public class AccountsController {
                 .body(LoginResponse.ok(authTokens.userId()));
     }
 
-    @PostMapping({"/signin", "/signin/"})
+    @PostMapping({"/signup", "/signup/"})
     @ApiResponses({
             @ApiResponse(
                     responseCode = "201",

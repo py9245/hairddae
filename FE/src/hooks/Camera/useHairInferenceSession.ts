@@ -4,12 +4,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   buildInferenceFeatureMessage,
   getOrCreateDeviceId,
+  type HairApplyV2Response,
   INFERENCE_WS_PROTOCOL,
   type InferenceAssetBundle,
   parseInferenceMessage,
   postHairApplyResumeV2,
   postHairApplyStartV2,
-  type HairApplyV2Response,
 } from '@/lib/Camera/inference'
 import { preloadSessionOverlayAssets } from '@/lib/Camera/overlay'
 import type { PoseAngles } from '@/lib/Camera/types'
@@ -99,7 +99,10 @@ export function useHairInferenceSession({
     const ws = wsRef.current
     if (!ws) return
     manualCloseRef.current = true
-    if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+    if (
+      ws.readyState === WebSocket.OPEN ||
+      ws.readyState === WebSocket.CONNECTING
+    ) {
       ws.close()
     }
     wsRef.current = null
@@ -133,55 +136,241 @@ export function useHairInferenceSession({
     closeSocket,
   ])
 
-  const preloadStaticAssets = useCallback((bootstrap: HairApplyV2Response) => {
-    clearPreload()
-    const controller = new AbortController()
-    preloadAbortRef.current = controller
+  const preloadStaticAssets = useCallback(
+    (bootstrap: HairApplyV2Response) => {
+      clearPreload()
+      const controller = new AbortController()
+      preloadAbortRef.current = controller
 
-    void preloadSessionOverlayAssets(bootstrap.static, controller.signal).catch(
-      (caught) => {
+      void preloadSessionOverlayAssets(
+        bootstrap.static,
+        controller.signal,
+      ).catch((caught) => {
         if (controller.signal.aborted) {
           return
         }
         console.warn('overlay preload failed:', caught)
-      },
-    )
-  }, [clearPreload])
+      })
+    },
+    [clearPreload],
+  )
 
-  const scheduleReconnect = useCallback(async (reason: string) => {
-    if (reconnectingRef.current) return
-    if (!latestEnabledRef.current || !latestHairIdRef.current) return
+  const scheduleReconnect = useCallback(
+    async (reason: string) => {
+      if (reconnectingRef.current) return
+      if (!latestEnabledRef.current || !latestHairIdRef.current) return
 
-    reconnectingRef.current = true
-    setIsConnected(false)
-    clearProcessedTimeout()
-    clearHeartbeatTimer()
-    clearReconnectTimer()
-    closeSocket()
+      reconnectingRef.current = true
+      setIsConnected(false)
+      clearProcessedTimeout()
+      clearHeartbeatTimer()
+      clearReconnectTimer()
+      closeSocket()
 
-    reconnectTimerRef.current = window.setTimeout(async () => {
-      reconnectTimerRef.current = null
+      reconnectTimerRef.current = window.setTimeout(async () => {
+        reconnectTimerRef.current = null
+
+        try {
+          const currentSession = sessionRef.current
+          const nextBootstrap = currentSession
+            ? await postHairApplyResumeV2(
+                currentSession.applySessionId,
+                deviceIdRef.current,
+              )
+            : await postHairApplyStartV2(
+                latestHairIdRef.current as number,
+                deviceIdRef.current,
+              )
+
+          sessionRef.current = nextBootstrap
+          preloadStaticAssets(nextBootstrap)
+          setError(null)
+          reconnectingRef.current = false
+          manualCloseRef.current = false
+          const ws = new WebSocket(nextBootstrap.inference.wsUrl, [
+            INFERENCE_WS_PROTOCOL,
+            `ticket.${nextBootstrap.inference.connectTicket}`,
+          ])
+          wsRef.current = ws
+
+          ws.onopen = () => {
+            setIsConnected(true)
+            setError(null)
+            lastActivityAtRef.current = performance.now()
+
+            clearHeartbeatTimer()
+            heartbeatTimerRef.current = window.setInterval(
+              () => {
+                const openSocket = wsRef.current
+                const activeSession = sessionRef.current
+                if (
+                  !openSocket ||
+                  openSocket.readyState !== WebSocket.OPEN ||
+                  !activeSession
+                ) {
+                  return
+                }
+
+                const now = performance.now()
+                if (
+                  now - lastActivityAtRef.current <
+                  activeSession.inference.heartbeatIntervalMs
+                ) {
+                  return
+                }
+
+                openSocket.send(
+                  JSON.stringify({
+                    type: 'heartbeat',
+                    apply_session_id: activeSession.applySessionId,
+                    ts_ms: Date.now(),
+                  }),
+                )
+              },
+              Math.max(1000, nextBootstrap.inference.heartbeatIntervalMs),
+            )
+          }
+
+          ws.onmessage = (event) => {
+            lastActivityAtRef.current = performance.now()
+
+            try {
+              const message = parseInferenceMessage(
+                JSON.parse(event.data) as unknown,
+              )
+
+              if (message.type === 'connected') {
+                return
+              }
+
+              if (message.type === 'heartbeat_ack') {
+                return
+              }
+
+              if (message.type === 'error') {
+                setError(message.message)
+                clearProcessedTimeout()
+                inflightSeqRef.current = null
+                return
+              }
+
+              clearProcessedTimeout()
+              inflightSeqRef.current = null
+              setAsset(message.asset)
+              setError(message.overloaded ? '서버가 혼잡합니다.' : null)
+
+              const now = performance.now()
+              const sentAt = sentAtBySeqRef.current.get(message.processedSeq)
+              if (sentAt != null) {
+                sentAtBySeqRef.current.delete(message.processedSeq)
+                const nextRtt = now - sentAt
+                rttEmaRef.current =
+                  rttEmaRef.current == null
+                    ? nextRtt
+                    : rttEmaRef.current * 0.8 + nextRtt * 0.2
+              }
+
+              if (lastProcessedAtRef.current != null) {
+                const deltaMs = now - lastProcessedAtRef.current
+                if (deltaMs > 0) {
+                  const nextFps = 1000 / deltaMs
+                  processedFpsEmaRef.current =
+                    processedFpsEmaRef.current == null
+                      ? nextFps
+                      : processedFpsEmaRef.current * 0.8 + nextFps * 0.2
+                }
+              }
+              lastProcessedAtRef.current = now
+
+              setMetrics({
+                inferenceRttMs: rttEmaRef.current,
+                processedFps: processedFpsEmaRef.current,
+                queueDepth: message.queueDepth,
+                droppedPendingCount: message.droppedPendingCount,
+              })
+
+              const pendingFeature = pendingFeatureRef.current
+              const currentSocket = wsRef.current
+              if (
+                pendingFeature &&
+                currentSocket &&
+                currentSocket.readyState === WebSocket.OPEN
+              ) {
+                pendingFeatureRef.current = null
+                currentSocket.send(pendingFeature)
+                const parsed = JSON.parse(pendingFeature) as { seq: number }
+                inflightSeqRef.current = parsed.seq
+                sentAtBySeqRef.current.set(parsed.seq, performance.now())
+                const timeoutMs =
+                  sessionRef.current?.inference.processedTimeoutMs ?? 250
+                processedTimeoutRef.current = window.setTimeout(() => {
+                  void scheduleReconnect('processed timeout')
+                }, timeoutMs)
+              }
+            } catch (caught) {
+              console.error('inference ws parse failed:', caught)
+            }
+          }
+
+          ws.onerror = () => {
+            setError('인퍼런스 웹소켓 오류')
+          }
+
+          ws.onclose = () => {
+            clearProcessedTimeout()
+            clearHeartbeatTimer()
+            setIsConnected(false)
+            wsRef.current = null
+
+            if (manualCloseRef.current || !latestEnabledRef.current) {
+              manualCloseRef.current = false
+              reconnectingRef.current = false
+              return
+            }
+
+            void scheduleReconnect(reason)
+          }
+        } catch (caught) {
+          reconnectingRef.current = false
+          setError(caught instanceof Error ? caught.message : '재연결 실패')
+          void scheduleReconnect(reason)
+        }
+      }, RECONNECT_DELAY_MS)
+    },
+    [
+      clearHeartbeatTimer,
+      clearProcessedTimeout,
+      clearReconnectTimer,
+      closeSocket,
+      preloadStaticAssets,
+    ],
+  )
+
+  const openSession = useCallback(
+    async (nextHairId: number) => {
+      const requestId = bootstrapRequestRef.current + 1
+      bootstrapRequestRef.current = requestId
+      resetRuntime()
+      setAsset(null)
+      setError(null)
 
       try {
-        const currentSession = sessionRef.current
-        const nextBootstrap = currentSession
-          ? await postHairApplyResumeV2(
-              currentSession.applySessionId,
-              deviceIdRef.current,
-            )
-          : await postHairApplyStartV2(
-              latestHairIdRef.current as number,
-              deviceIdRef.current,
-            )
+        const bootstrap = await postHairApplyStartV2(
+          nextHairId,
+          deviceIdRef.current,
+        )
+        if (bootstrapRequestRef.current !== requestId) {
+          return
+        }
 
-        sessionRef.current = nextBootstrap
-        preloadStaticAssets(nextBootstrap)
-        setError(null)
+        sessionRef.current = bootstrap
+        preloadStaticAssets(bootstrap)
         reconnectingRef.current = false
         manualCloseRef.current = false
-        const ws = new WebSocket(nextBootstrap.inference.wsUrl, [
+
+        const ws = new WebSocket(bootstrap.inference.wsUrl, [
           INFERENCE_WS_PROTOCOL,
-          `ticket.${nextBootstrap.inference.connectTicket}`,
+          `ticket.${bootstrap.inference.connectTicket}`,
         ])
         wsRef.current = ws
 
@@ -191,33 +380,36 @@ export function useHairInferenceSession({
           lastActivityAtRef.current = performance.now()
 
           clearHeartbeatTimer()
-          heartbeatTimerRef.current = window.setInterval(() => {
-            const openSocket = wsRef.current
-            const activeSession = sessionRef.current
-            if (
-              !openSocket ||
-              openSocket.readyState !== WebSocket.OPEN ||
-              !activeSession
-            ) {
-              return
-            }
+          heartbeatTimerRef.current = window.setInterval(
+            () => {
+              const openSocket = wsRef.current
+              const activeSession = sessionRef.current
+              if (
+                !openSocket ||
+                openSocket.readyState !== WebSocket.OPEN ||
+                !activeSession
+              ) {
+                return
+              }
 
-            const now = performance.now()
-            if (
-              now - lastActivityAtRef.current <
-              activeSession.inference.heartbeatIntervalMs
-            ) {
-              return
-            }
+              const now = performance.now()
+              if (
+                now - lastActivityAtRef.current <
+                activeSession.inference.heartbeatIntervalMs
+              ) {
+                return
+              }
 
-            openSocket.send(
-              JSON.stringify({
-                type: 'heartbeat',
-                apply_session_id: activeSession.applySessionId,
-                ts_ms: Date.now(),
-              }),
-            )
-          }, Math.max(1000, nextBootstrap.inference.heartbeatIntervalMs))
+              openSocket.send(
+                JSON.stringify({
+                  type: 'heartbeat',
+                  apply_session_id: activeSession.applySessionId,
+                  ts_ms: Date.now(),
+                }),
+              )
+            },
+            Math.max(1000, bootstrap.inference.heartbeatIntervalMs),
+          )
         }
 
         ws.onmessage = (event) => {
@@ -248,36 +440,6 @@ export function useHairInferenceSession({
             setAsset(message.asset)
             setError(message.overloaded ? '서버가 혼잡합니다.' : null)
 
-            const now = performance.now()
-            const sentAt = sentAtBySeqRef.current.get(message.processedSeq)
-            if (sentAt != null) {
-              sentAtBySeqRef.current.delete(message.processedSeq)
-              const nextRtt = now - sentAt
-              rttEmaRef.current =
-                rttEmaRef.current == null
-                  ? nextRtt
-                  : rttEmaRef.current * 0.8 + nextRtt * 0.2
-            }
-
-            if (lastProcessedAtRef.current != null) {
-              const deltaMs = now - lastProcessedAtRef.current
-              if (deltaMs > 0) {
-                const nextFps = 1000 / deltaMs
-                processedFpsEmaRef.current =
-                  processedFpsEmaRef.current == null
-                    ? nextFps
-                    : processedFpsEmaRef.current * 0.8 + nextFps * 0.2
-              }
-            }
-            lastProcessedAtRef.current = now
-
-            setMetrics({
-              inferenceRttMs: rttEmaRef.current,
-              processedFps: processedFpsEmaRef.current,
-              queueDepth: message.queueDepth,
-              droppedPendingCount: message.droppedPendingCount,
-            })
-
             const pendingFeature = pendingFeatureRef.current
             const currentSocket = wsRef.current
             if (
@@ -289,7 +451,6 @@ export function useHairInferenceSession({
               currentSocket.send(pendingFeature)
               const parsed = JSON.parse(pendingFeature) as { seq: number }
               inflightSeqRef.current = parsed.seq
-              sentAtBySeqRef.current.set(parsed.seq, performance.now())
               const timeoutMs =
                 sessionRef.current?.inference.processedTimeoutMs ?? 250
               processedTimeoutRef.current = window.setTimeout(() => {
@@ -313,165 +474,26 @@ export function useHairInferenceSession({
 
           if (manualCloseRef.current || !latestEnabledRef.current) {
             manualCloseRef.current = false
-            reconnectingRef.current = false
             return
           }
 
-          void scheduleReconnect(reason)
+          void scheduleReconnect('socket closed')
         }
       } catch (caught) {
-        reconnectingRef.current = false
-        setError(caught instanceof Error ? caught.message : '재연결 실패')
-        void scheduleReconnect(reason)
-      }
-    }, RECONNECT_DELAY_MS)
-  }, [
-    clearHeartbeatTimer,
-    clearProcessedTimeout,
-    clearReconnectTimer,
-    closeSocket,
-    preloadStaticAssets,
-  ])
-
-  const openSession = useCallback(async (nextHairId: number) => {
-    const requestId = bootstrapRequestRef.current + 1
-    bootstrapRequestRef.current = requestId
-    resetRuntime()
-    setAsset(null)
-    setError(null)
-
-    try {
-      const bootstrap = await postHairApplyStartV2(nextHairId, deviceIdRef.current)
-      if (bootstrapRequestRef.current !== requestId) {
-        return
-      }
-
-      sessionRef.current = bootstrap
-      preloadStaticAssets(bootstrap)
-      reconnectingRef.current = false
-      manualCloseRef.current = false
-
-      const ws = new WebSocket(bootstrap.inference.wsUrl, [
-        INFERENCE_WS_PROTOCOL,
-        `ticket.${bootstrap.inference.connectTicket}`,
-      ])
-      wsRef.current = ws
-
-      ws.onopen = () => {
-        setIsConnected(true)
-        setError(null)
-        lastActivityAtRef.current = performance.now()
-
-        clearHeartbeatTimer()
-        heartbeatTimerRef.current = window.setInterval(() => {
-          const openSocket = wsRef.current
-          const activeSession = sessionRef.current
-          if (
-            !openSocket ||
-            openSocket.readyState !== WebSocket.OPEN ||
-            !activeSession
-          ) {
-            return
-          }
-
-          const now = performance.now()
-          if (
-            now - lastActivityAtRef.current <
-            activeSession.inference.heartbeatIntervalMs
-          ) {
-            return
-          }
-
-          openSocket.send(
-            JSON.stringify({
-              type: 'heartbeat',
-              apply_session_id: activeSession.applySessionId,
-              ts_ms: Date.now(),
-            }),
-          )
-        }, Math.max(1000, bootstrap.inference.heartbeatIntervalMs))
-      }
-
-      ws.onmessage = (event) => {
-        lastActivityAtRef.current = performance.now()
-
-        try {
-          const message = parseInferenceMessage(
-            JSON.parse(event.data) as unknown,
-          )
-
-          if (message.type === 'connected') {
-            return
-          }
-
-          if (message.type === 'heartbeat_ack') {
-            return
-          }
-
-          if (message.type === 'error') {
-            setError(message.message)
-            clearProcessedTimeout()
-            inflightSeqRef.current = null
-            return
-          }
-
-          clearProcessedTimeout()
-          inflightSeqRef.current = null
-          setAsset(message.asset)
-          setError(message.overloaded ? '서버가 혼잡합니다.' : null)
-
-          const pendingFeature = pendingFeatureRef.current
-          const currentSocket = wsRef.current
-          if (
-            pendingFeature &&
-            currentSocket &&
-            currentSocket.readyState === WebSocket.OPEN
-          ) {
-            pendingFeatureRef.current = null
-            currentSocket.send(pendingFeature)
-            const parsed = JSON.parse(pendingFeature) as { seq: number }
-            inflightSeqRef.current = parsed.seq
-            const timeoutMs =
-              sessionRef.current?.inference.processedTimeoutMs ?? 250
-            processedTimeoutRef.current = window.setTimeout(() => {
-              void scheduleReconnect('processed timeout')
-            }, timeoutMs)
-          }
-        } catch (caught) {
-          console.error('inference ws parse failed:', caught)
-        }
-      }
-
-      ws.onerror = () => {
-        setError('인퍼런스 웹소켓 오류')
-      }
-
-      ws.onclose = () => {
-        clearProcessedTimeout()
-        clearHeartbeatTimer()
-        setIsConnected(false)
-        wsRef.current = null
-
-        if (manualCloseRef.current || !latestEnabledRef.current) {
-          manualCloseRef.current = false
+        if (bootstrapRequestRef.current !== requestId) {
           return
         }
-
-        void scheduleReconnect('socket closed')
+        setError(caught instanceof Error ? caught.message : '세션 시작 실패')
       }
-    } catch (caught) {
-      if (bootstrapRequestRef.current !== requestId) {
-        return
-      }
-      setError(caught instanceof Error ? caught.message : '세션 시작 실패')
-    }
-  }, [
-    clearHeartbeatTimer,
-    clearProcessedTimeout,
-    preloadStaticAssets,
-    resetRuntime,
-    scheduleReconnect,
-  ])
+    },
+    [
+      clearHeartbeatTimer,
+      clearProcessedTimeout,
+      preloadStaticAssets,
+      resetRuntime,
+      scheduleReconnect,
+    ],
+  )
 
   useEffect(() => {
     if (!enabled || !hairId || hairId <= 0) {

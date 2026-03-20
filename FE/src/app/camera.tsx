@@ -33,8 +33,6 @@ export default function Camera() {
       videoRef={videoRef}
       canvasRef={canvasRef}
       overlayCanvasRef={overlayCanvasRef}
-      pose={null}
-      landmarks={null}
     />
   )
 }

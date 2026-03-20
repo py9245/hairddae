@@ -1,4 +1,4 @@
-import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
+// face-landmarks-view.tsx
 import { useRouter } from '@tanstack/react-router'
 import { Settings, X } from 'lucide-react'
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
@@ -18,32 +18,26 @@ import {
   type HairItem,
 } from '@/lib/Camera/HairItem'
 
-type Pose = {
-  yaw: number
-  pitch: number
-  roll: number
-}
-
 type FaceLandmarksViewProps = {
   stream: MediaStream | null
   videoRef: RefObject<HTMLVideoElement | null>
   canvasRef: RefObject<HTMLCanvasElement | null>
   overlayCanvasRef: RefObject<HTMLCanvasElement | null>
-  pose: Pose | null
-  landmarks: NormalizedLandmark[] | null
 }
+
+const BASE_UI_WIDTH = 430
+const BASE_UI_HEIGHT = (BASE_UI_WIDTH * 20) / 9
 
 export default function FaceLandmarksView({
   stream,
   videoRef,
   canvasRef,
   overlayCanvasRef,
-  pose: _pose,
-  landmarks: _landmarks,
 }: FaceLandmarksViewProps) {
   const router = useRouter()
   const wrapRef = useRef<HTMLDivElement | null>(null)
 
+  const [uiScale, setUiScale] = useState(1)
   const [selectedHairId, setSelectedHairId] = useState(0)
   const [pendingHairId, setPendingHairId] = useState<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
@@ -91,6 +85,25 @@ export default function FaceLandmarksView({
 
     return () => {
       controller.abort()
+    }
+  }, [])
+
+  useEffect(() => {
+    const element = wrapRef.current
+    if (!element) return
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0]
+      if (!entry) return
+
+      const { width } = entry.contentRect
+      setUiScale(width / BASE_UI_WIDTH)
+    })
+
+    observer.observe(element)
+
+    return () => {
+      observer.disconnect()
     }
   }, [])
 
@@ -143,7 +156,7 @@ export default function FaceLandmarksView({
     <div className="grid h-[100dvh] w-full place-items-center bg-neutral-100">
       <div
         ref={wrapRef}
-        className="relative h-[100dvh] w-[430px] max-w-full overflow-hidden bg-black"
+        className="relative h-[100dvh] aspect-[9/20] overflow-hidden bg-black"
       >
         <HairCameraStage
           videoRef={videoRef}
@@ -153,62 +166,74 @@ export default function FaceLandmarksView({
           hasRemoteVideo={hasRemoteVideo}
         />
 
-        <Header
-          leftAction={
-            <Button
-              type="button"
-              variant="camera-back"
-              size="camera-icon"
-              onClick={handleTopLeftAction}
-              aria-label={isFrameFrozen ? '캡처 취소' : '닫기'}
-            >
-              <X className="size-12 text-white" />
-            </Button>
-          }
-          rightAction={
-            <Button
-              type="button"
-              variant="camera-setting"
-              size="camera-icon"
-              aria-label="설정 열기"
-            >
-              <Settings className="size-12 text-white" />
-            </Button>
-          }
-        />
+        <div className="absolute inset-0 z-20 overflow-hidden">
+          <div
+            className="absolute left-0 top-0"
+            style={{
+              width: `${BASE_UI_WIDTH}px`,
+              height: `${BASE_UI_HEIGHT}px`,
+              transform: `scale(${uiScale})`,
+              transformOrigin: 'top left',
+            }}
+          >
+            <Header
+              leftAction={
+                <Button
+                  type="button"
+                  variant="camera-back"
+                  size="camera-icon"
+                  onClick={handleTopLeftAction}
+                  aria-label={isFrameFrozen ? '캡처 취소' : '닫기'}
+                >
+                  <X className="size-12 text-white" />
+                </Button>
+              }
+              rightAction={
+                <Button
+                  type="button"
+                  variant="camera-setting"
+                  size="camera-icon"
+                  aria-label="설정 열기"
+                >
+                  <Settings className="size-12 text-white" />
+                </Button>
+              }
+            />
 
-        <HairRtcDebugPanel
-          error={hairRtc.error}
-          isConnected={hairRtc.isConnected}
-          displayHairId={displayHairId}
-          asset={hairRtc.asset}
-          connectionState={hairRtc.connectionState}
-          metrics={hairRtc.metrics}
-          hasRemoteVideo={remoteDisplayReady}
-          remoteVideoReady={remoteVideoReady}
-          isRenderReady={hairRtc.isRenderReady}
-          remoteVideoSize={remoteVideoSize}
-        />
+            <HairRtcDebugPanel
+              error={hairRtc.error}
+              isConnected={hairRtc.isConnected}
+              displayHairId={displayHairId}
+              asset={hairRtc.asset}
+              connectionState={hairRtc.connectionState}
+              metrics={hairRtc.metrics}
+              hasRemoteVideo={remoteDisplayReady}
+              remoteVideoReady={remoteVideoReady}
+              isRenderReady={hairRtc.isRenderReady}
+              remoteVideoSize={remoteVideoSize}
+            />
 
-        <HairSelector
-          items={hairItems}
-          selectedId={displayHairId}
-          frozen={isFrameFrozen}
-          onSelect={handleHairSelect}
-          onCapture={handleCapture}
-          onFreezeChange={setIsFrameFrozen}
-        />
-      </div>
-
-      {modalOpen && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/20 pb-50">
-          <ApplyStyleModal
-            open={modalOpen}
-            completed={rtcApplyReady}
-            onFinish={handleModalFinish}
-          />
+            <HairSelector
+              items={hairItems}
+              selectedId={displayHairId}
+              frozen={isFrameFrozen}
+              onSelect={handleHairSelect}
+              onCapture={handleCapture}
+              onFreezeChange={setIsFrameFrozen}
+            />
+          </div>
         </div>
-      )}
+
+        {modalOpen && (
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/20">
+            <ApplyStyleModal
+              open={modalOpen}
+              completed={rtcApplyReady}
+              onFinish={handleModalFinish}
+            />
+          </div>
+        )}
+      </div>
     </div>
   )
 }

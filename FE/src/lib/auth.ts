@@ -82,7 +82,7 @@ export async function signUpApi(
     }
   }
 
-  const res = await fetch(`${BaseUrl}/accounts/signin/`, {
+  const res = await fetch(`${BaseUrl}/accounts/signup/`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -107,8 +107,6 @@ export type LoginResponse = {
   code: number
   message: string
   userID: string
-  accessToken: string
-  refreshToken: string
 }
 
 export async function loginApi(payload: LoginRequest): Promise<LoginResponse> {
@@ -119,8 +117,6 @@ export async function loginApi(payload: LoginRequest): Promise<LoginResponse> {
       code: 200,
       message: '로그인에 성공했습니다.',
       userID: payload.userID,
-      accessToken: 'mock-access-token',
-      refreshToken: 'mock-refresh-token',
     }
   }
 

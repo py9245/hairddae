@@ -8,9 +8,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.example.beapp.api.dto.mypage.BookmarkResponse;
+import com.example.beapp.api.dto.mypage.LikeListResponse;
+import com.example.beapp.api.dto.mypage.MeResponse;
 import com.example.beapp.api.dto.mypage.RecentResponse;
-import com.example.beapp.api.dto.mypage.UserIdResponse;
 import com.example.beapp.service.MypageService;
 
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -29,29 +29,27 @@ public class MypageController {
         this.mypageService = mypageService;
     }
 
-    @GetMapping("/recent")
+    @GetMapping({"/appliedlist", "/appliedlist/"})
     public ResponseEntity<RecentResponse> recent(
             Authentication authentication,
             @RequestParam(defaultValue = "5") @Min(1) @Max(600) int minViewSec,
             @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size,
-            @RequestParam(defaultValue = "recent") String sort) {
+            @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size) {
         return ResponseEntity.ok(mypageService.getRecent(authentication.getName(), minViewSec, page, size));
     }
 
     @GetMapping("/user")
-    public ResponseEntity<UserIdResponse> user(
+    public ResponseEntity<MeResponse> user(
             Authentication authentication) {
         return ResponseEntity.ok(mypageService.getUser(authentication.getName()));
     }
 
-    @GetMapping("/bookmarklist")
-    public ResponseEntity<BookmarkResponse> bookmarks(
+    @GetMapping({"/likelist", "/likelist/"})
+    public ResponseEntity<LikeListResponse> likeList(
             Authentication authentication,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size,
-            @RequestParam(defaultValue = "recent") String sort,
             @RequestParam(defaultValue = "false") boolean onlyActive) {
-        return ResponseEntity.ok(mypageService.getBookmarks(authentication.getName(), page, size, onlyActive));
+        return ResponseEntity.ok(mypageService.getLikeList(authentication.getName(), page, size, onlyActive));
     }
 }

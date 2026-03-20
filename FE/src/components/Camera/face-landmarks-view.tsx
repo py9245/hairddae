@@ -64,7 +64,7 @@ export default function FaceLandmarksView({
 
   const hairRtc = useHairRtcSession({
     enabled: displayHairId > 0,
-    hairId: displayHairId,
+    hairId: displayHairId > 0 ? displayHairId : null,
     stream,
     senderConfig: {
       maxBitrate: videoSettings.senderMaxBitrate,
@@ -147,6 +147,7 @@ export default function FaceLandmarksView({
       overlayCanvasRef,
       wrapRef,
       hairItems,
+      mirror: true,
       selectedHairId: displayHairId,
     })
 

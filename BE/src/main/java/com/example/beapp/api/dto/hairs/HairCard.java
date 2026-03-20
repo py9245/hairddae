@@ -4,14 +4,11 @@ import java.time.OffsetDateTime;
 
 public record HairCard(
         int hairID,
-        String hairName,
-        String hairSlug,
-        String hairCategory,
-        String hairImgpath,
-        int hairBookMarkCount,
-        int hairDownloadCount,
-        OffsetDateTime hairDownloadDate,
+        String image,
         boolean liked,
-        String datasetCode
+        String hookText,
+        String hairName,
+        String category,
+        OffsetDateTime createdAt
 ) {
 }

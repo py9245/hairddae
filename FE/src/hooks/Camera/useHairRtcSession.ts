@@ -9,15 +9,15 @@ import {
   postHairApplyStartV2,
   postRtcOffer,
 } from '@/lib/Camera/inference'
-import {
-  RTC_SENDER_MAX_BITRATE,
-  RTC_SENDER_MAX_FRAMERATE,
-} from '@/lib/Camera/runtime'
 
 type UseHairRtcSessionArgs = {
   enabled?: boolean
   hairId?: number | null
   stream: MediaStream | null
+  senderConfig?: {
+    maxBitrate: number
+    maxFramerate: number
+  }
 }
 
 type HairRtcMetrics = {
@@ -32,7 +32,10 @@ const ICE_GATHERING_TIMEOUT_MS = 1500
 const REMOTE_READY_MIN_PROCESSED = 1
 const REMOTE_READY_MIN_STABLE_ASSET = 1
 
-async function configureRtcSender(sender: RTCRtpSender) {
+async function configureRtcSender(
+  sender: RTCRtpSender,
+  senderConfig: NonNullable<UseHairRtcSessionArgs['senderConfig']>,
+) {
   const track = sender.track
   if (!track || track.kind !== 'video') {
     return
@@ -50,8 +53,8 @@ async function configureRtcSender(sender: RTCRtpSender) {
 
   encodings[0] = {
     ...encodings[0],
-    maxBitrate: RTC_SENDER_MAX_BITRATE,
-    maxFramerate: RTC_SENDER_MAX_FRAMERATE,
+    maxBitrate: senderConfig.maxBitrate,
+    maxFramerate: senderConfig.maxFramerate,
     scaleResolutionDownBy: 1,
   }
 
@@ -109,6 +112,10 @@ export function useHairRtcSession({
   enabled = true,
   hairId,
   stream,
+  senderConfig = {
+    maxBitrate: 8_000_000,
+    maxFramerate: 15,
+  },
 }: UseHairRtcSessionArgs) {
   const deviceIdRef = useRef<string>(getOrCreateDeviceId())
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
@@ -250,13 +257,13 @@ export function useHairRtcSession({
           return
         }
         if (!nextBootstrap.rtc.enabled) {
-          setError('RTC가 비활성화되어 있습니다.')
+          setError('RTC is disabled.')
           return
         }
 
         const videoTracks = localStream.getVideoTracks()
         if (videoTracks.length === 0) {
-          setError('카메라 비디오 트랙을 찾지 못했습니다.')
+          setError('Camera video track not found.')
           return
         }
 
@@ -291,7 +298,7 @@ export function useHairRtcSession({
           ) {
             return
           }
-          scheduleReconnect('RTC 연결이 끊어졌습니다.')
+          scheduleReconnect('RTC connection lost.')
         })
 
         peerConnection.addEventListener('track', (event) => {
@@ -316,7 +323,7 @@ export function useHairRtcSession({
 
         dataChannel.addEventListener('close', () => {
           if (!manualCloseRef.current) {
-            scheduleReconnect('RTC 데이터 채널이 닫혔습니다.')
+            scheduleReconnect('RTC data channel closed.')
           }
         })
 
@@ -381,7 +388,7 @@ export function useHairRtcSession({
 
         for (const track of videoTracks) {
           const sender = peerConnection.addTrack(track, localStream)
-          void configureRtcSender(sender)
+          void configureRtcSender(sender, senderConfig)
         }
 
         const offer = await peerConnection.createOffer()
@@ -406,12 +413,12 @@ export function useHairRtcSession({
           return
         }
         setError(
-          caught instanceof Error ? caught.message : 'RTC 세션 시작 실패',
+          caught instanceof Error ? caught.message : 'RTC session start failed',
         )
-        scheduleReconnect('RTC 세션 재시도 중')
+        scheduleReconnect('Retrying RTC session')
       }
     },
-    [resetRuntime, scheduleReconnect],
+    [resetRuntime, scheduleReconnect, senderConfig],
   )
 
   useEffect(() => {

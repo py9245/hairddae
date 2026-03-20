@@ -26,23 +26,24 @@ export function HairCameraStage({
           transformOrigin: 'center',
         }}
       >
-        {hasRemoteVideo ? (
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            muted
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        ) : (
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        )}
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-150 ${
+            hasRemoteVideo ? 'opacity-0' : 'opacity-100'
+          }`}
+        />
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          muted
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-150 ${
+            hasRemoteVideo ? 'opacity-100' : 'opacity-0'
+          }`}
+        />
 
         <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
         <canvas

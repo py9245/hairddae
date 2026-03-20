@@ -28,11 +28,11 @@ export default function Login() {
     if (!isFormValid) return
 
     try {
-      const result = await loginMutation.mutateAsync({
+      await loginMutation.mutateAsync({
         userID: input.userID,
         password: input.password,
       })
-      auth.login(result.accessToken)
+      auth.login()
       await router.navigate({ to: '/main' })
     } catch (error) {
       console.error(error)

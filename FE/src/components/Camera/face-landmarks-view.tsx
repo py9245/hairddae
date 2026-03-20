@@ -1,22 +1,22 @@
-import { useMutation } from '@tanstack/react-query'
+import type { NormalizedLandmark } from '@mediapipe/tasks-vision'
 import { useRouter } from '@tanstack/react-router'
 import { Settings, X } from 'lucide-react'
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react'
 
+import { HairCameraStage } from '@/components/Camera/hair-camera-stage'
+import { HairRtcDebugPanel } from '@/components/Camera/hair-rtc-debug-panel'
 import { HairSelector } from '@/components/Camera/hair-selector'
 import { ApplyStyleModal } from '@/components/Camera/modal'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
-import { useHairWebSocket } from '@/hooks/Camera/useHairWebSocket'
+import { useHairRtcDisplay } from '@/hooks/Camera/useHairRtcDisplay'
+import { useHairRtcSession } from '@/hooks/Camera/useHairRtcSession'
 import { captureCompositedImage } from '@/lib/Camera/capture'
-import { HAIR_ITEMS } from '@/lib/Camera/HairItem'
-import { postHairApplyStart } from '@/lib/Camera/hairApply'
-
-type LandmarkPoint = {
-  x: number
-  y: number
-  z: number
-}
+import {
+  fetchHairItems,
+  HAIR_ITEMS,
+  type HairItem,
+} from '@/lib/Camera/HairItem'
 
 type Pose = {
   yaw: number
@@ -25,19 +25,21 @@ type Pose = {
 }
 
 type FaceLandmarksViewProps = {
+  stream: MediaStream | null
   videoRef: RefObject<HTMLVideoElement | null>
   canvasRef: RefObject<HTMLCanvasElement | null>
   overlayCanvasRef: RefObject<HTMLCanvasElement | null>
-  landmarks: LandmarkPoint[] | null
   pose: Pose | null
+  landmarks: NormalizedLandmark[] | null
 }
 
 export default function FaceLandmarksView({
+  stream,
   videoRef,
   canvasRef,
   overlayCanvasRef,
-  landmarks,
-  pose,
+  pose: _pose,
+  landmarks: _landmarks,
 }: FaceLandmarksViewProps) {
   const router = useRouter()
   const wrapRef = useRef<HTMLDivElement | null>(null)
@@ -45,34 +47,52 @@ export default function FaceLandmarksView({
   const [selectedHairId, setSelectedHairId] = useState(0)
   const [pendingHairId, setPendingHairId] = useState<number | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
-  const [applySessionId, setApplySessionId] = useState<string | null>(null)
+  const [hairItems, setHairItems] = useState<HairItem[]>(HAIR_ITEMS)
   const [isFrameFrozen, setIsFrameFrozen] = useState(false)
 
   const displayHairId = pendingHairId ?? selectedHairId
 
-  const hairApplyMutation = useMutation({
-    mutationFn: postHairApplyStart,
+  const hairRtc = useHairRtcSession({
+    enabled: displayHairId > 0,
+    hairId: displayHairId,
+    stream,
   })
+
+  const {
+    remoteVideoRef,
+    remoteVideoReady,
+    remoteDisplayReady,
+    remoteVideoSize,
+    hasRemoteVideo,
+  } = useHairRtcDisplay({
+    localVideoRef: videoRef,
+    remoteStream: hairRtc.remoteStream,
+    isRenderReady: hairRtc.isRenderReady,
+    isFrameFrozen,
+  })
+
+  const rtcApplyReady =
+    modalOpen &&
+    pendingHairId != null &&
+    hairRtc.isRenderReady &&
+    remoteDisplayReady
 
   useEffect(() => {
-    const video = videoRef.current
-    if (!video) return
+    const controller = new AbortController()
 
-    if (isFrameFrozen) {
-      video.pause()
-      return
+    fetchHairItems(controller.signal)
+      .then((items) => {
+        setHairItems(items.length > 1 ? items : HAIR_ITEMS)
+      })
+      .catch((error) => {
+        console.error('hair item load failed:', error)
+        setHairItems(HAIR_ITEMS)
+      })
+
+    return () => {
+      controller.abort()
     }
-
-    void video.play().catch(() => {})
-  }, [isFrameFrozen, videoRef])
-
-  useHairWebSocket({
-    enabled: !!applySessionId && !isFrameFrozen,
-    applySessionId,
-    pose: isFrameFrozen ? null : pose,
-    landmarks: isFrameFrozen ? null : landmarks,
-    selectedHairId: displayHairId,
-  })
+  }, [])
 
   const handleHairSelect = useCallback((hairId: number) => {
     setIsFrameFrozen(false)
@@ -80,39 +100,35 @@ export default function FaceLandmarksView({
     setModalOpen(true)
   }, [])
 
-  const handleModalComplete = useCallback(() => {
+  const handleModalFinish = useCallback(() => {
     if (pendingHairId == null) {
       setModalOpen(false)
       return
     }
 
-    const nextHairId = pendingHairId
-
-    hairApplyMutation.mutate(nextHairId, {
-      onSuccess: (data) => {
-        setSelectedHairId(nextHairId)
-        setApplySessionId(data?.applySessionId ?? null)
-      },
-      onError: (error) => {
-        console.error('헤어 적용 시작 실패', error)
-      },
-    })
-
+    setSelectedHairId(pendingHairId)
     setPendingHairId(null)
     setModalOpen(false)
-  }, [pendingHairId, hairApplyMutation])
+  }, [pendingHairId])
 
   const handleCapture = useCallback(() => {
     captureCompositedImage({
-      videoRef,
+      videoRef: hasRemoteVideo ? remoteVideoRef : videoRef,
       overlayCanvasRef,
       wrapRef,
-      hairItems: HAIR_ITEMS,
+      hairItems,
       selectedHairId: displayHairId,
     })
 
     setIsFrameFrozen(false)
-  }, [displayHairId, overlayCanvasRef, videoRef])
+  }, [
+    displayHairId,
+    hairItems,
+    hasRemoteVideo,
+    overlayCanvasRef,
+    remoteVideoRef,
+    videoRef,
+  ])
 
   const handleTopLeftAction = useCallback(() => {
     if (isFrameFrozen) {
@@ -129,22 +145,12 @@ export default function FaceLandmarksView({
         ref={wrapRef}
         className="relative h-[100dvh] w-[430px] max-w-full overflow-hidden bg-black"
       >
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted
-          className="block h-full w-full object-cover -scale-x-100"
-        />
-
-        <canvas
-          ref={canvasRef}
-          className="pointer-events-none absolute inset-0 hidden h-full w-full -scale-x-100"
-        />
-
-        <canvas
-          ref={overlayCanvasRef}
-          className="pointer-events-none absolute inset-0 z-10 h-full w-full -scale-x-100"
+        <HairCameraStage
+          videoRef={videoRef}
+          remoteVideoRef={remoteVideoRef}
+          canvasRef={canvasRef}
+          overlayCanvasRef={overlayCanvasRef}
+          hasRemoteVideo={hasRemoteVideo}
         />
 
         <Header
@@ -171,8 +177,21 @@ export default function FaceLandmarksView({
           }
         />
 
+        <HairRtcDebugPanel
+          error={hairRtc.error}
+          isConnected={hairRtc.isConnected}
+          displayHairId={displayHairId}
+          asset={hairRtc.asset}
+          connectionState={hairRtc.connectionState}
+          metrics={hairRtc.metrics}
+          hasRemoteVideo={remoteDisplayReady}
+          remoteVideoReady={remoteVideoReady}
+          isRenderReady={hairRtc.isRenderReady}
+          remoteVideoSize={remoteVideoSize}
+        />
+
         <HairSelector
-          items={HAIR_ITEMS}
+          items={hairItems}
           selectedId={displayHairId}
           frozen={isFrameFrozen}
           onSelect={handleHairSelect}
@@ -183,7 +202,11 @@ export default function FaceLandmarksView({
 
       {modalOpen && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/20 pb-50">
-          <ApplyStyleModal open={modalOpen} onComplete={handleModalComplete} />
+          <ApplyStyleModal
+            open={modalOpen}
+            completed={rtcApplyReady}
+            onFinish={handleModalFinish}
+          />
         </div>
       )}
     </div>

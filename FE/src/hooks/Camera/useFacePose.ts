@@ -18,6 +18,31 @@ function normDeg0to359(deg: number) {
   return Math.round(d)
 }
 
+export function deriveFacePose(
+  result: DetectForVideoResult | null,
+  yawSign = 1,
+) {
+  const ftm = result?.facialTransformationMatrixes?.[0]?.data
+  const pose = ftm ? getHeadPoseFromMatrix(ftm, yawSign) : null
+
+  let poseNorm: PoseNorm = null
+
+  if (pose) {
+    const poseValue = pose as PoseLike
+    const x = poseValue.pitch ?? poseValue.x ?? 0
+    const y = poseValue.yaw ?? poseValue.y ?? 0
+    const z = poseValue.roll ?? poseValue.z ?? 0
+
+    poseNorm = {
+      x: normDeg0to359(x),
+      y: normDeg0to359(y),
+      z: normDeg0to359(z),
+    }
+  }
+
+  return { ftm, pose, poseNorm }
+}
+
 export function useFacePose({
   result,
   yawSign = 1,
@@ -25,25 +50,5 @@ export function useFacePose({
   result: DetectForVideoResult | null
   yawSign?: number
 }) {
-  return useMemo(() => {
-    const ftm = result?.facialTransformationMatrixes?.[0]?.data
-    const pose = ftm ? getHeadPoseFromMatrix(ftm, yawSign) : null
-
-    let poseNorm: PoseNorm = null
-
-    if (pose) {
-      const poseValue = pose as PoseLike
-      const x = poseValue.pitch ?? poseValue.x ?? 0
-      const y = poseValue.yaw ?? poseValue.y ?? 0
-      const z = poseValue.roll ?? poseValue.z ?? 0
-
-      poseNorm = {
-        x: normDeg0to359(x),
-        y: normDeg0to359(y),
-        z: normDeg0to359(z),
-      }
-    }
-
-    return { ftm, pose, poseNorm }
-  }, [result, yawSign])
+  return useMemo(() => deriveFacePose(result, yawSign), [result, yawSign])
 }

@@ -1,43 +1,40 @@
 import { useMemo, useRef } from 'react'
 import FaceLandmarksView from '@/components/Camera/face-landmarks-view'
-import { useFaceLandmarker } from '@/hooks/Camera/useFaceLandmarker'
-import { useFaceTrackingLoop } from '@/hooks/Camera/useFaceTrackingLoop'
 import { useUserMedia } from '@/hooks/Camera/useUserMedia'
+import {
+  RTC_CAPTURE_FPS,
+  RTC_CAPTURE_HEIGHT,
+  RTC_CAPTURE_WIDTH,
+} from '@/lib/Camera/runtime'
 
 export default function Camera() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
-  const modelPath = useMemo(
-    () => `${import.meta.env.BASE_URL}models/face_landmarker.task`,
+  const mediaConstraints = useMemo<MediaStreamConstraints>(
+    () => ({
+      video: {
+        facingMode: 'user',
+        width: { ideal: RTC_CAPTURE_WIDTH, max: RTC_CAPTURE_WIDTH },
+        height: { ideal: RTC_CAPTURE_HEIGHT, max: RTC_CAPTURE_HEIGHT },
+        frameRate: { ideal: RTC_CAPTURE_FPS, max: RTC_CAPTURE_FPS },
+      },
+      audio: false,
+    }),
     [],
   )
 
-  const wasmPath = useMemo(() => `${import.meta.env.BASE_URL}mediapipe`, [])
-
-  const cam = useUserMedia({ videoRef })
-
-  const mp = useFaceLandmarker({
-    modelAssetPath: modelPath,
-    wasmBaseUrl: wasmPath,
-  })
-
-  const { pose, landmarks } = useFaceTrackingLoop({
-    videoRef,
-    canvasRef,
-    landmarkerRef: mp.landmarkerRef,
-    enabled: cam.ready && mp.ready,
-    yawSign: 1,
-  })
+  const cam = useUserMedia({ videoRef, constraints: mediaConstraints })
 
   return (
     <FaceLandmarksView
+      stream={cam.stream}
       videoRef={videoRef}
       canvasRef={canvasRef}
       overlayCanvasRef={overlayCanvasRef}
-      landmarks={landmarks}
-      pose={pose}
+      pose={null}
+      landmarks={null}
     />
   )
 }

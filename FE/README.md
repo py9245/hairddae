@@ -1,4 +1,14 @@
-# React + TypeScript + Vite
+﻿# React + TypeScript + Vite
+
+## Local env
+
+로컬 개발 시에는 [`FE/.env.example`](/home/yusin/S14P21M101/FE/.env.example) 를 복사해 `FE/.env` 로 사용한다.
+
+중요:
+
+- `FE_DEV_BACKEND_PROXY_TARGET`, `FE_DEV_INFERENCE_PROXY_TARGET` 는 Vite dev server 프로세스만 읽는 값이라 브라우저 번들에 노출되지 않는다.
+- inference 서버 IP 같은 민감한 운영 라우팅 값은 `VITE_*` 로 두지 않는다.
+- 브라우저는 항상 same-origin `/api`, `/ws/inference` 로만 통신하고, 실제 upstream host 는 nginx 또는 Vite proxy 가 대신 결정한다.
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
@@ -71,3 +81,4 @@ export default defineConfig([
   },
 ])
 ```
+

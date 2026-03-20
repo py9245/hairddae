@@ -29,8 +29,7 @@ const items: BottomNavItem[] = [
     label: '홈',
     to: '/main',
     icon: House,
-    match: (pathname) =>
-      pathname.startsWith('/main') || pathname.startsWith('/hairlist'),
+    match: (pathname) => pathname.startsWith('/main'),
   },
   {
     label: '내 정보',
@@ -41,11 +40,7 @@ const items: BottomNavItem[] = [
 ]
 
 function shouldHideBottomNav(pathname: string) {
-  return (
-    !pathname.startsWith('/main') &&
-    !pathname.startsWith('/mypage') &&
-    !pathname.startsWith('/hairlist')
-  )
+  return !pathname.startsWith('/main') && !pathname.startsWith('/mypage')
 }
 
 function BottomNavLink({

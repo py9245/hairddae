@@ -3,11 +3,14 @@ import {
   createRoute,
   createRouter,
   Outlet,
+  type ParsedLocation,
   redirect,
 } from '@tanstack/react-router'
 import type { ReactElement } from 'react'
+import { z } from 'zod'
 import Adsense from '@/app/adsense'
 import Camera from '@/app/camera'
+import HairList from '@/app/hairlist'
 import Login from '@/app/login'
 import Main from '@/app/main'
 import SignUp from '@/app/sign-up'
@@ -39,9 +42,14 @@ const authRoute = createRoute({
   notFoundComponent: NotFoundPage,
 })
 
+const loginSearchSchema = z.object({
+  redirect: z.string().optional(),
+})
+
 const loginRoute = createRoute({
   getParentRoute: () => authRoute,
   path: 'login',
+  validateSearch: (search) => loginSearchSchema.parse(search),
   beforeLoad: ({ context }) => {
     if (context.auth.isAuthenticated()) {
       throw redirect({ to: '/main' })
@@ -56,10 +64,16 @@ const signupRoute = createRoute({
   component: SignUp,
 })
 
+const hairListSearchSchema = z.object({
+  category: z.string().catch('').optional(),
+})
+
 const mainRoute = createProtectedRoute('main', MainPage)
 const cameraRoute = createProtectedRoute('camera', Camera)
 const myPageRoute = createProtectedRoute('mypage', MyPage)
-const hairListRoute = createProtectedRoute('hairlist', HairListPage)
+const hairListRoute = createProtectedRoute('hairlist', HairList, (search) =>
+  hairListSearchSchema.parse(search),
+)
 
 const routeTree = rootRoute.addChildren([
   splashRoute,
@@ -84,14 +98,25 @@ declare module '@tanstack/react-router' {
   }
 }
 
-function createProtectedRoute(
-  path: 'main' | 'camera' | 'mypage' | 'hairlist',
+function createProtectedRoute<
+  TPath extends string,
+  TSearchSchema extends Record<string, unknown> = Record<string, never>,
+>(
+  path: TPath,
   component: () => ReactElement,
+  validateSearch?: (search: Record<string, unknown>) => TSearchSchema,
 ) {
   return createRoute({
     getParentRoute: () => rootRoute,
     path,
-    beforeLoad: ({ context, location }) => {
+    validateSearch,
+    beforeLoad: ({
+      context,
+      location,
+    }: {
+      context: RouterContext
+      location: ParsedLocation
+    }) => {
       if (!context.auth.isAuthenticated()) {
         throw redirect({
           to: '/auth/login',
@@ -131,14 +156,6 @@ function MyPage() {
   return (
     <div className="app-frame-page bg-bg-primary">
       <Header label="내정보" />
-    </div>
-  )
-}
-
-function HairListPage() {
-  return (
-    <div className="app-frame-page bg-bg-primary">
-      <Header label="단발컷" />
     </div>
   )
 }

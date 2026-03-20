@@ -29,46 +29,62 @@ export function ProgressBar({ value }: { value: number }) {
   )
 }
 
+type ApplyStyleModalProps = {
+  open: boolean
+  completed?: boolean
+  onFinish?: () => void
+  content?: ApplyStyleModalContent
+}
+
 export function ApplyStyleModal({
   open,
-  onComplete,
+  completed = false,
+  onFinish,
   content = mockModalContent,
-}: {
-  open: boolean
-  onComplete: () => void
-  content?: ApplyStyleModalContent
-}) {
+}: ApplyStyleModalProps) {
   const [progress, setProgress] = useState(0)
-  const onCompleteRef = useRef(onComplete)
-
-  useEffect(() => {
-    onCompleteRef.current = onComplete
-  }, [onComplete])
+  const finishedRef = useRef(false)
 
   useEffect(() => {
     if (!open) {
       setProgress(0)
+      finishedRef.current = false
       return
     }
 
-    const duration = 100
-    const intervalMs = 50
-    const totalSteps = duration / intervalMs
-    let currentStep = 0
+    if (completed) {
+      const timer = window.setInterval(() => {
+        setProgress((prev) => {
+          const next = Math.min(prev + 10, 100)
 
-    const timer = setInterval(() => {
-      currentStep += 1
-      const next = Math.min(100, Math.round((currentStep / totalSteps) * 100))
-      setProgress(next)
+          if (next >= 100 && !finishedRef.current) {
+            finishedRef.current = true
+            window.clearInterval(timer)
+            window.setTimeout(() => {
+              onFinish?.()
+            }, 120)
+          }
 
-      if (next >= 100) {
-        clearInterval(timer)
-        onCompleteRef.current()
+          return next
+        })
+      }, 40)
+
+      return () => {
+        window.clearInterval(timer)
       }
-    }, intervalMs)
+    }
 
-    return () => clearInterval(timer)
-  }, [open])
+    const timer = window.setInterval(() => {
+      setProgress((prev) => {
+        if (prev >= 90) return prev
+        return Math.min(prev + 5, 90)
+      })
+    }, 120)
+
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [open, completed, onFinish])
 
   if (!open) return null
 

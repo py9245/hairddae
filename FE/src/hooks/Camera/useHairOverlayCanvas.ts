@@ -39,8 +39,10 @@ export function useHairOverlayCanvas({
   const activeAssetIdRef = useRef<string | null>(null)
   const lastDrawAtRef = useRef<number | null>(null)
   const drawFpsEmaRef = useRef<number | null>(null)
-  const [bundleVersion, setBundleVersion] = useState(0)
-  const [displayedOverlay, setDisplayedOverlay] = useState<DisplayedOverlay | null>(null)
+
+  const [displayedOverlay, setDisplayedOverlay] =
+    useState<DisplayedOverlay | null>(null)
+
   const [metrics, setMetrics] = useState<OverlayMetrics>({
     drawFps: null,
     bundleReady: false,
@@ -67,6 +69,10 @@ export function useHairOverlayCanvas({
 
     const cached = getCachedOverlayAssetBundle(assetId)
     if (cached) {
+      setDisplayedOverlay({
+        asset,
+        bundle: cached,
+      })
       setMetrics((current) => ({
         ...current,
         bundleReady: true,
@@ -78,24 +84,30 @@ export function useHairOverlayCanvas({
 
     let cancelled = false
     const loadStartedAt = performance.now()
+
+    setDisplayedOverlay(null)
     setMetrics((current) => ({
       ...current,
       bundleReady: false,
+      bundleLoadMs: null,
       displayedAssetId: assetId,
     }))
 
     loadOverlayAssetBundle(asset)
       .then((bundle) => {
         if (cancelled || !bundle) return
-        setBundleVersion((current) => current + 1)
-        if (activeAssetIdRef.current === assetId) {
-          setMetrics((current) => ({
-            ...current,
-            bundleReady: true,
-            bundleLoadMs: performance.now() - loadStartedAt,
-            displayedAssetId: assetId,
-          }))
-        }
+        if (activeAssetIdRef.current !== assetId) return
+
+        setDisplayedOverlay({
+          asset,
+          bundle,
+        })
+        setMetrics((current) => ({
+          ...current,
+          bundleReady: true,
+          bundleLoadMs: performance.now() - loadStartedAt,
+          displayedAssetId: assetId,
+        }))
       })
       .catch((caught) => {
         console.error('overlay asset load failed:', caught)
@@ -104,25 +116,7 @@ export function useHairOverlayCanvas({
     return () => {
       cancelled = true
     }
-  }, [asset?.assetId, asset?.hairRgbaUrl, asset?.anchorsUrl])
-
-  useEffect(() => {
-    const assetId = asset?.assetId ?? null
-    if (!asset || !assetId) {
-      setDisplayedOverlay(null)
-      return
-    }
-
-    const cached = getCachedOverlayAssetBundle(assetId)
-    if (!cached) {
-      return
-    }
-
-    setDisplayedOverlay({
-      asset,
-      bundle: cached,
-    })
-  }, [asset, bundleVersion])
+  }, [asset])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -152,6 +146,7 @@ export function useHairOverlayCanvas({
           drawFpsEmaRef.current == null
             ? nextFps
             : drawFpsEmaRef.current * 0.8 + nextFps * 0.2
+
         setMetrics((current) => ({
           ...current,
           drawFps: drawFpsEmaRef.current,

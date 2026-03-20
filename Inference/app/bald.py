@@ -161,6 +161,21 @@ def _extract_hair_mask(
     return hair_mask, None
 
 
+def _refine_target_mask_with_confidence(
+    target_mask: np.ndarray,
+    hair_confidence: np.ndarray | None,
+) -> tuple[np.ndarray, np.ndarray | None]:
+    if hair_confidence is None:
+        return target_mask, None
+    confidence = np.clip(np.asarray(hair_confidence).astype(np.float32), 0.0, 1.0)
+    confidence = cv2.GaussianBlur(confidence, (0, 0), sigmaX=2.2, sigmaY=2.2)
+    confident_region = (confidence > 0.24).astype(np.uint8) * 255
+    refined_mask = cv2.bitwise_and(target_mask.astype(np.uint8), confident_region)
+    if np.count_nonzero(refined_mask) >= 96:
+        return _refine_mask(refined_mask), confidence
+    return target_mask, confidence
+
+
 def _sample_skin_color(
     image_rgb: np.ndarray,
     nose: np.ndarray,
@@ -227,6 +242,7 @@ def _paint_segmented_hair_as_skin(
     image_rgb: np.ndarray,
     target_mask: np.ndarray,
     forehead_color: np.ndarray,
+    hair_confidence: np.ndarray | None = None,
 ) -> np.ndarray:
     if not np.any(target_mask):
         return image_rgb
@@ -239,6 +255,13 @@ def _paint_segmented_hair_as_skin(
     base_alpha = np.clip((base_alpha - 0.04) / 0.96, 0.0, 1.0)
     alpha = np.clip(base_alpha * 1.02, 0.0, 1.0)
     edge_alpha = np.clip(base_alpha - (solid_target.astype(np.float32) / 255.0), 0.0, 1.0)
+    if hair_confidence is not None:
+        confidence = np.asarray(hair_confidence, dtype=np.float32)
+        if confidence.shape[:2] != image_rgb.shape[:2]:
+            confidence = cv2.resize(confidence, (image_rgb.shape[1], image_rgb.shape[0]), interpolation=cv2.INTER_LINEAR)
+        confidence_gate = np.clip((confidence - 0.16) / 0.72, 0.56, 1.0)
+        alpha *= confidence_gate
+        edge_alpha *= confidence_gate
 
     skin = forehead_color.reshape(1, 1, 3).astype(np.float32)
     skin_fill = cleaned * 0.38 + skin * 0.62
@@ -306,6 +329,7 @@ class BaldPreprocessor:
             neck_side_protect = _build_neck_side_protect_mask(landmarks_px, width, height)
             target_mask = np.where(neck_side_protect > 0.10, 0, target_mask).astype(np.uint8)
             target_mask = _keep_top_connected_hair(target_mask, int(landmarks_px[FOREHEAD][1]))
+            target_mask, soft_hair_confidence = _refine_target_mask_with_confidence(target_mask, hair_confidence)
             forehead_color = _sample_skin_color(
                 frame_rgb,
                 nose=landmarks_px[NOSE_TIP],
@@ -315,6 +339,11 @@ class BaldPreprocessor:
                 right_temple=landmarks_px[RIGHT_TEMPLE],
                 chin=landmarks_px[CHIN],
             )
-            return _paint_segmented_hair_as_skin(frame_rgb, target_mask, forehead_color)
+            return _paint_segmented_hair_as_skin(
+                frame_rgb,
+                target_mask,
+                forehead_color,
+                hair_confidence=soft_hair_confidence,
+            )
 
         return frame_rgb

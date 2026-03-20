@@ -5,6 +5,7 @@ from collections import deque
 from dataclasses import dataclass, field
 import json
 import logging
+import cv2
 import numpy as np
 from PIL import Image
 from statistics import median
@@ -19,6 +20,7 @@ from app.bald import BaldPreprocessor
 from app.catalog import AssetBundle, AssetCatalog
 from app.config import Settings
 from app.face_tracking import ServerFaceTracker
+from app.hairddae_runtime_manager import HairddaeRuntimeManager
 from app.models import FeatureMessageModel
 from app.server_render import compose_bundle_frame
 
@@ -54,6 +56,7 @@ PROCESSED_BUNDLE_HISTORY_SIZE = 48
 FRAME_BUNDLE_MAX_LAG_MS = 280.0
 FRAME_BUNDLE_MAX_LEAD_MS = 180.0
 RENDER_MATCH_LOG_INTERVAL_MS = 1000.0
+PERF_LOG_INTERVAL_MS = 1500.0
 
 
 async def _wait_for_ice_gathering_complete(peer_connection: Any, timeout_seconds: float = 8.0) -> None:
@@ -125,6 +128,14 @@ class RtcSessionState:
     pose_window: deque[tuple[float, float, float]] = field(default_factory=deque)
     data_channel: Any | None = None
     server_processed_seq: int = 0
+    bald_cache_frame_bgr: np.ndarray | None = None
+    bald_cache_user_row: dict[str, Any] | None = None
+    bald_cache_reuse_count: int = 0
+    current_process_max_dimension: int | None = None
+    slow_frame_streak: int = 0
+    fast_frame_streak: int = 0
+    last_perf_log_at_ms: float = 0.0
+    recent_pipeline_latency_ms: float = 0.0
 
 
 @dataclass
@@ -320,6 +331,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         claims: Any,
         settings: Settings,
         catalog: AssetCatalog,
+        hair_runtime_manager: HairddaeRuntimeManager,
         face_tracker: ServerFaceTracker,
         bald_processor: BaldPreprocessor | None,
     ) -> None:
@@ -329,12 +341,281 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         self._claims = claims
         self._settings = settings
         self._catalog = catalog
+        self._hair_runtime_manager = hair_runtime_manager
         self._face_tracker = face_tracker
         self._bald_processor = bald_processor
         self._buffer: deque[BufferedVideoFrame] = deque()
         self._frame_available = asyncio.Event()
         self._source_ended = False
         self._reader_task = asyncio.create_task(self._reader_loop())
+
+    @staticmethod
+    def _bbox_iou(lhs_bbox: dict[str, Any] | None, rhs_bbox: dict[str, Any] | None) -> float:
+        if not lhs_bbox or not rhs_bbox:
+            return 0.0
+        lhs_x0 = float(lhs_bbox.get("x", 0.0))
+        lhs_y0 = float(lhs_bbox.get("y", 0.0))
+        lhs_x1 = lhs_x0 + float(lhs_bbox.get("w", 0.0))
+        lhs_y1 = lhs_y0 + float(lhs_bbox.get("h", 0.0))
+        rhs_x0 = float(rhs_bbox.get("x", 0.0))
+        rhs_y0 = float(rhs_bbox.get("y", 0.0))
+        rhs_x1 = rhs_x0 + float(rhs_bbox.get("w", 0.0))
+        rhs_y1 = rhs_y0 + float(rhs_bbox.get("h", 0.0))
+        inter_x0 = max(lhs_x0, rhs_x0)
+        inter_y0 = max(lhs_y0, rhs_y0)
+        inter_x1 = min(lhs_x1, rhs_x1)
+        inter_y1 = min(lhs_y1, rhs_y1)
+        inter_w = max(0.0, inter_x1 - inter_x0)
+        inter_h = max(0.0, inter_y1 - inter_y0)
+        inter_area = inter_w * inter_h
+        lhs_area = max(0.0, lhs_x1 - lhs_x0) * max(0.0, lhs_y1 - lhs_y0)
+        rhs_area = max(0.0, rhs_x1 - rhs_x0) * max(0.0, rhs_y1 - rhs_y0)
+        denominator = lhs_area + rhs_area - inter_area
+        if denominator <= 0.0:
+            return 0.0
+        return inter_area / denominator
+
+    @staticmethod
+    def _pose_delta(lhs_row: dict[str, Any] | None, rhs_row: dict[str, Any] | None) -> float:
+        if not lhs_row or not rhs_row:
+            return 999.0
+        lhs_pose = lhs_row.get("pose", {})
+        rhs_pose = rhs_row.get("pose", {})
+        return max(
+            abs(float(lhs_pose.get("yaw_float", lhs_pose.get("yaw_1deg", 0.0))) - float(rhs_pose.get("yaw_float", rhs_pose.get("yaw_1deg", 0.0)))),
+            abs(float(lhs_pose.get("pitch_float", lhs_pose.get("pitch_1deg", 0.0))) - float(rhs_pose.get("pitch_float", rhs_pose.get("pitch_1deg", 0.0)))),
+            abs(float(lhs_pose.get("roll_float", lhs_pose.get("roll_1deg", 0.0))) - float(rhs_pose.get("roll_float", rhs_pose.get("roll_1deg", 0.0)))),
+        )
+
+    def _can_reuse_bald_cache(
+        self,
+        user_row: dict[str, Any] | None,
+        frame_shape: tuple[int, ...],
+    ) -> bool:
+        cached_frame = self._state.bald_cache_frame_bgr
+        cached_user_row = self._state.bald_cache_user_row
+        if cached_frame is None or cached_user_row is None or user_row is None:
+            return False
+        if max(int(user_row.get("candidate_face_count") or 1), int(cached_user_row.get("candidate_face_count") or 1)) > 1:
+            return False
+        if cached_frame.shape != frame_shape:
+            return False
+        if self._state.bald_cache_reuse_count >= self._settings.rtc_bald_cache_max_reuse_frames:
+            return False
+        if self._bbox_iou(cached_user_row.get("face_bbox"), user_row.get("face_bbox")) < self._settings.rtc_bald_cache_bbox_iou_threshold:
+            return False
+        if self._pose_delta(cached_user_row, user_row) > self._settings.rtc_bald_cache_pose_delta_threshold_deg:
+            return False
+        return True
+
+    def _prefer_latency_runtime(self) -> bool:
+        configured_max_dimension = max(0, int(getattr(self._settings, "rtc_process_max_dimension", 0) or 0))
+        effective_max_dimension = self._effective_process_max_dimension()
+        if configured_max_dimension > 0 and effective_max_dimension < configured_max_dimension:
+            return True
+        target_latency_ms = max(1, int(getattr(self._settings, "rtc_target_frame_latency_ms", 0) or 1))
+        return self._state.recent_pipeline_latency_ms > (target_latency_ms * 1.12)
+
+    def _effective_process_max_dimension(self) -> int:
+        configured = max(0, int(getattr(self._settings, "rtc_process_max_dimension", 0) or 0))
+        current = self._state.current_process_max_dimension
+        if current is None or current <= 0:
+            return configured
+        if configured <= 0:
+            return current
+        return min(configured, current)
+
+    def _update_adaptive_resolution(self, pipeline_latency_ms: float) -> None:
+        max_dimension = max(0, int(getattr(self._settings, "rtc_process_max_dimension", 0) or 0))
+        min_dimension = max(0, int(getattr(self._settings, "rtc_process_min_dimension", 0) or 0))
+        step_dimension = max(1, int(getattr(self._settings, "rtc_process_step_dimension", 0) or 1))
+        target_latency_ms = max(1, int(getattr(self._settings, "rtc_target_frame_latency_ms", 0) or 1))
+        if max_dimension <= 0 or min_dimension <= 0 or min_dimension >= max_dimension:
+            return
+
+        current_dimension = self._state.current_process_max_dimension or max_dimension
+        slow_threshold = target_latency_ms * 1.45
+        fast_threshold = target_latency_ms * 0.78
+
+        if pipeline_latency_ms > slow_threshold and current_dimension > min_dimension:
+            self._state.slow_frame_streak += 1
+            self._state.fast_frame_streak = 0
+            if self._state.slow_frame_streak >= 2:
+                next_dimension = max(min_dimension, current_dimension - step_dimension)
+                self._state.current_process_max_dimension = next_dimension
+                self._state.slow_frame_streak = 0
+                logger.info(
+                    "rtc adaptive resolution: latency_ms=%.1f process_max_dimension=%s->%s",
+                    pipeline_latency_ms,
+                    current_dimension,
+                    next_dimension,
+                )
+            return
+
+        if pipeline_latency_ms < fast_threshold and current_dimension < max_dimension:
+            self._state.fast_frame_streak += 1
+            self._state.slow_frame_streak = 0
+            if self._state.fast_frame_streak >= 6:
+                next_dimension = min(max_dimension, current_dimension + step_dimension)
+                self._state.current_process_max_dimension = next_dimension
+                self._state.fast_frame_streak = 0
+                logger.info(
+                    "rtc adaptive resolution: latency_ms=%.1f process_max_dimension=%s->%s",
+                    pipeline_latency_ms,
+                    current_dimension,
+                    next_dimension,
+                )
+            return
+
+        self._state.slow_frame_streak = 0
+        self._state.fast_frame_streak = 0
+
+    def _prepare_frame_for_hair_runtime(
+        self,
+        frame_bgr: np.ndarray,
+        seq: int,
+    ) -> tuple[np.ndarray, dict[str, Any] | None, str, dict[str, float]]:
+        tracking_started_at = time.perf_counter()
+        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        reference_face_bbox = self._hair_runtime_manager.reference_face_bbox(
+            self._claims.dataset_code,
+            self._claims.apply_session_id,
+        )
+        tracking_result = self._face_tracker.extract_tracking_result_from_rgb(
+            frame_rgb,
+            claims=self._claims,
+            settings=self._settings,
+            seq=seq,
+            ts_ms=_now_ms(),
+            reference_face_bbox=reference_face_bbox,
+        )
+        tracking_latency_ms = round((time.perf_counter() - tracking_started_at) * 1000.0, 3)
+        if tracking_result is None:
+            return (
+                frame_bgr,
+                {"ok": False, "reason": "no_face_or_pose"},
+                "no_face",
+                {
+                    "tracking_latency_ms": tracking_latency_ms,
+                    "bald_latency_ms": 0.0,
+                },
+            )
+        if self._bald_processor is None:
+            return (
+                frame_bgr,
+                tracking_result.user_row,
+                "disabled",
+                {
+                    "tracking_latency_ms": tracking_latency_ms,
+                    "bald_latency_ms": 0.0,
+                },
+            )
+
+        if self._can_reuse_bald_cache(tracking_result.user_row, frame_bgr.shape):
+            self._state.bald_cache_reuse_count += 1
+            cached_frame = self._state.bald_cache_frame_bgr
+            if cached_frame is not None:
+                return (
+                    cached_frame.copy(),
+                    tracking_result.user_row,
+                    "cached",
+                    {
+                        "tracking_latency_ms": tracking_latency_ms,
+                        "bald_latency_ms": 0.0,
+                    },
+                )
+
+        try:
+            bald_started_at = time.perf_counter()
+            bald_rgb = self._bald_processor.apply(frame_rgb, tracking_result.landmarks_px)
+            bald_latency_ms = round((time.perf_counter() - bald_started_at) * 1000.0, 3)
+        except Exception as exc:
+            logger.warning("rtc bald preprocessing failed: %s", exc)
+            return (
+                frame_bgr,
+                tracking_result.user_row,
+                "error",
+                {
+                    "tracking_latency_ms": tracking_latency_ms,
+                    "bald_latency_ms": 0.0,
+                },
+            )
+
+        if not isinstance(bald_rgb, np.ndarray) or bald_rgb.shape != frame_rgb.shape:
+            return (
+                frame_bgr,
+                tracking_result.user_row,
+                "invalid_output",
+                {
+                    "tracking_latency_ms": tracking_latency_ms,
+                    "bald_latency_ms": bald_latency_ms,
+                },
+            )
+
+        prepared_frame_bgr = cv2.cvtColor(bald_rgb, cv2.COLOR_RGB2BGR)
+        cached_pose = tracking_result.user_row.get("pose", {})
+        cached_face_bbox = tracking_result.user_row.get("face_bbox", {})
+        self._state.bald_cache_frame_bgr = prepared_frame_bgr.copy()
+        self._state.bald_cache_user_row = {
+            "pose": {
+                "yaw_float": float(cached_pose.get("yaw_float", cached_pose.get("yaw_1deg", 0.0))),
+                "pitch_float": float(cached_pose.get("pitch_float", cached_pose.get("pitch_1deg", 0.0))),
+                "roll_float": float(cached_pose.get("roll_float", cached_pose.get("roll_1deg", 0.0))),
+                "yaw_1deg": int(cached_pose.get("yaw_1deg", round(float(cached_pose.get("yaw_float", 0.0))))),
+                "pitch_1deg": int(cached_pose.get("pitch_1deg", round(float(cached_pose.get("pitch_float", 0.0))))),
+                "roll_1deg": int(cached_pose.get("roll_1deg", round(float(cached_pose.get("roll_float", 0.0))))),
+            },
+            "face_bbox": {
+                "x": float(cached_face_bbox.get("x", 0.0)),
+                "y": float(cached_face_bbox.get("y", 0.0)),
+                "w": float(cached_face_bbox.get("w", 0.0)),
+                "h": float(cached_face_bbox.get("h", 0.0)),
+            },
+            "candidate_face_count": int(tracking_result.user_row.get("candidate_face_count") or 1),
+        }
+        self._state.bald_cache_reuse_count = 0
+
+        return (
+            prepared_frame_bgr,
+            tracking_result.user_row,
+            "applied",
+            {
+                "tracking_latency_ms": tracking_latency_ms,
+                "bald_latency_ms": bald_latency_ms,
+            },
+        )
+
+    def _resize_frame_for_processing(
+        self,
+        frame_bgr: np.ndarray,
+    ) -> tuple[np.ndarray, tuple[int, int]]:
+        frame_height, frame_width = frame_bgr.shape[:2]
+        max_dimension = self._effective_process_max_dimension()
+        if max_dimension <= 0 or max(frame_width, frame_height) <= max_dimension:
+            return frame_bgr, (frame_width, frame_height)
+
+        scale = float(max_dimension) / float(max(frame_width, frame_height))
+        resized_width = max(1, int(round(frame_width * scale)))
+        resized_height = max(1, int(round(frame_height * scale)))
+        resized = cv2.resize(frame_bgr, (resized_width, resized_height), interpolation=cv2.INTER_AREA)
+        return resized, (frame_width, frame_height)
+
+    def _process_runtime_frame(
+        self,
+        frame_bgr: np.ndarray,
+        seq: int,
+        prefer_latency: bool,
+    ) -> tuple[dict[str, Any], str, dict[str, float]]:
+        prepared_frame_bgr, tracked_user_row, bald_status, prepare_metrics = self._prepare_frame_for_hair_runtime(frame_bgr, seq)
+        runtime_result = self._hair_runtime_manager.process_frame(
+            dataset_code=self._claims.dataset_code,
+            frame_bgr=frame_bgr,
+            render_frame_bgr=prepared_frame_bgr,
+            tracked_user_row=tracked_user_row,
+            prefer_latency=prefer_latency,
+            session_id=self._claims.apply_session_id,
+        )
+        return runtime_result, bald_status, prepare_metrics
 
     async def _reader_loop(self) -> None:
         try:
@@ -375,109 +656,175 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         channel.send(json.dumps(payload))
 
     async def recv(self) -> Any:
+        frame_started_at = time.perf_counter()
         frame = await self._next_latest_frame()
-        frame_rgb = frame.to_ndarray(format="rgb24")
-
         next_seq = self._state.server_processed_seq + 1
-        tracking_result = await asyncio.to_thread(
-            self._face_tracker.extract_tracking_result_from_rgb,
-            frame_rgb,
-            claims=self._claims,
-            settings=self._settings,
-            seq=next_seq,
-            ts_ms=_now_ms(),
-        )
-        if tracking_result is None:
-            return frame
-        feature = tracking_result.feature
-
+        frame_bgr = frame.to_ndarray(format="bgr24")
         self._state.server_processed_seq = next_seq
-        selection_feature = _build_selection_feature(self._state, feature)
-        selected: AssetBundle
+        resize_in_started_at = time.perf_counter()
+        processing_frame_bgr, original_size = self._resize_frame_for_processing(frame_bgr)
+        resize_in_latency_ms = round((time.perf_counter() - resize_in_started_at) * 1000.0, 3)
+        prepare_metrics = {
+            "tracking_latency_ms": 0.0,
+            "bald_latency_ms": 0.0,
+        }
+
+        selected: AssetBundle | None = None
         changed = False
         try:
-            candidate = self._catalog.recommend(
-                dataset_code=self._claims.dataset_code,
-                feature=selection_feature,
-                representative_asset_id=self._claims.representative_asset_id,
+            runtime_started_at = time.perf_counter()
+            prefer_latency = self._prefer_latency_runtime()
+            runtime_result, bald_status, prepare_metrics = await asyncio.to_thread(
+                self._process_runtime_frame,
+                processing_frame_bgr,
+                next_seq,
+                prefer_latency,
             )
-            candidate = self._catalog.bundle_for_asset(
-                dataset_code=self._claims.dataset_code,
-                asset_id=candidate.asset_id,
-                feature=feature,
-            )
-            changed, selected = _maybe_switch_asset(
-                self._state,
-                candidate,
-                self._settings,
-                self._catalog,
-                self._claims.dataset_code,
-                feature,
-            )
+            runtime_latency_ms = round((time.perf_counter() - runtime_started_at) * 1000.0, 3)
         except Exception as exc:
-            # Keep RTC output alive even when static dataset/bootstrap assets are missing.
-            logger.warning("rtc asset selection failed: %s", exc)
-            selected = _build_fallback_bundle(feature)
+            logger.warning("rtc hairddae runtime failed: %s", exc)
+            return frame
+
+        selected_asset_id = str(runtime_result.get("selected_asset_id") or "")
+        if selected_asset_id:
+            try:
+                selected = self._catalog.bundle_for_runtime_selection(
+                    dataset_code=self._claims.dataset_code,
+                    asset_id=selected_asset_id,
+                    score=(
+                        None
+                        if runtime_result.get("score") is None
+                        else float(runtime_result["score"])
+                    ),
+                )
+            except Exception as exc:
+                logger.warning("rtc asset bundle build failed: %s", exc)
+                selected = None
+
+        if selected is not None:
             changed = self._state.last_asset_id != selected.asset_id
             self._state.last_selected_bundle = selected
-            self._state.last_switch_at_ms = _now_ms()
-        self._state.latest_feature = feature
-        self._state.last_processed_seq = feature.seq
-        self._state.processed_count += 1
-        if self._state.last_asset_id == selected.asset_id:
-            self._state.stable_asset_count += 1
-        else:
-            self._state.last_asset_id = selected.asset_id
-            self._state.stable_asset_count = 1
-        if (
-            not self._state.render_ready
-            and self._state.processed_count >= SERVER_RENDER_READY_MIN_PROCESSED
-            and self._state.stable_asset_count >= SERVER_RENDER_READY_MIN_STABLE_ASSET
-        ):
-            self._state.render_ready = True
+            self._state.last_processed_seq = next_seq
+            self._state.processed_count += 1
+            if self._state.last_asset_id == selected.asset_id:
+                self._state.stable_asset_count += 1
+            else:
+                self._state.last_asset_id = selected.asset_id
+                self._state.stable_asset_count = 1
+            if (
+                not self._state.render_ready
+                and self._state.processed_count >= SERVER_RENDER_READY_MIN_PROCESSED
+                and self._state.stable_asset_count >= SERVER_RENDER_READY_MIN_STABLE_ASSET
+            ):
+                self._state.render_ready = True
 
-        logger.info(
-            (
-                "rtc server feature: seq=%s changed=%s asset=%s "
-                "raw_pose=(%s,%s,%s) smooth_pose=(%s,%s,%s)"
-            ),
-            feature.seq,
-            changed,
-            selected.asset_id,
-            feature.pose.yaw_1deg,
-            feature.pose.pitch_1deg,
-            feature.pose.roll_1deg,
-            selection_feature.pose.yaw_1deg,
-            selection_feature.pose.pitch_1deg,
-            selection_feature.pose.roll_1deg,
-        )
-        self._emit_channel_payload(
-            {
-                "type": "processed",
-                "apply_session_id": self._claims.apply_session_id,
-                "accepted_seq": feature.seq,
-                "processed_seq": feature.seq,
-                "changed": changed,
-                "queue_depth": 0,
-                "dropped_pending_count": 0,
-                "overloaded": False,
-                "asset": selected.to_message(),
-            }
-        )
-
-        render_input = Image.fromarray(frame_rgb, mode="RGB")
-        if self._bald_processor is not None:
-            render_input = Image.fromarray(
-                self._bald_processor.apply(frame_rgb, tracking_result.landmarks_px),
-                mode="RGB",
+            user_pose = runtime_result.get("user_row", {}).get("pose", {})
+            raw_user_pose = runtime_result.get("raw_user_row", {}).get("pose", {})
+            logger.info(
+                (
+                    "rtc hairddae feature: seq=%s changed=%s asset=%s "
+                    "raw_pose=(%s,%s,%s) smooth_pose=(%s,%s,%s) mode=%s parsing=%s bald=%s profile=%s"
+                ),
+                next_seq,
+                changed,
+                selected.asset_id,
+                raw_user_pose.get("yaw_1deg"),
+                raw_user_pose.get("pitch_1deg"),
+                raw_user_pose.get("roll_1deg"),
+                user_pose.get("yaw_1deg"),
+                user_pose.get("pitch_1deg"),
+                user_pose.get("roll_1deg"),
+                runtime_result.get("selection_mode"),
+                runtime_result.get("user_parsing_status"),
+                bald_status,
+                "latency" if prefer_latency else "balanced",
             )
-        rendered = compose_bundle_frame(
-            render_input,
-            selected,
-            reference_width=feature.image_size.width,
-            reference_height=feature.image_size.height,
-        )
-        next_frame = VideoFrame.from_image(rendered.convert("RGB"))
+            self._emit_channel_payload(
+                {
+                    "type": "processed",
+                    "apply_session_id": self._claims.apply_session_id,
+                    "accepted_seq": next_seq,
+                    "processed_seq": next_seq,
+                    "changed": changed,
+                    "queue_depth": 0,
+                    "dropped_pending_count": 0,
+                    "overloaded": False,
+                    "asset": selected.to_message(),
+                }
+            )
+
+        rendered_bgr = runtime_result.get("output_frame_bgr")
+        resize_out_started_at = time.perf_counter()
+        if not isinstance(rendered_bgr, np.ndarray):
+            total_pipeline_latency_ms = round((time.perf_counter() - frame_started_at) * 1000.0, 3)
+            self._state.recent_pipeline_latency_ms = total_pipeline_latency_ms
+            self._update_adaptive_resolution(total_pipeline_latency_ms)
+            now_ms = time.monotonic() * 1000.0
+            if now_ms - self._state.last_perf_log_at_ms >= PERF_LOG_INTERVAL_MS:
+                self._state.last_perf_log_at_ms = now_ms
+                logger.info(
+                    (
+                        "rtc perf: seq=%s total=%.1f resize_in=%.1f tracking=%.1f "
+                        "bald=%.1f hair_total=%.1f hair_feature=%.1f hair_overlay=%.1f "
+                        "hair_parse=%.1f resize_out=%.1f process_size=%sx%s original_size=%sx%s "
+                        "process_max_dimension=%s bald=%s asset=%s profile=%s output=passthrough"
+                    ),
+                    next_seq,
+                    total_pipeline_latency_ms,
+                    resize_in_latency_ms,
+                    float(prepare_metrics.get("tracking_latency_ms", 0.0)),
+                    float(prepare_metrics.get("bald_latency_ms", 0.0)),
+                    runtime_latency_ms,
+                    float(runtime_result.get("feature_latency_ms", 0.0) or 0.0),
+                    float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
+                    float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
+                    0.0,
+                    processing_frame_bgr.shape[1],
+                    processing_frame_bgr.shape[0],
+                    original_size[0],
+                    original_size[1],
+                    self._effective_process_max_dimension(),
+                    bald_status,
+                    runtime_result.get("selected_asset_id"),
+                    "latency" if prefer_latency else "balanced",
+                )
+            return frame
+        resize_out_latency_ms = round((time.perf_counter() - resize_out_started_at) * 1000.0, 3)
+        total_pipeline_latency_ms = round((time.perf_counter() - frame_started_at) * 1000.0, 3)
+        self._state.recent_pipeline_latency_ms = total_pipeline_latency_ms
+        self._update_adaptive_resolution(total_pipeline_latency_ms)
+
+        now_ms = time.monotonic() * 1000.0
+        if now_ms - self._state.last_perf_log_at_ms >= PERF_LOG_INTERVAL_MS:
+            self._state.last_perf_log_at_ms = now_ms
+            logger.info(
+                (
+                    "rtc perf: seq=%s total=%.1f resize_in=%.1f tracking=%.1f "
+                    "bald=%.1f hair_total=%.1f hair_feature=%.1f hair_overlay=%.1f "
+                    "hair_parse=%.1f resize_out=%.1f process_size=%sx%s original_size=%sx%s "
+                    "process_max_dimension=%s bald=%s asset=%s profile=%s"
+                ),
+                next_seq,
+                total_pipeline_latency_ms,
+                resize_in_latency_ms,
+                float(prepare_metrics.get("tracking_latency_ms", 0.0)),
+                float(prepare_metrics.get("bald_latency_ms", 0.0)),
+                runtime_latency_ms,
+                float(runtime_result.get("feature_latency_ms", 0.0) or 0.0),
+                float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
+                float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
+                resize_out_latency_ms,
+                processing_frame_bgr.shape[1],
+                processing_frame_bgr.shape[0],
+                original_size[0],
+                original_size[1],
+                self._effective_process_max_dimension(),
+                bald_status,
+                runtime_result.get("selected_asset_id"),
+                "latency" if prefer_latency else "balanced",
+            )
+
+        next_frame = VideoFrame.from_ndarray(rendered_bgr, format="bgr24")
         next_frame.pts = frame.pts
         next_frame.time_base = frame.time_base
         return next_frame
@@ -684,6 +1031,7 @@ def attach_rtc_routes(app: FastAPI) -> None:
                     claims=claims,
                     settings=settings,
                     catalog=app.state.catalog,
+                    hair_runtime_manager=app.state.hair_runtime_manager,
                     face_tracker=app.state.face_tracker,
                     bald_processor=getattr(app.state, "bald_processor", None),
                 )

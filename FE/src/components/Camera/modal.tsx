@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 type ApplyStyleModalContent = {
@@ -33,24 +34,34 @@ type ApplyStyleModalProps = {
   open: boolean
   completed?: boolean
   onFinish?: () => void
+  onClose?: () => void
   content?: ApplyStyleModalContent
+  scale?: number
 }
 
 export function ApplyStyleModal({
   open,
   completed = false,
   onFinish,
+  onClose,
   content = mockModalContent,
+  scale = 1,
 }: ApplyStyleModalProps) {
   const [progress, setProgress] = useState(0)
+  const [failed, setFailed] = useState(false)
   const finishedRef = useRef(false)
 
   useEffect(() => {
     if (!open) {
       setProgress(0)
+      setFailed(false)
       finishedRef.current = false
       return
     }
+  }, [open])
+
+  useEffect(() => {
+    if (!open || failed) return
 
     if (completed) {
       const timer = window.setInterval(() => {
@@ -84,26 +95,63 @@ export function ApplyStyleModal({
     return () => {
       window.clearInterval(timer)
     }
-  }, [open, completed, onFinish])
+  }, [open, completed, failed, onFinish])
+
+  useEffect(() => {
+    if (!open || completed || failed || progress < 90) return
+
+    const timer = window.setTimeout(() => {
+      setFailed(true)
+    }, 5000)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [open, completed, failed, progress])
 
   if (!open) return null
 
   return (
-    <div className="w-[380px] max-w-[calc(100%-32px)] rounded-[24px] bg-white p-0 shadow-none">
-      <div className="px-6 py-6">
-        <div className="space-y-5">
-          <h2 className="text-xl font-bold leading-snug text-black">
-            {content.title}
-          </h2>
+    <div
+      className="origin-center"
+      style={{
+        transform: `scale(${scale})`,
+      }}
+    >
+      <div className="relative w-[380px] rounded-[24px] bg-white p-0 shadow-none">
+        {failed && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="모달 닫기"
+            className="absolute right-5 top-5 inline-flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-black"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
 
-          <div className="space-y-1 text-sm leading-snug text-gray-500">
-            {content.tips.map((tip) => (
-              <p key={tip}>{tip}</p>
-            ))}
-          </div>
+        <div className="px-6 py-6">
+          <div className="space-y-5">
+            <h2 className="pr-10 text-xl font-bold leading-snug text-black">
+              {failed ? '적용에 실패했어요.' : content.title}
+            </h2>
 
-          <div className="pt-1">
-            <ProgressBar value={progress} />
+            {failed ? (
+              <div className="space-y-1 text-sm leading-snug text-gray-500">
+                <p>네트워크 상태를 확인한 뒤 다시 시도해 주세요.</p>
+                <p>문제가 계속되면 스타일을 다시 선택해 주세요.</p>
+              </div>
+            ) : (
+              <div className="space-y-1 text-sm leading-snug text-gray-500">
+                {content.tips.map((tip) => (
+                  <p key={tip}>{tip}</p>
+                ))}
+              </div>
+            )}
+
+            <div className="pt-1">
+              <ProgressBar value={progress} />
+            </div>
           </div>
         </div>
       </div>

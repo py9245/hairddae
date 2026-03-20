@@ -59,8 +59,8 @@ app:
     ws-base-url: ${APP_INFERENCE_WS_BASE_URL:/ws/inference/apply}
     rtc-offer-url: ${APP_INFERENCE_RTC_OFFER_URL:/rtc/inference/offer}
     rtc-ice-servers-json: ${APP_INFERENCE_RTC_ICE_SERVERS_JSON:[]}
+    metadata-sync-secret: ${APP_INFERENCE_METADATA_SYNC_SECRET:}
     ws-auth-transport: ${APP_INFERENCE_WS_AUTH_TRANSPORT:sec-websocket-protocol.v1}
-    ws-protocol: ${APP_INFERENCE_WS_PROTOCOL:hairapply.v2}
     audience: ${APP_INFERENCE_AUDIENCE:inference}
     node-id: ${APP_INFERENCE_NODE_ID:infer-a-01}
     connect-ticket-expiry-seconds: ${APP_INFERENCE_CONNECT_TICKET_EXPIRY_SECONDS:30}
@@ -72,11 +72,11 @@ app:
     transform-version: ${APP_INFERENCE_TRANSFORM_VERSION:affine_v1}
   security:
     cors:
-      allowed-origins: ${APP_SECURITY_CORS_ALLOWED_ORIGINS:https://j14m101.p.ssafy.io,https://localhost,https://127.0.0.1,https://localhost:8443,https://127.0.0.1:8443,http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000}
+      allowed-origins: ${APP_SECURITY_CORS_ALLOWED_ORIGINS:https://j14m101.p.ssafy.io,https://hairddae.store,https://localhost,https://127.0.0.1,https://localhost:8443,https://127.0.0.1:8443,http://localhost,http://127.0.0.1,http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000}
     jwt:
       secret: ${APP_SECURITY_JWT_SECRET:hairddae-local-jwt-secret-key-for-dev-only-2026}
       access-token-expiry-minutes: ${APP_SECURITY_JWT_ACCESS_MINUTES:60}
-      refresh-token-expiry-days: ${APP_SECURITY_JWT_REFRESH_DAYS:14}
+      refresh-token-expiry-days: ${APP_SECURITY_JWT_REFRESH_DAYS:1}
       issuer: ${APP_SECURITY_JWT_ISSUER:hairddae}
 
 springdoc:

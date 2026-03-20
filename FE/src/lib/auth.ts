@@ -82,7 +82,7 @@ export async function signUpApi(
     }
   }
 
-  const res = await fetch(`${BaseUrl}/accounts/signin/`, {
+  const res = await fetch(`${BaseUrl}/accounts/signup/`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

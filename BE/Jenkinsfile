@@ -20,6 +20,19 @@ pipeline {
       }
     }
 
+    stage('Run Tests') {
+      steps {
+        sh '''
+          set -eu
+          docker run --rm \
+            -v "$WORKSPACE/BE:/workspace" \
+            -w /workspace \
+            eclipse-temurin:21-jdk \
+            bash -lc './gradlew test'
+        '''
+      }
+    }
+
     stage('Build Images') {
       steps {
         sh '''
@@ -93,71 +106,111 @@ pipeline {
         sh '''
           set -eu
 
-          websocket_headers() {
-            ws_headers_file="$(mktemp)"
-            curl -sS --http1.1 -o /dev/null -D "$ws_headers_file" \
+          if [ -f "$DEPLOY_ROOT/.env" ]; then
+            set -a
+            . "$DEPLOY_ROOT/.env"
+            set +a
+          fi
+
+          PUBLIC_HOST="${APP_PUBLIC_PRIMARY_HOST:-hairddae.store}"
+
+          rtc_offer_headers() {
+            rtc_headers_file="$(mktemp)"
+            curl -sS -o /dev/null -D "$rtc_headers_file" \
               --connect-timeout 2 \
               --max-time 2 \
-              --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
-              -H 'Connection: Upgrade' \
-              -H 'Upgrade: websocket' \
-              -H 'Sec-WebSocket-Version: 13' \
-              -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
-              -H 'Origin: https://j14m101.p.ssafy.io' \
-              https://j14m101.p.ssafy.io/home/hairapply/ >/dev/null 2>&1 || true
-            tr -d '\r' < "$ws_headers_file"
-            rm -f "$ws_headers_file"
+              --resolve "$PUBLIC_HOST:443:127.0.0.1" \
+              -X POST \
+              -H 'Content-Type: application/json' \
+              --data '{}' \
+              "https://$PUBLIC_HOST/rtc/inference/offer" >/dev/null 2>&1 || true
+            tr -d '\r' < "$rtc_headers_file"
+            rm -f "$rtc_headers_file"
           }
 
           static_manifest_headers() {
             curl -fsSI \
-              --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
-              https://j14m101.p.ssafy.io/static/0001/manifests/asset_index_v0.json | tr -d '\r'
+              --resolve "$PUBLIC_HOST:443:127.0.0.1" \
+              "https://$PUBLIC_HOST/static/0001/manifests/asset_index_v0.json" | tr -d '\r'
           }
 
           static_image_headers() {
             curl -fsSI \
-              --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
-              https://j14m101.p.ssafy.io/static/0001/hair_rgba/base_pose_bank__yaw+00_pitch+01_roll-01_frame000922.png | tr -d '\r'
+              --resolve "$PUBLIC_HOST:443:127.0.0.1" \
+              "https://$PUBLIC_HOST/static/0001/hair_rgba/base_pose_bank__yaw+00_pitch+01_roll-01_frame000922.png" | tr -d '\r'
           }
 
           inference_health() {
             curl -fsS \
-              --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
-              https://j14m101.p.ssafy.io/ws/inference/healthz
+              --resolve "$PUBLIC_HOST:443:127.0.0.1" \
+              "https://$PUBLIC_HOST/ws/inference/healthz"
+          }
+
+          swagger_headers() {
+            curl -fsSIL \
+              --resolve "$PUBLIC_HOST:443:127.0.0.1" \
+              "https://$PUBLIC_HOST/api/swagger-ui.html" | tr -d '\r'
+          }
+
+          openapi_body() {
+            curl -fsS \
+              --resolve "$PUBLIC_HOST:443:127.0.0.1" \
+              "https://$PUBLIC_HOST/api/v3/api-docs"
+          }
+
+          normalrank_body() {
+            curl -fsS \
+              --resolve "$PUBLIC_HOST:443:127.0.0.1" \
+              "https://$PUBLIC_HOST/api/home/normalrank"
+          }
+
+          categorylist_body() {
+            curl -fsS \
+              --resolve "$PUBLIC_HOST:443:127.0.0.1" \
+              "https://$PUBLIC_HOST/api/home/categorylist"
           }
 
           dump_diagnostics() {
             docker compose -f "$COMPOSE_FILE" ps || true
             docker compose -f "$COMPOSE_FILE" logs app --tail 200 || true
             docker compose -f "$COMPOSE_FILE" logs nginx --tail 100 || true
-            curl -vk --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
-              https://j14m101.p.ssafy.io/api/health || true
-            curl -vk --resolve j14m101.p.ssafy.io:443:127.0.0.1 \
-              https://j14m101.p.ssafy.io/actuator/health || true
+            curl -vk --resolve "$PUBLIC_HOST:443:127.0.0.1" \
+              "https://$PUBLIC_HOST/api/health" || true
+            curl -vk --resolve "$PUBLIC_HOST:443:127.0.0.1" \
+              "https://$PUBLIC_HOST/actuator/health" || true
           }
 
           for i in $(seq 1 40); do
             READY_LABEL=""
-            if curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/api/health >/dev/null 2>&1; then
+            if curl -fsS --resolve "$PUBLIC_HOST:443:127.0.0.1" "https://$PUBLIC_HOST/api/health" >/dev/null 2>&1; then
               READY_LABEL="api"
-            elif curl -fsS --resolve j14m101.p.ssafy.io:443:127.0.0.1 https://j14m101.p.ssafy.io/actuator/health >/dev/null 2>&1; then
+            elif curl -fsS --resolve "$PUBLIC_HOST:443:127.0.0.1" "https://$PUBLIC_HOST/actuator/health" >/dev/null 2>&1; then
               READY_LABEL="actuator"
             fi
 
             if [ -n "$READY_LABEL" ]; then
-              WEBSOCKET_HEADERS="$(websocket_headers)"
+              RTC_OFFER_HEADERS="$(rtc_offer_headers)"
               STATIC_MANIFEST_HEADERS="$(static_manifest_headers)"
               STATIC_IMAGE_HEADERS="$(static_image_headers)"
+              SWAGGER_HEADERS="$(swagger_headers)"
+              OPENAPI_BODY="$(openapi_body)"
+              NORMALRANK_BODY="$(normalrank_body)"
+              CATEGORYLIST_BODY="$(categorylist_body)"
               INFERENCE_HEALTH="$(inference_health || true)"
 
-              if printf '%s\n' "$WEBSOCKET_HEADERS" | grep -q '^HTTP/1.1 101' \
+              if printf '%s\n' "$RTC_OFFER_HEADERS" | grep -q '^HTTP/2 422\\|^HTTP/1.1 422' \
                 && printf '%s\n' "$STATIC_MANIFEST_HEADERS" | grep -q '^HTTP/2 200\\|^HTTP/1.1 200' \
                 && printf '%s\n' "$STATIC_MANIFEST_HEADERS" | grep -Fq 'cache-control: public, max-age=60' \
                 && printf '%s\n' "$STATIC_IMAGE_HEADERS" | grep -q '^HTTP/2 200\\|^HTTP/1.1 200' \
                 && printf '%s\n' "$STATIC_IMAGE_HEADERS" | grep -Fq 'cache-control: public, max-age=31536000, immutable' \
+                && printf '%s\n' "$SWAGGER_HEADERS" | grep -q '^HTTP/2 200\\|^HTTP/1.1 200' \
+                && printf '%s\n' "$OPENAPI_BODY" | grep -Fq '/api/home/normalrank' \
+                && printf '%s\n' "$OPENAPI_BODY" | grep -Fq '/api/home/categorylist' \
+                && printf '%s\n' "$NORMALRANK_BODY" | grep -Fq '"best"' \
+                && printf '%s\n' "$NORMALRANK_BODY" | grep -Fq '"latest"' \
+                && printf '%s\n' "$CATEGORYLIST_BODY" | grep -Fq '"categoryList"' \
                 && printf '%s\n' "$INFERENCE_HEALTH" | grep -Fq '"status":"ok"'; then
-                echo "health check passed: $READY_LABEL, websocket, static-manifest, static-image, inference-health"
+                echo "health check passed: $READY_LABEL, rtc-offer-proxy, static-manifest, static-image, swagger, openapi, public-api, inference-health"
                 exit 0
               fi
             fi

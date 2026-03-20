@@ -72,10 +72,7 @@ export default function FaceLandmarksView({
     },
   })
 
-  const {
-    remoteVideoRef,
-    hasRemoteVideo,
-  } = useHairRtcDisplay({
+  const { remoteVideoRef, hasRemoteVideo } = useHairRtcDisplay({
     localVideoRef: videoRef,
     remoteStream: hairRtc.remoteStream,
     isRenderReady: hairRtc.isRenderReady,
@@ -195,9 +192,7 @@ export default function FaceLandmarksView({
         return
       }
 
-      onVideoSettingsChange(
-        buildRtcVideoSettings(selectedResolution, nextFps),
-      )
+      onVideoSettingsChange(buildRtcVideoSettings(selectedResolution, nextFps))
     },
     [onVideoSettingsChange, selectedResolution],
   )

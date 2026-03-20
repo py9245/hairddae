@@ -50,12 +50,20 @@ export function ApplyStyleModal({
   const [progress, setProgress] = useState(0)
   const [failed, setFailed] = useState(false)
   const finishedRef = useRef(false)
+  const completionStartRef = useRef<number | null>(null)
+  const progressRef = useRef(0)
+
+  useEffect(() => {
+    progressRef.current = progress
+  }, [progress])
 
   useEffect(() => {
     if (!open) {
       setProgress(0)
       setFailed(false)
       finishedRef.current = false
+      completionStartRef.current = null
+      progressRef.current = 0
       return
     }
   }, [open])
@@ -64,24 +72,42 @@ export function ApplyStyleModal({
     if (!open || failed) return
 
     if (completed) {
-      const timer = window.setInterval(() => {
-        setProgress((prev) => {
-          const next = Math.min(prev + 10, 100)
+      if (completionStartRef.current == null) {
+        completionStartRef.current = performance.now()
+      }
 
-          if (next >= 100 && !finishedRef.current) {
+      const startAt = completionStartRef.current
+      const startProgress = progressRef.current
+      const COMPLETE_DURATION_MS = 480
+      let frameId = 0
+
+      const tick = () => {
+        const elapsed = performance.now() - startAt
+        const ratio = Math.min(elapsed / COMPLETE_DURATION_MS, 1)
+        const next = Math.min(
+          100,
+          startProgress + (100 - startProgress) * ratio,
+        )
+
+        setProgress(next)
+
+        if (ratio >= 1) {
+          if (!finishedRef.current) {
             finishedRef.current = true
-            window.clearInterval(timer)
             window.setTimeout(() => {
               onFinish?.()
             }, 120)
           }
+          return
+        }
 
-          return next
-        })
-      }, 40)
+        frameId = window.requestAnimationFrame(tick)
+      }
+
+      frameId = window.requestAnimationFrame(tick)
 
       return () => {
-        window.clearInterval(timer)
+        window.cancelAnimationFrame(frameId)
       }
     }
 

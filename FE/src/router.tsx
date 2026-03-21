@@ -3,7 +3,6 @@ import {
   createRoute,
   createRouter,
   Outlet,
-  type ParsedLocation,
   redirect,
 } from '@tanstack/react-router'
 import type { ReactElement } from 'react'
@@ -116,22 +115,22 @@ function createProtectedRoute<
     getParentRoute: () => rootRoute,
     path,
     validateSearch,
-    beforeLoad: ({
-      context,
-      location,
-    }: {
-      context: RouterContext
-      location: ParsedLocation
-    }) => {
-      if (!context.auth.isAuthenticated()) {
-        throw redirect({
-          to: '/auth/login',
-          search: {
-            redirect: location.href,
-          },
-        })
-      }
-    },
+    // beforeLoad: ({
+    //   context,
+    //   location,
+    // }: {
+    //   context: RouterContext
+    //   location: ParsedLocation
+    // }) => {
+    //   if (!context.auth.isAuthenticated()) {
+    //     throw redirect({
+    //       to: '/auth/login',
+    //       search: {
+    //         redirect: location.href,
+    //       },
+    //     })
+    //   }
+    // },
     component,
   })
 }

@@ -5,12 +5,14 @@ import type { HairItem } from '@/lib/Camera/HairItem'
 
 const emptyHairItem: HairItem = {
   id: 0,
+  img: '',
   thumb: '',
   label: 'None',
 }
 
 const sampleHairItem: HairItem = {
   id: 1,
+  img: '/hair/hair.png',
   thumb: '/hair/hair.png',
   label: 'Hair 1',
 }

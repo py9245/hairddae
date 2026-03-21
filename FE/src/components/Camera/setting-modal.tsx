@@ -1,6 +1,11 @@
 import { X } from 'lucide-react'
-import type { RtcCaptureResolution } from '@/lib/Camera/rtc-settings'
+
 import { ModalSelect } from '../ui/settings-dropdown'
+
+export type CameraSettingOption = {
+  value: string
+  label: string
+}
 
 type CameraSettingsModalProps = {
   open: boolean
@@ -8,7 +13,7 @@ type CameraSettingsModalProps = {
   onMirroredChange: (value: boolean) => void
   selectedResolutionId: string
   selectedFps: number
-  resolutionOptions: RtcCaptureResolution[]
+  resolutionOptions: CameraSettingOption[]
   fpsOptions: number[]
   onResolutionChange: (value: string) => void
   onFpsChange: (value: string) => void
@@ -29,12 +34,9 @@ export function CameraSettingsModal({
   onClose,
   scale = 1,
 }: CameraSettingsModalProps) {
-  if (!open) return null
-
-  const resolutionSelectOptions = resolutionOptions.map((option) => ({
-    value: option.id,
-    label: option.label,
-  }))
+  if (!open) {
+    return null
+  }
 
   const fpsSelectOptions = fpsOptions.map((fps) => ({
     value: String(fps),
@@ -75,7 +77,7 @@ export function CameraSettingsModal({
               <ModalSelect
                 id="camera-resolution"
                 value={selectedResolutionId}
-                options={resolutionSelectOptions}
+                options={resolutionOptions}
                 onChange={onResolutionChange}
               />
             </div>

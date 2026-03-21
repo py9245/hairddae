@@ -1,75 +1,37 @@
-import { useSearch } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef, useState } from 'react'
-import FaceLandmarksView from '@/components/Camera/face-landmarks-view'
-import { useCroppedRtcStream } from '@/hooks/Camera/useCroppedRtcStream'
+import { useMemo, useRef } from 'react'
+
+import { HairCameraView } from '@/components/Camera/hair-camera-view'
 import { useUserMedia } from '@/hooks/Camera/useUserMedia'
 import {
-  DEFAULT_RTC_VIDEO_SETTINGS,
-  type RtcVideoSettings,
-} from '@/lib/Camera/rtc-settings'
+  CAMERA_SOURCE_FPS,
+  CAMERA_SOURCE_HEIGHT,
+  CAMERA_SOURCE_WIDTH,
+} from '@/lib/Camera/runtime'
 
 export default function Camera() {
-  const { applyLatest } = useSearch({ from: '/camera' })
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const rtcPreviewRef = useRef<HTMLVideoElement | null>(null)
-  const [videoSettings, setVideoSettings] = useState<RtcVideoSettings>(
-    DEFAULT_RTC_VIDEO_SETTINGS,
-  )
 
   const mediaConstraints = useMemo<MediaStreamConstraints>(
     () => ({
       video: {
         facingMode: 'user',
-        width: {
-          ideal: videoSettings.captureWidth,
-          max: videoSettings.captureWidth,
-        },
-        height: {
-          ideal: videoSettings.captureHeight,
-          max: videoSettings.captureHeight,
-        },
-        frameRate: { ideal: videoSettings.fps, max: videoSettings.fps },
+        width: { ideal: CAMERA_SOURCE_WIDTH, max: CAMERA_SOURCE_WIDTH },
+        height: { ideal: CAMERA_SOURCE_HEIGHT, max: CAMERA_SOURCE_HEIGHT },
+        frameRate: { ideal: CAMERA_SOURCE_FPS, max: CAMERA_SOURCE_FPS },
       },
       audio: false,
     }),
-    [videoSettings],
+    [],
   )
 
   const cam = useUserMedia({ videoRef, constraints: mediaConstraints })
 
-  const rtcStream = useCroppedRtcStream({
-    sourceStream: cam.stream,
-    targetAspect: 9 / 20,
-    outputWidth: videoSettings.outputWidth,
-    fps: videoSettings.fps,
-  })
-
-  useEffect(() => {
-    const preview = rtcPreviewRef.current
-    if (!preview) return
-
-    preview.srcObject = rtcStream ?? null
-
-    return () => {
-      if (preview.srcObject === rtcStream) {
-        preview.srcObject = null
-      }
-    }
-  }, [rtcStream])
-
   return (
-    <div>
-      <FaceLandmarksView
-        autoApplyLatest={applyLatest ?? false}
-        stream={rtcStream}
-        videoRef={videoRef}
-        canvasRef={canvasRef}
-        overlayCanvasRef={overlayCanvasRef}
-        videoSettings={videoSettings}
-        onVideoSettingsChange={setVideoSettings}
-      />
-    </div>
+    <HairCameraView
+      videoRef={videoRef}
+      cameraStream={cam.stream}
+      cameraReady={cam.ready}
+      cameraError={cam.error}
+    />
   )
 }

@@ -46,6 +46,7 @@ public class HomeService {
     private final InferenceSessionBootstrapFactory inferenceSessionBootstrapFactory;
     private final AppHairProperties appHairProperties;
     private final ObjectMapper objectMapper;
+    private final HairStaticUrlResolver hairStaticUrlResolver;
 
     public HomeService(
             UserAccountRepository userAccountRepository,
@@ -55,7 +56,8 @@ public class HomeService {
             ObjectProvider<HairJpaRepository> hairJpaRepositoryProvider,
             InferenceSessionBootstrapFactory inferenceSessionBootstrapFactory,
             AppHairProperties appHairProperties,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper,
+            HairStaticUrlResolver hairStaticUrlResolver) {
         this.userAccountRepository = userAccountRepository;
         this.sampleHairRepository = sampleHairRepository;
         this.hairApplyJobRepository = hairApplyJobRepository;
@@ -64,6 +66,7 @@ public class HomeService {
         this.inferenceSessionBootstrapFactory = inferenceSessionBootstrapFactory;
         this.appHairProperties = appHairProperties;
         this.objectMapper = objectMapper;
+        this.hairStaticUrlResolver = hairStaticUrlResolver;
     }
 
     public CustomRankResponse getCustomRank(String userId, int size) {
@@ -195,12 +198,8 @@ public class HomeService {
 
     private ResolvedHairBootstrap toResolvedHairBootstrap(HairEntity hair) {
         String datasetCode = StringUtils.hasText(hair.getDatasetCode()) ? hair.getDatasetCode() : "0001";
-        String baseUrl = StringUtils.hasText(hair.getDatasetRootUrl())
-                ? trimTrailingSlash(hair.getDatasetRootUrl())
-                : trimTrailingSlash(appHairProperties.staticBaseUrl()) + "/" + datasetCode;
-        String assetIndexUrl = StringUtils.hasText(hair.getAssetIndexUrl())
-                ? hair.getAssetIndexUrl()
-                : "/api/hairs/%d/asset-index".formatted(hair.getId());
+        String baseUrl = hairStaticUrlResolver.resolveDatasetRootUrl(hair);
+        String assetIndexUrl = hairStaticUrlResolver.resolveAssetIndexUrl(hair);
         List<String> preloadAssetIds = loadPreloadAssetIds(datasetCode, hair.getRepresentativeAssetId());
 
         return new ResolvedHairBootstrap(
@@ -218,7 +217,7 @@ public class HomeService {
                 hairId,
                 datasetCode,
                 null,
-                trimTrailingSlash(appHairProperties.staticBaseUrl()) + "/" + datasetCode,
+                hairStaticUrlResolver.resolveDatasetRootUrl(datasetCode, null),
                 "/api/hairs/%d/asset-index".formatted(hairId),
                 loadPreloadAssetIds(datasetCode, null));
     }
@@ -274,10 +273,6 @@ public class HomeService {
         return Math.abs(candidate.yaw1deg() - representative.yaw1deg()) * 2
                 + Math.abs(candidate.pitch1deg() - representative.pitch1deg())
                 + Math.abs(candidate.roll1deg() - representative.roll1deg());
-    }
-
-    private String trimTrailingSlash(String value) {
-        return value != null && value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
     }
 
     private void verifyUserExists(String userId) {

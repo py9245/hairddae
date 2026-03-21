@@ -29,6 +29,22 @@ public record HairMetadataSyncRequest(
         @Size(max = 5000, message = "description은 5000자 이하여야 합니다.")
         String description,
 
+        @JsonProperty("dataset_root_url")
+        @Size(max = 500, message = "dataset_root_url은 500자 이하여야 합니다.")
+        String datasetRootUrl,
+
+        @JsonProperty("asset_index_url")
+        @Size(max = 500, message = "asset_index_url은 500자 이하여야 합니다.")
+        String assetIndexUrl,
+
+        @JsonProperty("representative_asset_id")
+        @Size(max = 255, message = "representative_asset_id는 255자 이하여야 합니다.")
+        String representativeAssetId,
+
+        @JsonProperty("preview_image_url")
+        @Size(max = 500, message = "preview_image_url은 500자 이하여야 합니다.")
+        String previewImageUrl,
+
         Boolean active
 ) {
 }

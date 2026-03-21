@@ -5,8 +5,8 @@ type HairStyleCardProps = {
   hairId: number
   imageSrc: string
   imageAlt: string
-  title: string
-  subtitle: string
+  hairName: string
+  hookText: string
   priority?: boolean
   liked?: boolean
   className?: string
@@ -18,8 +18,8 @@ export function HairStyleCard({
   hairId,
   imageSrc,
   imageAlt,
-  title,
-  subtitle,
+  hairName,
+  hookText,
   priority = false,
   liked = false,
   className,
@@ -65,12 +65,12 @@ export function HairStyleCard({
         <div className="absolute inset-x-0 bottom-0 flex flex-col justify-end bg-gradient-to-t from-black/80 via-black/30 to-transparent p-[10px] pt-[40px]">
           <div className="flex flex-col gap-[10px]">
             <div className="flex flex-col items-start text-white">
-              <h3 className="w-full whitespace-pre-line text-[19px] leading-[1.2] font-bold tracking-tight drop-shadow-md">
-                {title}
-              </h3>
-              <p className="mt-[2px] text-[11px] font-medium text-white/90 drop-shadow-sm">
-                {subtitle}
+              <p className="text-[11px] font-medium text-white/90 drop-shadow-sm">
+                {hookText}
               </p>
+              <h3 className="mt-[2px] w-full whitespace-pre-line text-[19px] leading-[1.2] font-bold tracking-tight drop-shadow-md">
+                {hairName}
+              </h3>
             </div>
 
             <div className="flex items-center justify-start">

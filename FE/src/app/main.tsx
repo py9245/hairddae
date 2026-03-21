@@ -196,8 +196,8 @@ export default function Main() {
                 hairId={card.hairId}
                 imageSrc={card.imageSrc}
                 imageAlt={card.imageAlt}
-                title={card.title}
-                subtitle={card.subtitle}
+                hairName={card.title}
+                hookText={card.subtitle}
                 liked={likedIds[card.id] ?? false}
                 className="w-full"
                 onLikeToggle={() =>

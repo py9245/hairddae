@@ -27,8 +27,8 @@ const baseArgs = {
   hairId: 1,
   imageSrc: '/hiar-style/style-01-image.png',
   imageAlt: '레이어드 컷 헤어 스타일 예시',
-  title: '우주 킹왕짱\n멋있는 헤어',
-  subtitle: '레이어드 컷',
+  hairName: '우주 킹왕짱\n멋있는 헤어',
+  hookText: '레이어드 컷',
 }
 
 export const Default: Story = {

@@ -50,6 +50,15 @@ public class HairsController {
         return ResponseEntity.ok(hairCatalogService.getHairList(userId(authentication), page, size, category, sort));
     }
 
+    @GetMapping({"/cameralist", "/cameralist/"})
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<HairListResponse> cameraList(
+            Authentication authentication,
+            @RequestParam(defaultValue = "0") @Min(0) int page,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size) {
+        return ResponseEntity.ok(hairCatalogService.getCameraList(authentication.getName(), page, size));
+    }
+
     @GetMapping("/recommend")
     public ResponseEntity<HairRecommendResponse> recommend(
             @RequestParam(required = false) Long hairId,

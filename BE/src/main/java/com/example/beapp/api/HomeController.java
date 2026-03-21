@@ -13,6 +13,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.beapp.api.dto.home.CategoryCardListResponse;
 import com.example.beapp.api.dto.home.CategoryListResponse;
 import com.example.beapp.api.dto.home.CustomRankResponse;
+import com.example.beapp.api.dto.home.HairClickRequest;
+import com.example.beapp.api.dto.home.HairClickResponse;
 import com.example.beapp.api.dto.home.HairApplyResumeV2Request;
 import com.example.beapp.api.dto.home.HairApplyStartV2Request;
 import com.example.beapp.api.dto.home.HairApplyV2Response;
@@ -87,6 +89,14 @@ public class HomeController {
             return ResponseEntity.ok(RecodeHairResponse.ok());
         }
         return ResponseEntity.ok(homeService.recordHair(request, authentication.getName()));
+    }
+
+    @PostMapping({"/hairclick", "/hairclick/"})
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<HairClickResponse> hairClick(
+            Authentication authentication,
+            @Valid @RequestBody HairClickRequest request) {
+        return ResponseEntity.ok(homeService.recordAppliedHair(request, authentication.getName()));
     }
 
     private String resolveCameraUserId(Authentication authentication, String deviceId) {

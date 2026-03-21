@@ -73,6 +73,9 @@ public class SecurityConfig {
                                 "/api/accounts/refreshToken",
                                 "/api/accounts/refreshToken/").permitAll()
                         .requestMatchers(HttpMethod.GET,
+                                "/api/hairs/cameralist",
+                                "/api/hairs/cameralist/").authenticated()
+                        .requestMatchers(HttpMethod.GET,
                                 "/api/hairs",
                                 "/api/hairs/",
                                 "/api/hairs/recommend",
@@ -93,6 +96,9 @@ public class SecurityConfig {
                                 "/api/home/categorylist/",
                                 "/api/home/categorycardlist",
                                 "/api/home/categorycardlist/").permitAll()
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/home/hairclick",
+                                "/api/home/hairclick/").authenticated()
                         .requestMatchers(HttpMethod.POST,
                                 "/api/home/hairapplybootstrap",
                                 "/api/home/hairapplybootstrap/",

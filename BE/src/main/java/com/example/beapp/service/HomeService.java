@@ -15,6 +15,8 @@ import org.springframework.util.StringUtils;
 import com.example.beapp.api.dto.home.CategoryCardListResponse;
 import com.example.beapp.api.dto.home.CategoryListResponse;
 import com.example.beapp.api.dto.home.CustomRankResponse;
+import com.example.beapp.api.dto.home.HairClickRequest;
+import com.example.beapp.api.dto.home.HairClickResponse;
 import com.example.beapp.api.dto.home.HairApplyResumeV2Request;
 import com.example.beapp.api.dto.home.HairApplyStartV2Request;
 import com.example.beapp.api.dto.home.HairApplyV2Response;
@@ -134,6 +136,15 @@ public class HomeService {
         }
         hairCatalogService.recordHistory(userId, request.hairID(), request.viewSec());
         return RecodeHairResponse.ok();
+    }
+
+    public HairClickResponse recordAppliedHair(HairClickRequest request, String userId) {
+        verifyUserExists(userId);
+        if (hairCatalogService == null) {
+            return HairClickResponse.ok(request.hairId());
+        }
+        hairCatalogService.recordHistory(userId, request.hairId(), request.viewSec());
+        return HairClickResponse.ok(request.hairId());
     }
 
     private UUID parseJobId(String applySessionId) {

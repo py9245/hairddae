@@ -147,6 +147,12 @@ public class HairCatalogService {
     }
 
     @Transactional(readOnly = true)
+    public HairListResponse getCameraList(String userId, int page, int size) {
+        List<HairCard> items = buildRecentAppliedCards(userId, 0);
+        return HairListResponse.ok(items.size(), paginate(items, page, size));
+    }
+
+    @Transactional(readOnly = true)
     public HairDetailResponse getHairDetail(String userId, Long hairId) {
         HairEntity hair = getRequiredHair(hairId);
         boolean liked = StringUtils.hasText(userId) && hairLikeJpaRepository.existsByUser_UserIdAndHair_Id(userId, hairId);
@@ -232,21 +238,7 @@ public class HairCatalogService {
 
     @Transactional(readOnly = true)
     public List<HairCard> getRecentAppliedCards(String userId, int minViewSec, int page, int size) {
-        List<HistoryEntity> histories = historyJpaRepository.findRecentByUserIdWithHair(userId, minViewSec);
-        LinkedHashMap<Long, HistoryEntity> deduplicated = new LinkedHashMap<>();
-        for (HistoryEntity history : histories) {
-            deduplicated.putIfAbsent(history.getHair().getId(), history);
-        }
-
-        List<HairEntity> hairs = deduplicated.values().stream()
-                .map(HistoryEntity::getHair)
-                .toList();
-        Set<Long> likedHairIds = resolveLikedHairIds(userId, hairs);
-
-        List<HairCard> items = deduplicated.values().stream()
-                .map(history -> toHairCard(history.getHair(), likedHairIds.contains(history.getHair().getId())))
-                .toList();
-        return paginate(items, page, size);
+        return paginate(buildRecentAppliedCards(userId, minViewSec), page, size);
     }
 
     private HairCard toHairCard(HairEntity hair, boolean liked) {
@@ -356,6 +348,23 @@ public class HairCatalogService {
 
     private int safeCount(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    private List<HairCard> buildRecentAppliedCards(String userId, int minViewSec) {
+        List<HistoryEntity> histories = historyJpaRepository.findRecentByUserIdWithHair(userId, minViewSec);
+        LinkedHashMap<Long, HistoryEntity> deduplicated = new LinkedHashMap<>();
+        for (HistoryEntity history : histories) {
+            deduplicated.putIfAbsent(history.getHair().getId(), history);
+        }
+
+        List<HairEntity> hairs = deduplicated.values().stream()
+                .map(HistoryEntity::getHair)
+                .toList();
+        Set<Long> likedHairIds = resolveLikedHairIds(userId, hairs);
+
+        return deduplicated.values().stream()
+                .map(history -> toHairCard(history.getHair(), likedHairIds.contains(history.getHair().getId())))
+                .toList();
     }
 
     private <T> List<T> paginate(List<T> values, int page, int size) {

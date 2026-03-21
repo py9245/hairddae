@@ -3,10 +3,10 @@ import { ChevronDown } from 'lucide-react'
 import { useState } from 'react'
 
 import { Header } from '@/components/header'
+import { CustomRankBanner } from '@/components/home/custom-rank-banner'
 import { CategoryCard } from '@/components/ui/category-card'
 import { HairStyleCard } from '@/components/ui/hair-style-card'
 import { SortToggle } from '@/components/ui/sort-toggle'
-import { StyleAdsCard } from '@/components/ui/style-ads-card'
 import { postHairClick } from '@/lib/hair-click'
 
 type MainCategory = {
@@ -92,7 +92,7 @@ const recommendations: RecommendationCard[] = [
 
 export default function Main() {
   const navigate = useNavigate()
-  const [heroLiked, setHeroLiked] = useState(true)
+
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({
     'style-1': true,
     'style-2': true,
@@ -139,15 +139,7 @@ export default function Main() {
           className="px-0 pb-3 pt-2"
         />
 
-        <StyleAdsCard
-          hairImgpath="/hiar-style/style-02-image.png"
-          hairSlug="봄의 시작을 알리는 여신머리"
-          hairName="레이어드컷"
-          liked={heroLiked}
-          className="w-full"
-          onLikeToggle={() => setHeroLiked((prev) => !prev)}
-          onApply={() => {}}
-        />
+        <CustomRankBanner onApply={handleApply} />
 
         <section className="mt-4 flex items-start gap-2">
           <div className="min-w-0 flex-1 overflow-x-auto pb-1">

@@ -7,13 +7,9 @@ import { CustomRankBanner } from '@/components/home/custom-rank-banner'
 import { CategoryCard } from '@/components/ui/category-card'
 import { HairStyleCard } from '@/components/ui/hair-style-card'
 import { SortToggle } from '@/components/ui/sort-toggle'
+import { useMe } from '@/hooks/Auth/useMe'
+import { useCategoryList } from '@/hooks/Home/useCategoryList'
 import { postHairClick } from '@/lib/hair-click'
-
-type MainCategory = {
-  id: string
-  label: string
-  imageSrc: string
-}
 
 type RecommendationCard = {
   id: string
@@ -33,15 +29,6 @@ const sortOptions = [
   { value: 'popular', label: '인기순' },
   { value: 'latest', label: '최신순' },
 ] as const
-
-const categories: MainCategory[] = [
-  { id: 'short', label: '단발', imageSrc: '/hiar-style/style-01-image.png' },
-  { id: 'layered', label: '숏컷', imageSrc: '/hiar-style/style-02-image.png' },
-  { id: 'bob', label: '단발펌', imageSrc: '/hiar-style/style-01-image.png' },
-  { id: 'perm', label: '숏컷', imageSrc: '/hiar-style/style-02-image.png' },
-  { id: 'cut', label: '단발', imageSrc: '/hiar-style/style-01-image.png' },
-  { id: 'trend', label: '숏컷', imageSrc: '/hiar-style/style-02-image.png' },
-]
 
 const recommendations: RecommendationCard[] = [
   {
@@ -92,6 +79,10 @@ const recommendations: RecommendationCard[] = [
 
 export default function Main() {
   const navigate = useNavigate()
+  const { data: meData } = useMe()
+
+  const { data: categoryData, isLoading: isCategoryLoading } = useCategoryList()
+  const categories = categoryData?.categoryList || []
 
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({
     'style-1': true,
@@ -144,24 +135,34 @@ export default function Main() {
         <section className="mt-4 flex items-start gap-2">
           <div className="min-w-0 flex-1 overflow-x-auto pb-1">
             <div className="flex min-w-max items-start gap-3">
-              {categories.map((category) => (
-                <button
-                  key={category.id}
-                  type="button"
-                  className="shrink-0"
-                  onClick={() => {
-                    navigate({
-                      to: '/hairlist',
-                      search: { category: category.id },
-                    })
-                  }}
-                >
-                  <CategoryCard
-                    label={category.label}
-                    imageSrc={category.imageSrc}
-                  />
-                </button>
-              ))}
+              {isCategoryLoading
+                ? [1, 2, 3, 4, 5, 6].map((key) => (
+                    <div
+                      key={key}
+                      className="flex w-[44px] shrink-0 flex-col items-center gap-2"
+                    >
+                      <div className="h-[44px] w-[44px] rounded-[8px] border border-transparent bg-neutral-200 animate-pulse" />
+                      <div className="h-3 w-8 rounded-sm bg-neutral-200 animate-pulse" />
+                    </div>
+                  ))
+                : categories.map((category) => (
+                    <button
+                      key={category.categoryID}
+                      type="button"
+                      className="shrink-0"
+                      onClick={() => {
+                        navigate({
+                          to: '/hairlist',
+                          search: { category: category.categoryID },
+                        })
+                      }}
+                    >
+                      <CategoryCard
+                        label={category.categoryName}
+                        imageSrc={category.image}
+                      />
+                    </button>
+                  ))}
             </div>
           </div>
 
@@ -177,7 +178,8 @@ export default function Main() {
         <section className="mt-4">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-24 leading-none font-extrabold tracking-[-0.05em] text-text-warm-600">
-              mezinii를 위한 추천 헤어
+              {meData?.userID ? `${meData.userID}님` : '회원님'}을 위한 추천
+              헤어
             </h2>
 
             <SortToggle

@@ -66,7 +66,7 @@ export type MeResponse = {
   gender: string | null
 }
 
-async function fetchMe(): Promise<MeResponse | null> {
+export async function fetchMe(): Promise<MeResponse | null> {
   const response = await fetch(`${BaseUrl}/me/`, {
     credentials: 'include',
   })

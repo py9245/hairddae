@@ -13,10 +13,10 @@ import Camera from '@/app/camera'
 import HairList from '@/app/hairlist'
 import Login from '@/app/login'
 import Main from '@/app/main'
+import MyPage from '@/app/mypage'
 import SignUp from '@/app/sign-up'
 import Splash from '@/app/splash'
 import { BottomNav } from '@/components/bottom-nav'
-import { Header } from '@/components/header'
 import { NotFoundPage } from '@/components/not-found-page'
 import { type AuthStore, auth } from '@/lib/auth'
 
@@ -156,12 +156,4 @@ function AuthLayout() {
 
 function MainPage() {
   return <Main />
-}
-
-function MyPage() {
-  return (
-    <div className="app-frame-page bg-bg-primary">
-      <Header label="내정보" />
-    </div>
-  )
 }

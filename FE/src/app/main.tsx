@@ -7,6 +7,7 @@ import { CategoryCard } from '@/components/ui/category-card'
 import { HairStyleCard } from '@/components/ui/hair-style-card'
 import { SortToggle } from '@/components/ui/sort-toggle'
 import { StyleAdsCard } from '@/components/ui/style-ads-card'
+import { postHairClick } from '@/lib/hair-click'
 
 type MainCategory = {
   id: string
@@ -16,6 +17,7 @@ type MainCategory = {
 
 type RecommendationCard = {
   id: string
+  hairId: number
   title: string
   subtitle: string
   imageSrc: string
@@ -44,6 +46,7 @@ const categories: MainCategory[] = [
 const recommendations: RecommendationCard[] = [
   {
     id: 'style-1',
+    hairId: 1,
     title: '트렌디한\n쇼트 컷',
     subtitle: '숏컷',
     imageSrc: '/hiar-style/style-01-image.png',
@@ -54,6 +57,7 @@ const recommendations: RecommendationCard[] = [
   },
   {
     id: 'style-2',
+    hairId: 2,
     title: '우아한\n레이어드 헤어',
     subtitle: '레이어드 컷',
     imageSrc: '/hiar-style/style-02-image.png',
@@ -64,6 +68,7 @@ const recommendations: RecommendationCard[] = [
   },
   {
     id: 'style-3',
+    hairId: 3,
     title: '러블리\n단발 펌',
     subtitle: '단발펌',
     imageSrc: '/hiar-style/style-01-image.png',
@@ -74,6 +79,7 @@ const recommendations: RecommendationCard[] = [
   },
   {
     id: 'style-4',
+    hairId: 4,
     title: '시크한\n숏컷 스타일',
     subtitle: '숏컷',
     imageSrc: '/hiar-style/style-02-image.png',
@@ -104,6 +110,19 @@ export default function Main() {
 
     return left.rank - right.rank
   })
+
+  async function handleApply(hairId: number) {
+    try {
+      await postHairClick(hairId)
+    } catch (error) {
+      console.error('hair click failed:', error)
+    }
+
+    await navigate({
+      to: '/camera',
+      search: { applyLatest: true },
+    })
+  }
 
   return (
     <main className="app-frame-page h-full overflow-y-auto bg-neutral-500 pb-[108px] text-text-warm-500">
@@ -174,6 +193,7 @@ export default function Main() {
             {sortedRecommendations.map((card) => (
               <HairStyleCard
                 key={card.id}
+                hairId={card.hairId}
                 imageSrc={card.imageSrc}
                 imageAlt={card.imageAlt}
                 title={card.title}
@@ -186,7 +206,7 @@ export default function Main() {
                     [card.id]: !prev[card.id],
                   }))
                 }
-                onApply={() => {}}
+                onApply={handleApply}
               />
             ))}
           </div>

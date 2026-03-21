@@ -1,0 +1,15 @@
+services:
+  inference:
+    image: ${INFERENCE_IMAGE:-inference-app:local}
+    container_name: inference-inference-1
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - .env.server
+    environment:
+      INFERENCE_STATIC_ROOT: /srv/static
+      INFERENCE_FACE_LANDMARKER_MODEL_PATH: /app/models/face_landmarker.task
+      INFERENCE_HAIR_SEGMENTER_MODEL_PATH: /app/models/hair_segmenter.tflite
+    volumes:
+      - ../static:/srv/static:ro
+    gpus: all

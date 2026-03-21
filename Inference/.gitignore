@@ -5,4 +5,5 @@ __pycache__/
 .mypy_cache/
 .coverage
 htmlcov/
+performance
 .env.server

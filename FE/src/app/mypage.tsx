@@ -15,11 +15,11 @@ export default function MyPage() {
   return (
     <main className="app-frame-page bg-bg-primary px-4 pt-3">
       <div className="mx-auto flex w-full max-w-[390px] flex-col">
-        <Header label="?댁젙蹂?" />
+        <Header label="내정보" />
 
         <div className="mt-8 rounded-3xl bg-card p-6">
           <Button variant="logout" size="full" onClick={handleLogout}>
-            濡쒓렇?꾩썐
+            로그아웃
           </Button>
         </div>
       </div>

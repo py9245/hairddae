@@ -115,8 +115,8 @@ export default function HairList() {
                   hairId={style.hairID}
                   imageSrc={style.image}
                   imageAlt={style.hairName}
-                  title={style.hairName}
-                  subtitle={style.hookText}
+                  hairName={style.hairName}
+                  hookText={style.hookText}
                   liked={likedIds[style.hairID.toString()] ?? style.liked}
                   className="w-full"
                   onLikeToggle={() =>

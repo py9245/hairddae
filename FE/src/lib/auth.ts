@@ -158,8 +158,6 @@ export const auth = {
       console.error('Failed to call logout API.', error)
     } finally {
       await clearClientCookies()
-      window.localStorage.clear()
-      window.sessionStorage.clear()
       setAuthStatus('anonymous')
     }
   },

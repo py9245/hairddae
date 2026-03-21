@@ -95,3 +95,24 @@ export async function getCategoryCardList(
 
   return res.json()
 }
+
+export type NormalRankResponse = {
+  code: number
+  message: string
+  best: HairCardItem[]
+  latest: HairCardItem[]
+}
+
+export async function getNormalRank(): Promise<NormalRankResponse> {
+  const res = await fetch(buildApiUrl('/home/normalrank'), {
+    method: 'GET',
+    credentials: 'include',
+  })
+
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => null)
+    throw new Error(errorBody?.message ?? 'Failed to fetch normal rank list')
+  }
+
+  return res.json()
+}

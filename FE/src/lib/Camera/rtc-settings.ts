@@ -20,7 +20,7 @@ export const RTC_CAPTURE_RESOLUTION_OPTIONS: RtcCaptureResolution[] = [
   { id: 'high', label: '720x1600', width: 720, height: 1600 },
 ]
 
-export const RTC_FPS_OPTIONS = [10] as const
+export const RTC_FPS_OPTIONS = [10, 15] as const
 
 const DEFAULT_RESOLUTION = RTC_CAPTURE_RESOLUTION_OPTIONS[0]
 const DEFAULT_FPS = 10

@@ -1,4 +1,5 @@
 import { X } from 'lucide-react'
+import { ModalSelect } from '../ui/settings-dropdown'
 
 import type { RtcCaptureResolution } from '@/lib/Camera/rtc-settings'
 
@@ -31,6 +32,16 @@ export function CameraSettingsModal({
 }: CameraSettingsModalProps) {
   if (!open) return null
 
+  const resolutionSelectOptions = resolutionOptions.map((option) => ({
+    value: option.id,
+    label: option.label,
+  }))
+
+  const fpsSelectOptions = fpsOptions.map((fps) => ({
+    value: String(fps),
+    label: `${fps} FPS`,
+  }))
+
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
       <div
@@ -61,24 +72,13 @@ export function CameraSettingsModal({
               >
                 해상도
               </label>
-              <select
+
+              <ModalSelect
                 id="camera-resolution"
                 value={selectedResolutionId}
-                onChange={(event) => {
-                  onResolutionChange(event.target.value)
-                }}
-                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white outline-none transition focus:border-white/40"
-              >
-                {resolutionOptions.map((option) => (
-                  <option
-                    key={option.id}
-                    value={option.id}
-                    className="text-black"
-                  >
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                options={resolutionSelectOptions}
+                onChange={onResolutionChange}
+              />
             </div>
 
             <div className="space-y-2">
@@ -88,28 +88,18 @@ export function CameraSettingsModal({
               >
                 FPS
               </label>
-              <select
+
+              <ModalSelect
                 id="camera-fps"
                 value={String(selectedFps)}
-                onChange={(event) => {
-                  onFpsChange(event.target.value)
-                }}
-                className="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-sm text-white outline-none transition focus:border-white/40"
-              >
-                {fpsOptions.map((fps) => (
-                  <option key={fps} value={fps} className="text-black">
-                    {fps} FPS
-                  </option>
-                ))}
-              </select>
+                options={fpsSelectOptions}
+                onChange={onFpsChange}
+              />
             </div>
 
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0 pr-2">
                 <p className="text-base font-medium text-white">좌우 반전</p>
-                <p className="mt-1 break-keep text-sm leading-snug text-white/65">
-                  카메라 화면을 거울처럼 보여줍니다.
-                </p>
               </div>
 
               <button

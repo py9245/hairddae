@@ -9,19 +9,8 @@ import { HairStyleCard } from '@/components/ui/hair-style-card'
 import { SortToggle } from '@/components/ui/sort-toggle'
 import { useMe } from '@/hooks/Auth/useMe'
 import { useCategoryList } from '@/hooks/Home/useCategoryList'
+import { useNormalRank } from '@/hooks/Home/useNormalRank'
 import { postHairClick } from '@/lib/hair-click'
-
-type RecommendationCard = {
-  id: string
-  hairId: number
-  title: string
-  subtitle: string
-  imageSrc: string
-  imageAlt: string
-  rank: number
-  createdAt: string
-  categoryId: string
-}
 
 type SortValue = 'popular' | 'latest'
 
@@ -30,56 +19,11 @@ const sortOptions = [
   { value: 'latest', label: '최신순' },
 ] as const
 
-const recommendations: RecommendationCard[] = [
-  {
-    id: 'style-1',
-    hairId: 1,
-    title: '트렌디한\n쇼트 컷',
-    subtitle: '숏컷',
-    imageSrc: '/hiar-style/style-01-image.png',
-    imageAlt: '트렌디한 쇼트 컷 예시',
-    rank: 2,
-    createdAt: '2026-03-19T09:00:00+09:00',
-    categoryId: 'short',
-  },
-  {
-    id: 'style-2',
-    hairId: 2,
-    title: '우아한\n레이어드 헤어',
-    subtitle: '레이어드 컷',
-    imageSrc: '/hiar-style/style-02-image.png',
-    imageAlt: '우아한 레이어드 헤어 예시',
-    rank: 1,
-    createdAt: '2026-03-18T09:00:00+09:00',
-    categoryId: 'layered',
-  },
-  {
-    id: 'style-3',
-    hairId: 3,
-    title: '러블리\n단발 펌',
-    subtitle: '단발펌',
-    imageSrc: '/hiar-style/style-01-image.png',
-    imageAlt: '러블리 단발 펌 예시',
-    rank: 4,
-    createdAt: '2026-03-17T09:00:00+09:00',
-    categoryId: 'bob',
-  },
-  {
-    id: 'style-4',
-    hairId: 4,
-    title: '시크한\n숏컷 스타일',
-    subtitle: '숏컷',
-    imageSrc: '/hiar-style/style-02-image.png',
-    imageAlt: '시크한 숏컷 스타일 예시',
-    rank: 3,
-    createdAt: '2026-03-20T09:00:00+09:00',
-    categoryId: 'short',
-  },
-]
-
 export default function Main() {
   const navigate = useNavigate()
   const { data: meData } = useMe()
+  const { data: normalRankData, isLoading: isNormalRankLoading } =
+    useNormalRank()
 
   const { data: categoryData, isLoading: isCategoryLoading } = useCategoryList()
   const categories = categoryData?.categoryList || []
@@ -92,15 +36,10 @@ export default function Main() {
   })
   const [sortValue, setSortValue] = useState<SortValue>('popular')
 
-  const sortedRecommendations = [...recommendations].sort((left, right) => {
-    if (sortValue === 'latest') {
-      return (
-        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()
-      )
-    }
-
-    return left.rank - right.rank
-  })
+  const sortedRecommendations =
+    sortValue === 'latest'
+      ? (normalRankData?.latest ?? [])
+      : (normalRankData?.best ?? [])
 
   async function handleApply(hairId: number) {
     let targetHairId = hairId
@@ -189,27 +128,40 @@ export default function Main() {
             />
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4">
-            {sortedRecommendations.map((card) => (
-              <HairStyleCard
-                key={card.id}
-                hairId={card.hairId}
-                imageSrc={card.imageSrc}
-                imageAlt={card.imageAlt}
-                hairName={card.title}
-                hookText={card.subtitle}
-                liked={likedIds[card.id] ?? false}
-                className="w-full"
-                onLikeToggle={() =>
-                  setLikedIds((prev) => ({
-                    ...prev,
-                    [card.id]: !prev[card.id],
-                  }))
-                }
-                onApply={handleApply}
-              />
-            ))}
-          </div>
+          {isNormalRankLoading ? (
+            <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+              {[1, 2, 3, 4].map((key) => (
+                <div
+                  key={key}
+                  className="h-[240px] w-full rounded-xl bg-neutral-200 animate-pulse"
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4">
+              {sortedRecommendations.map((card) => (
+                <HairStyleCard
+                  key={card.hairID}
+                  hairId={card.hairID}
+                  imageSrc={card.image}
+                  imageAlt={card.hairName}
+                  hairName={card.hairName}
+                  hookText={card.hookText}
+                  liked={likedIds[card.hairID.toString()] ?? card.liked}
+                  className="w-full"
+                  onLikeToggle={() =>
+                    setLikedIds((prev) => ({
+                      ...prev,
+                      [card.hairID.toString()]: !(
+                        prev[card.hairID.toString()] ?? card.liked
+                      ),
+                    }))
+                  }
+                  onApply={handleApply}
+                />
+              ))}
+            </div>
+          )}
         </section>
       </div>
     </main>

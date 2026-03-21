@@ -25,6 +25,7 @@ import {
 } from '@/lib/Camera/rtc-settings'
 
 type FaceLandmarksViewProps = {
+  autoApplyLatest?: boolean
   stream: MediaStream | null
   videoRef: RefObject<HTMLVideoElement | null>
   canvasRef: RefObject<HTMLCanvasElement | null>
@@ -37,6 +38,7 @@ const BASE_UI_WIDTH = 430
 const BASE_UI_HEIGHT = (BASE_UI_WIDTH * 20) / 9
 
 export default function FaceLandmarksView({
+  autoApplyLatest = false,
   stream,
   videoRef,
   canvasRef,
@@ -46,6 +48,7 @@ export default function FaceLandmarksView({
 }: FaceLandmarksViewProps) {
   const router = useRouter()
   const wrapRef = useRef<HTMLDivElement | null>(null)
+  const hasAutoAppliedLatestRef = useRef(false)
 
   const [uiScale, setUiScale] = useState(1)
   const [selectedHairId, setSelectedHairId] = useState(0)
@@ -54,6 +57,7 @@ export default function FaceLandmarksView({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [isMirrored, setIsMirrored] = useState(true)
   const [hairItems, setHairItems] = useState<HairItem[]>(HAIR_ITEMS)
+  const [isHairItemsLoading, setIsHairItemsLoading] = useState(true)
   const [isFrameFrozen, setIsFrameFrozen] = useState(false)
 
   const displayHairId = pendingHairId ?? selectedHairId
@@ -83,21 +87,48 @@ export default function FaceLandmarksView({
     modalOpen && pendingHairId != null && hairRtc.isAnswerReady
 
   useEffect(() => {
+    if (!autoApplyLatest) {
+      hasAutoAppliedLatestRef.current = false
+    }
+  }, [autoApplyLatest])
+
+  useEffect(() => {
     const controller = new AbortController()
+    setIsHairItemsLoading(true)
 
     fetchHairItems(controller.signal)
       .then((items) => {
         setHairItems(items.length > 1 ? items : HAIR_ITEMS)
+
+        if (
+          autoApplyLatest &&
+          !hasAutoAppliedLatestRef.current &&
+          items.length > 1
+        ) {
+          hasAutoAppliedLatestRef.current = true
+          setSelectedHairId(0)
+          setPendingHairId(items[1].id)
+          setModalOpen(true)
+          setIsFrameFrozen(false)
+          void router.navigate({
+            to: '/camera',
+            search: {},
+            replace: true,
+          })
+        }
       })
       .catch((error) => {
         console.error('hair item load failed:', error)
         setHairItems(HAIR_ITEMS)
       })
+      .finally(() => {
+        setIsHairItemsLoading(false)
+      })
 
     return () => {
       controller.abort()
     }
-  }, [])
+  }, [autoApplyLatest, router])
 
   useEffect(() => {
     const element = wrapRef.current
@@ -269,6 +300,7 @@ export default function FaceLandmarksView({
             <HairSelector
               items={hairItems}
               selectedId={displayHairId}
+              loading={isHairItemsLoading}
               frozen={isFrameFrozen}
               onSelect={handleHairSelect}
               onCapture={handleCapture}

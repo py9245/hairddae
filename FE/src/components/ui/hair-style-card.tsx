@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils'
 
 type HairStyleCardProps = {
+  hairId: number
   imageSrc: string
   imageAlt: string
   title: string
@@ -9,10 +10,11 @@ type HairStyleCardProps = {
   liked?: boolean
   className?: string
   onLikeToggle?: () => void
-  onApply?: () => void
+  onApply?: (hairId: number) => void
 }
 
 export function HairStyleCard({
+  hairId,
   imageSrc,
   imageAlt,
   title,
@@ -56,12 +58,12 @@ export function HairStyleCard({
               </p>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-start">
               <button
                 type="button"
                 aria-label="적용하기"
                 className="rounded-full bg-brand px-[16px] py-[6px] text-[13px] font-bold text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-                onClick={onApply}
+                onClick={() => onApply?.(hairId)}
               >
                 적용하기
               </button>
@@ -69,7 +71,7 @@ export function HairStyleCard({
                 type="button"
                 aria-label={heartLabel}
                 aria-pressed={liked}
-                className="relative z-30 flex items-center justify-center rounded-full bg-white/10 p-1.5 backdrop-blur-md transition-all hover:bg-white/20 active:scale-90"
+                className="relative z-30 ml-auto flex items-center justify-center rounded-full bg-white/10 p-1.5 backdrop-blur-md transition-all hover:bg-white/20 active:scale-90"
                 onClick={(event) => {
                   event.stopPropagation()
                   onLikeToggle?.()

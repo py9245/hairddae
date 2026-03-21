@@ -68,8 +68,14 @@ const hairListSearchSchema = z.object({
   category: z.string().catch('').optional(),
 })
 
+const cameraSearchSchema = z.object({
+  applyLatest: z.coerce.boolean().optional(),
+})
+
 const mainRoute = createProtectedRoute('main', MainPage)
-const cameraRoute = createProtectedRoute('camera', Camera)
+const cameraRoute = createProtectedRoute('camera', Camera, (search) =>
+  cameraSearchSchema.parse(search),
+)
 const myPageRoute = createProtectedRoute('mypage', MyPage)
 const hairListRoute = createProtectedRoute('hairlist', HairList, (search) =>
   hairListSearchSchema.parse(search),

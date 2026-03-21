@@ -1,3 +1,4 @@
+import { useSearch } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import FaceLandmarksView from '@/components/Camera/face-landmarks-view'
 import { useCroppedRtcStream } from '@/hooks/Camera/useCroppedRtcStream'
@@ -8,6 +9,7 @@ import {
 } from '@/lib/Camera/rtc-settings'
 
 export default function Camera() {
+  const { applyLatest } = useSearch({ from: '/camera' })
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -45,11 +47,6 @@ export default function Camera() {
   })
 
   useEffect(() => {
-    const track = rtcStream?.getVideoTracks()[0]
-    console.log('rtc cropped track settings:', track?.getSettings())
-  }, [rtcStream])
-
-  useEffect(() => {
     const preview = rtcPreviewRef.current
     if (!preview) return
 
@@ -65,6 +62,7 @@ export default function Camera() {
   return (
     <div>
       <FaceLandmarksView
+        autoApplyLatest={applyLatest ?? false}
         stream={rtcStream}
         videoRef={videoRef}
         canvasRef={canvasRef}

@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { Header } from '@/components/header'
 import { CategoryCard } from '@/components/ui/category-card'
 import { HairStyleCard } from '@/components/ui/hair-style-card'
+import { postHairClick } from '@/lib/hair-click'
 
 type Category = {
   id: string
@@ -14,6 +15,7 @@ type Category = {
 
 type HairStyle = {
   id: string
+  hairId: number
   title: string
   subtitle: string
   imageSrc: string
@@ -34,6 +36,7 @@ const categories: Category[] = [
 const hairStyles: HairStyle[] = [
   {
     id: 'style-1',
+    hairId: 1,
     title: '트렌디한\n쇼트 컷',
     subtitle: '숏컷',
     imageSrc: '/hiar-style/style-01-image.png',
@@ -42,6 +45,7 @@ const hairStyles: HairStyle[] = [
   },
   {
     id: 'style-2',
+    hairId: 2,
     title: '우아한\n레이어드 헤어',
     subtitle: '레이어드 컷',
     imageSrc: '/hiar-style/style-02-image.png',
@@ -50,6 +54,7 @@ const hairStyles: HairStyle[] = [
   },
   {
     id: 'style-3',
+    hairId: 3,
     title: '러블리\n단발 펌',
     subtitle: '단발펌',
     imageSrc: '/hiar-style/style-01-image.png',
@@ -58,6 +63,7 @@ const hairStyles: HairStyle[] = [
   },
   {
     id: 'style-4',
+    hairId: 4,
     title: '시크한\n숏컷 스타일',
     subtitle: '숏컷',
     imageSrc: '/hiar-style/style-02-image.png',
@@ -66,6 +72,7 @@ const hairStyles: HairStyle[] = [
   },
   {
     id: 'style-5',
+    hairId: 5,
     title: '내추럴\n단발 스타일',
     subtitle: '단발',
     imageSrc: '/hiar-style/style-01-image.png',
@@ -74,6 +81,7 @@ const hairStyles: HairStyle[] = [
   },
   {
     id: 'style-6',
+    hairId: 6,
     title: '볼륨감 있는\n단발 펌',
     subtitle: '단발펌',
     imageSrc: '/hiar-style/style-02-image.png',
@@ -97,6 +105,19 @@ export default function HairList() {
     navigate({
       to: '/hairlist',
       search: { category: categoryId || undefined },
+    })
+  }
+
+  async function handleApply(hairId: number) {
+    try {
+      await postHairClick(hairId)
+    } catch (error) {
+      console.error('hair click failed:', error)
+    }
+
+    await navigate({
+      to: '/camera',
+      search: { applyLatest: true },
     })
   }
 
@@ -145,6 +166,7 @@ export default function HairList() {
               {filteredStyles.map((style) => (
                 <HairStyleCard
                   key={style.id}
+                  hairId={style.hairId}
                   imageSrc={style.imageSrc}
                   imageAlt={style.imageAlt}
                   title={style.title}
@@ -157,7 +179,7 @@ export default function HairList() {
                       [style.id]: !prev[style.id],
                     }))
                   }
-                  onApply={() => {}}
+                  onApply={handleApply}
                 />
               ))}
             </div>

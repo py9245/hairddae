@@ -2,10 +2,11 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { ProfileCard, ProfileCardSkeleton } from '@/components/profile-card'
 
 const mockProfile = {
-  nickname: 'mijin.develop',
-  age: 18,
+  code: 200,
+  message: '조회 정상',
+  userID: 'jin4750',
+  birthDate: '2005-08-16',
   gender: 'F',
-  avatarVariant: 1 as const,
 }
 
 const meta = {

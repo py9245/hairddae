@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 
 type HairStyleCardProps = {
@@ -10,7 +11,7 @@ type HairStyleCardProps = {
   liked?: boolean
   className?: string
   onLikeToggle?: () => void
-  onApply?: (hairId: number) => void
+  onApply?: (hairId: number) => void | Promise<void>
 }
 
 export function HairStyleCard({
@@ -25,8 +26,23 @@ export function HairStyleCard({
   onLikeToggle,
   onApply,
 }: HairStyleCardProps) {
+  const [isApplying, setIsApplying] = useState(false)
   const heartIconSrc = liked ? '/icon/heart-fill.svg' : '/icon/hair-empty.svg'
   const heartLabel = liked ? '찜 해제' : '찜하기'
+
+  async function handleApplyClick() {
+    if (!onApply || isApplying) {
+      return
+    }
+
+    setIsApplying(true)
+
+    try {
+      await onApply(hairId)
+    } finally {
+      setIsApplying(false)
+    }
+  }
 
   return (
     <article
@@ -46,11 +62,10 @@ export function HairStyleCard({
           draggable={false}
         />
 
-        {/* Smoother Gradient Overlay with Brand Tint */}
         <div className="absolute inset-x-0 bottom-0 flex flex-col justify-end bg-gradient-to-t from-black/80 via-black/30 to-transparent p-[10px] pt-[40px]">
           <div className="flex flex-col gap-[10px]">
             <div className="flex flex-col items-start text-white">
-              <h3 className="font-medium w-full whitespace-pre-line text-[19px] leading-[1.2] font-bold tracking-tight drop-shadow-md">
+              <h3 className="w-full whitespace-pre-line text-[19px] leading-[1.2] font-bold tracking-tight drop-shadow-md">
                 {title}
               </h3>
               <p className="mt-[2px] text-[11px] font-medium text-white/90 drop-shadow-sm">
@@ -62,11 +77,18 @@ export function HairStyleCard({
               <button
                 type="button"
                 aria-label="적용하기"
-                className="rounded-full bg-brand px-[16px] py-[6px] text-[13px] font-bold text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-                onClick={() => onApply?.(hairId)}
+                disabled={isApplying}
+                className={cn(
+                  'rounded-full bg-brand px-[16px] py-[6px] text-[13px] font-bold text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80',
+                  isApplying
+                    ? 'cursor-wait opacity-70'
+                    : 'hover:bg-primary-hover',
+                )}
+                onClick={handleApplyClick}
               >
                 적용하기
               </button>
+
               <button
                 type="button"
                 aria-label={heartLabel}

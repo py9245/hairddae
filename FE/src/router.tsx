@@ -69,6 +69,7 @@ const hairListSearchSchema = z.object({
 
 const cameraSearchSchema = z.object({
   applyLatest: z.coerce.boolean().optional(),
+  hairId: z.coerce.number().int().positive().optional(),
 })
 
 const mainRoute = createProtectedRoute('main', MainPage)

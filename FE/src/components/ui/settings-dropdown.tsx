@@ -71,12 +71,12 @@ export function ModalSelect({
 
       {open ? (
         <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 overflow-hidden rounded-2xl border border-white/10 bg-black/85 shadow-2xl backdrop-blur-md">
-          <ul role="listbox" aria-labelledby={id} className="py-2">
+          <div role="listbox" aria-labelledby={id} className="py-2">
             {options.map((option) => {
               const selected = option.value === value
 
               return (
-                <li key={option.value}>
+                <div key={option.value}>
                   <button
                     type="button"
                     role="option"
@@ -95,10 +95,10 @@ export function ModalSelect({
                     <span>{option.label}</span>
                     {selected ? <Check className="h-4 w-4" /> : null}
                   </button>
-                </li>
+                </div>
               )
             })}
-          </ul>
+          </div>
         </div>
       ) : null}
     </div>

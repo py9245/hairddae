@@ -141,13 +141,17 @@ export function useViewportCaptureStream({
       ) {
         return
       }
-      frameCallbackId = videoWithFrameCallback.requestVideoFrameCallback((now) => {
-        drawFrame(now)
-        scheduleVideoFrameDraw()
-      })
+      frameCallbackId = videoWithFrameCallback.requestVideoFrameCallback(
+        (now) => {
+          drawFrame(now)
+          scheduleVideoFrameDraw()
+        },
+      )
     }
 
-    if (typeof videoWithFrameCallback.requestVideoFrameCallback === 'function') {
+    if (
+      typeof videoWithFrameCallback.requestVideoFrameCallback === 'function'
+    ) {
       scheduleVideoFrameDraw()
     } else {
       scheduleTimeoutDraw()

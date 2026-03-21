@@ -1,7 +1,6 @@
 import { X } from 'lucide-react'
-import { ModalSelect } from '../ui/settings-dropdown'
-
 import type { RtcCaptureResolution } from '@/lib/Camera/rtc-settings'
+import { ModalSelect } from '../ui/settings-dropdown'
 
 type CameraSettingsModalProps = {
   open: boolean

@@ -112,15 +112,21 @@ export default function Main() {
   })
 
   async function handleApply(hairId: number) {
+    let targetHairId = hairId
+
     try {
-      await postHairClick(hairId)
+      const response = await postHairClick(hairId)
+      targetHairId = response.hair_id
     } catch (error) {
       console.error('hair click failed:', error)
     }
 
     await navigate({
       to: '/camera',
-      search: { applyLatest: true },
+      search: {
+        applyLatest: true,
+        hairId: targetHairId,
+      },
     })
   }
 

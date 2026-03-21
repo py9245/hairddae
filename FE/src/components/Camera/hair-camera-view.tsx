@@ -32,6 +32,8 @@ type HairCameraViewProps = {
   cameraStream: MediaStream | null
   cameraReady: boolean
   cameraError: unknown
+  initialHairId?: number | null
+  autoSelectFirstHair?: boolean
 }
 
 type CameraTrackInfo = {
@@ -197,9 +199,12 @@ export function HairCameraView({
   cameraStream,
   cameraReady,
   cameraError,
+  initialHairId = null,
+  autoSelectFirstHair = false,
 }: HairCameraViewProps) {
   const router = useRouter()
   const wrapRef = useRef<HTMLDivElement | null>(null)
+  const hasHandledInitialSelectionRef = useRef(false)
 
   const [selectedHairId, setSelectedHairId] = useState(0)
   const [pendingHairId, setPendingHairId] = useState<number | null>(null)
@@ -313,8 +318,51 @@ export function HairCameraView({
     }
   }, [])
 
+  useEffect(() => {
+    if (hasHandledInitialSelectionRef.current || isHairItemsLoading) {
+      return
+    }
+
+    const targetHairId =
+      initialHairId != null &&
+      hairItems.some((item) => item.id === initialHairId)
+        ? initialHairId
+        : autoSelectFirstHair
+          ? (hairItems.find((item) => item.id > 0)?.id ?? null)
+          : null
+
+    hasHandledInitialSelectionRef.current = true
+
+    if (targetHairId == null) {
+      return
+    }
+
+    setIsFrameFrozen(false)
+    setPendingHairId(targetHairId)
+    setSelectedHairId(0)
+
+    void router.navigate({
+      to: '/camera',
+      replace: true,
+      search: {},
+    })
+  }, [
+    autoSelectFirstHair,
+    hairItems,
+    initialHairId,
+    isHairItemsLoading,
+    router,
+  ])
+
   const handleHairSelect = useCallback((hairId: number) => {
     setIsFrameFrozen(false)
+
+    if (hairId <= 0) {
+      setPendingHairId(null)
+      setSelectedHairId(0)
+      return
+    }
+
     setPendingHairId(hairId)
   }, [])
 
@@ -364,7 +412,7 @@ export function HairCameraView({
     ? resolveCameraErrorMessage(cameraError)
     : null
 
-  const modalOpen = pendingHairId != null
+  const modalOpen = pendingHairId != null && pendingHairId > 0
   const rtcApplyReady =
     modalOpen &&
     pendingHairId != null &&

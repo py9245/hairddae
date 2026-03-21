@@ -1,3 +1,4 @@
+import { useSearch } from '@tanstack/react-router'
 import { useMemo, useRef } from 'react'
 
 import { HairCameraView } from '@/components/Camera/hair-camera-view'
@@ -9,6 +10,7 @@ import {
 } from '@/lib/Camera/runtime'
 
 export default function Camera() {
+  const { applyLatest, hairId } = useSearch({ from: '/camera' })
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
   const mediaConstraints = useMemo<MediaStreamConstraints>(
@@ -32,6 +34,8 @@ export default function Camera() {
       cameraStream={cam.stream}
       cameraReady={cam.ready}
       cameraError={cam.error}
+      initialHairId={hairId ?? null}
+      autoSelectFirstHair={applyLatest ?? false}
     />
   )
 }

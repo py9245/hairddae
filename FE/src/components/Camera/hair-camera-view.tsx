@@ -368,9 +368,10 @@ export function HairCameraView({
   const rtcApplyReady =
     modalOpen &&
     pendingHairId != null &&
-    hairRtc.appliedHairId === pendingHairId &&
     hairRtc.isConnected &&
-    !hairRtc.error
+    !hairRtc.error &&
+    (hairRtc.appliedHairId === pendingHairId ||
+      (hairRtc.isRenderReady && remoteDisplayReady))
 
   const statusMessage = cameraErrorMessage
     ? cameraErrorMessage

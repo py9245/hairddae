@@ -1,6 +1,7 @@
+import { queryOptions } from '@tanstack/react-query'
 import { z } from 'zod'
 
-import { buildApiUrl } from '@/lib/api'
+const BaseUrl = '/api'
 
 export type HairItem = {
   id: number
@@ -18,13 +19,6 @@ export const HAIR_ITEMS: HairItem[] = [
     label: 'None',
     datasetCode: null,
   },
-  {
-    id: 1,
-    img: '/hair/hair.png',
-    thumb: '/hair/hair.png',
-    label: 'Hair 1',
-    datasetCode: null,
-  },
 ]
 
 const HairCardSchema = z.object({
@@ -38,29 +32,46 @@ const HairListResponseSchema = z.object({
   hairList: z.array(HairCardSchema),
 })
 
+function resolveHairAssetUrl(path: string) {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path
+  }
+  return `${BaseUrl}${path}`
+}
+
 export async function fetchHairItems(
   signal?: AbortSignal,
 ): Promise<HairItem[]> {
-  const response = await fetch(buildApiUrl('/hairs?page=0&size=20&sort=id'), {
+  const res = await fetch(`${BaseUrl}/hairs/`, {
+    method: 'GET',
     credentials: 'include',
     signal,
   })
 
-  if (!response.ok) {
-    throw new Error(`hair list load failed: ${response.status}`)
+  const data = await res.json().catch(() => null)
+
+  if (!res.ok) {
+    throw new Error(data?.message ?? '헤어 목록을 불러오지 못했습니다.')
   }
 
-  const payload = HairListResponseSchema.parse(
-    (await response.json()) as unknown,
-  )
+  const payload = HairListResponseSchema.parse(data)
+
   return [
     HAIR_ITEMS[0],
     ...payload.hairList.map((item) => ({
       id: item.hairID,
-      img: item.hairImgpath,
-      thumb: item.hairImgpath,
+      img: resolveHairAssetUrl(item.hairImgpath),
+      thumb: resolveHairAssetUrl(item.hairImgpath),
       label: item.hairName,
       datasetCode: item.datasetCode ?? null,
     })),
   ]
 }
+
+export const hairItemsQueryOptions = () =>
+  queryOptions({
+    queryKey: ['hair-items'],
+    queryFn: ({ signal }) => fetchHairItems(signal),
+    staleTime: 1000 * 60 * 5,
+  })

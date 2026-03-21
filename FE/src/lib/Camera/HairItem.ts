@@ -5,27 +5,22 @@ const BaseUrl = '/api'
 
 export type HairItem = {
   id: number
-  img: string
   thumb: string
   label: string
-  datasetCode?: string | null
 }
 
 export const HAIR_ITEMS: HairItem[] = [
   {
     id: 0,
-    img: '',
     thumb: '',
     label: 'None',
-    datasetCode: null,
   },
 ]
 
 const HairCardSchema = z.object({
   hairID: z.number().int(),
+  image: z.string(),
   hairName: z.string(),
-  hairImgpath: z.string(),
-  datasetCode: z.string().optional().nullable(),
 })
 
 const HairListResponseSchema = z.object({
@@ -43,7 +38,7 @@ function resolveHairAssetUrl(path: string) {
 export async function fetchHairItems(
   signal?: AbortSignal,
 ): Promise<HairItem[]> {
-  const res = await fetch(`${BaseUrl}/hairs/`, {
+  const res = await fetch(`${BaseUrl}/hairs/cameralist/`, {
     method: 'GET',
     credentials: 'include',
     signal,
@@ -61,10 +56,8 @@ export async function fetchHairItems(
     HAIR_ITEMS[0],
     ...payload.hairList.map((item) => ({
       id: item.hairID,
-      img: resolveHairAssetUrl(item.hairImgpath),
-      thumb: resolveHairAssetUrl(item.hairImgpath),
+      thumb: resolveHairAssetUrl(item.image),
       label: item.hairName,
-      datasetCode: item.datasetCode ?? null,
     })),
   ]
 }

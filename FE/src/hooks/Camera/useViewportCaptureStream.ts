@@ -151,7 +151,6 @@ export function useViewportCaptureStream({
       ) {
         return
       }
-
       frameCallbackId = videoWithFrameCallback.requestVideoFrameCallback(
         (now) => {
           drawFrame(now)

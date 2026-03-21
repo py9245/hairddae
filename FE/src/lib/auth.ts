@@ -1,6 +1,3 @@
-const AUTH_STORAGE_KEY = 'ssafy-authenticated'
-const ACCESS_TOKEN_STORAGE_KEY = 'ssafy-access-token'
-
 type AuthListener = () => void
 type CookieStoreCookie = {
   name: string
@@ -14,6 +11,10 @@ const listeners = new Set<AuthListener>()
 const BaseUrl = '/api'
 const shouldSimulateSignup = import.meta.env.VITE_SIMULATE_SIGNUP === 'true'
 const shouldSimulateLogin = import.meta.env.VITE_SIMULATE_LOGIN === 'true'
+type AuthStatus = 'unknown' | 'authenticated' | 'anonymous'
+
+let authStatus: AuthStatus = 'unknown'
+let authCheckPromise: Promise<boolean> | null = null
 
 function notifyListeners() {
   for (const listener of listeners) {
@@ -40,32 +41,112 @@ async function clearClientCookies() {
   }
 }
 
-function readStorage() {
-  if (typeof window === 'undefined') {
-    return false
+function setAuthStatus(nextStatus: AuthStatus) {
+  if (authStatus === nextStatus) {
+    return
   }
 
-  return window.localStorage.getItem(AUTH_STORAGE_KEY) === 'true'
+  authStatus = nextStatus
+  notifyListeners()
 }
 
-export function getStoredAccessToken() {
-  if (typeof window === 'undefined') {
+async function readErrorMessage(
+  response: Response,
+  fallbackMessage: string,
+): Promise<string> {
+  const data = await response.json().catch(() => null)
+  return data?.message ?? fallbackMessage
+}
+
+export type MeResponse = {
+  code: number
+  message: string
+  userID: string
+  birthDate: string | null
+  gender: string | null
+}
+
+async function fetchMe(): Promise<MeResponse | null> {
+  const response = await fetch(`${BaseUrl}/me/`, {
+    credentials: 'include',
+  })
+
+  if (response.status === 401) {
     return null
   }
 
-  return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(response, '인증 상태를 확인하지 못했습니다.'),
+    )
+  }
+
+  return response.json()
+}
+
+async function refreshSession(): Promise<boolean> {
+  const response = await fetch(`${BaseUrl}/accounts/refreshToken/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ rotate: false }),
+  })
+
+  if (response.status === 401) {
+    return false
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(response, '세션을 갱신하지 못했습니다.'),
+    )
+  }
+
+  return true
+}
+
+async function resolveAuthStatus() {
+  const me = await fetchMe()
+  if (me) {
+    setAuthStatus('authenticated')
+    return true
+  }
+
+  const refreshed = await refreshSession()
+  if (!refreshed) {
+    setAuthStatus('anonymous')
+    return false
+  }
+
+  const refreshedMe = await fetchMe()
+  const isAuthenticated = refreshedMe != null
+  setAuthStatus(isAuthenticated ? 'authenticated' : 'anonymous')
+  return isAuthenticated
 }
 
 export const auth = {
   isAuthenticated() {
-    return readStorage()
+    return authStatus === 'authenticated'
   },
-  login(accessToken?: string | null) {
-    window.localStorage.setItem(AUTH_STORAGE_KEY, 'true')
-    if (accessToken) {
-      window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken)
+  async ensureAuthenticated() {
+    if (authStatus === 'authenticated') {
+      return true
     }
-    notifyListeners()
+
+    if (authCheckPromise) {
+      return authCheckPromise
+    }
+
+    authCheckPromise = resolveAuthStatus().finally(() => {
+      authCheckPromise = null
+    })
+
+    return authCheckPromise
+  },
+  login() {
+    setAuthStatus('authenticated')
   },
   async logout() {
     try {
@@ -79,7 +160,7 @@ export const auth = {
       await clearClientCookies()
       window.localStorage.clear()
       window.sessionStorage.clear()
-      notifyListeners()
+      setAuthStatus('anonymous')
     }
   },
   subscribe(listener: AuthListener) {

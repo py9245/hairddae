@@ -49,8 +49,8 @@ const loginRoute = createRoute({
   getParentRoute: () => authRoute,
   path: 'login',
   validateSearch: (search) => loginSearchSchema.parse(search),
-  beforeLoad: ({ context }) => {
-    if (context.auth.isAuthenticated()) {
+  beforeLoad: async ({ context }) => {
+    if (await context.auth.ensureAuthenticated()) {
       throw redirect({ to: '/main' })
     }
   },
@@ -116,22 +116,16 @@ function createProtectedRoute<
     getParentRoute: () => rootRoute,
     path,
     validateSearch,
-    // beforeLoad: ({
-    //   context,
-    //   location,
-    // }: {
-    //   context: RouterContext
-    //   location: ParsedLocation
-    // }) => {
-    //   if (!context.auth.isAuthenticated()) {
-    //     throw redirect({
-    //       to: '/auth/login',
-    //       search: {
-    //         redirect: location.href,
-    //       },
-    //     })
-    //   }
-    // },
+    beforeLoad: async ({ context, location }) => {
+      if (!(await context.auth.ensureAuthenticated())) {
+        throw redirect({
+          to: '/auth/login',
+          search: {
+            redirect: location.href,
+          },
+        })
+      }
+    },
     component,
   })
 }

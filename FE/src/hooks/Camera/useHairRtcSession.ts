@@ -112,11 +112,10 @@ export function useHairRtcSession({
   enabled = true,
   hairId,
   stream,
-  senderConfig = {
-    maxBitrate: 8_000_000,
-    maxFramerate: 15,
-  },
+  senderConfig,
 }: UseHairRtcSessionArgs) {
+  const senderMaxBitrate = senderConfig?.maxBitrate ?? 8_000_000
+  const senderMaxFramerate = senderConfig?.maxFramerate ?? 15
   const deviceIdRef = useRef<string>(getOrCreateDeviceId())
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const dataChannelRef = useRef<RTCDataChannel | null>(null)
@@ -388,7 +387,10 @@ export function useHairRtcSession({
 
         for (const track of videoTracks) {
           const sender = peerConnection.addTrack(track, localStream)
-          void configureRtcSender(sender, senderConfig)
+          void configureRtcSender(sender, {
+            maxBitrate: senderMaxBitrate,
+            maxFramerate: senderMaxFramerate,
+          })
         }
 
         const offer = await peerConnection.createOffer()
@@ -418,7 +420,12 @@ export function useHairRtcSession({
         scheduleReconnect('Retrying RTC session')
       }
     },
-    [resetRuntime, scheduleReconnect, senderConfig],
+    [
+      resetRuntime,
+      scheduleReconnect,
+      senderMaxBitrate,
+      senderMaxFramerate,
+    ],
   )
 
   useEffect(() => {

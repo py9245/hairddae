@@ -2,6 +2,13 @@ const AUTH_STORAGE_KEY = 'ssafy-authenticated'
 const ACCESS_TOKEN_STORAGE_KEY = 'ssafy-access-token'
 
 type AuthListener = () => void
+type CookieStoreCookie = {
+  name: string
+}
+type CookieStoreLike = {
+  getAll(): Promise<CookieStoreCookie[]>
+  delete(name: string): Promise<void>
+}
 
 const listeners = new Set<AuthListener>()
 const BaseUrl = '/api'
@@ -11,6 +18,25 @@ const shouldSimulateLogin = import.meta.env.VITE_SIMULATE_LOGIN === 'true'
 function notifyListeners() {
   for (const listener of listeners) {
     listener()
+  }
+}
+
+async function clearClientCookies() {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const cookieStore = (window as { cookieStore?: CookieStoreLike }).cookieStore
+  if (!cookieStore) {
+    return
+  }
+
+  const cookies = await cookieStore.getAll()
+
+  for (const cookie of cookies) {
+    try {
+      await cookieStore.delete(cookie.name)
+    } catch {}
   }
 }
 
@@ -41,10 +67,20 @@ export const auth = {
     }
     notifyListeners()
   },
-  logout() {
-    window.localStorage.removeItem(AUTH_STORAGE_KEY)
-    window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
-    notifyListeners()
+  async logout() {
+    try {
+      await fetch(`${BaseUrl}/accounts/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+    } catch (error) {
+      console.error('Failed to call logout API.', error)
+    } finally {
+      await clearClientCookies()
+      window.localStorage.clear()
+      window.sessionStorage.clear()
+      notifyListeners()
+    }
   },
   subscribe(listener: AuthListener) {
     listeners.add(listener)

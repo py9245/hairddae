@@ -31,7 +31,7 @@ export function HairCameraStage({
           autoPlay
           playsInline
           muted
-          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-150 ${
+          className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-150 ${
             hasRemoteVideo ? 'opacity-0' : 'opacity-100'
           }`}
         />
@@ -40,7 +40,7 @@ export function HairCameraStage({
           autoPlay
           playsInline
           muted
-          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-150 ${
+          className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-150 ${
             hasRemoteVideo ? 'opacity-100' : 'opacity-0'
           }`}
         />

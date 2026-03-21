@@ -420,12 +420,7 @@ export function useHairRtcSession({
         scheduleReconnect('Retrying RTC session')
       }
     },
-    [
-      resetRuntime,
-      scheduleReconnect,
-      senderMaxBitrate,
-      senderMaxFramerate,
-    ],
+    [resetRuntime, scheduleReconnect, senderMaxBitrate, senderMaxFramerate],
   )
 
   useEffect(() => {

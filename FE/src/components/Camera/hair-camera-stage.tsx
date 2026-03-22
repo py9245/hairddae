@@ -4,16 +4,19 @@ type HairCameraStageProps = {
   videoRef: RefObject<HTMLVideoElement | null>
   remoteVideoRef: RefObject<HTMLVideoElement | null>
   hasRemoteVideo: boolean
-  mirrored?: boolean
+  localMirrored?: boolean
+  remoteMirrored?: boolean
 }
 
 export function HairCameraStage({
   videoRef,
   remoteVideoRef,
   hasRemoteVideo,
-  mirrored = true,
+  localMirrored = true,
+  remoteMirrored = false,
 }: HairCameraStageProps) {
-  const mirrorClassName = mirrored ? '-scale-x-100' : ''
+  const localMirrorClassName = localMirrored ? '-scale-x-100' : ''
+  const remoteMirrorClassName = remoteMirrored ? '-scale-x-100' : ''
 
   return (
     <>
@@ -24,8 +27,8 @@ export function HairCameraStage({
         muted
         className={
           hasRemoteVideo
-            ? `absolute inset-0 h-full w-full object-cover ${mirrorClassName} opacity-0`
-            : `block h-full w-full object-cover ${mirrorClassName}`
+            ? `absolute inset-0 h-full w-full object-cover ${localMirrorClassName} opacity-0`
+            : `block h-full w-full object-cover ${localMirrorClassName}`
         }
       />
 
@@ -36,7 +39,7 @@ export function HairCameraStage({
         muted
         className={
           hasRemoteVideo
-            ? `absolute inset-0 z-10 h-full w-full object-cover ${mirrorClassName}`
+            ? `absolute inset-0 z-10 h-full w-full object-cover ${remoteMirrorClassName}`
             : 'hidden'
         }
       />

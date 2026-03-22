@@ -30,16 +30,6 @@ const HairListResponseSchema = z.object({
   hairList: z.array(HairCardSchema),
 })
 
-function resolveHairAssetUrl(path: string) {
-  if (!path) return ''
-
-  if (path.startsWith('http://') || path.startsWith('https://')) {
-    return path
-  }
-
-  return buildApiUrl(path.startsWith('/') ? path : `/${path}`)
-}
-
 export async function fetchHairItems(
   signal?: AbortSignal,
 ): Promise<HairItem[]> {
@@ -60,11 +50,9 @@ export async function fetchHairItems(
   return [
     HAIR_ITEMS[0],
     ...payload.hairList.map((item) => {
-      const imageUrl = resolveHairAssetUrl(item.image)
-
       return {
         id: item.hairID,
-        image: imageUrl,
+        image: item.image,
         label: item.hairName,
         datasetCode: item.datasetCode ?? item.dataset_code ?? null,
       }

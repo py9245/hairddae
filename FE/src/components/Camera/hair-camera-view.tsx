@@ -385,7 +385,7 @@ export function HairCameraView({
       videoRef: hasRemoteVideo ? remoteVideoRef : videoRef,
       wrapRef,
       hairItems,
-      mirror: stageMirrored,
+      mirror: hasRemoteVideo ? false : stageMirrored,
       selectedHairId: displayHairId,
     })
 
@@ -465,7 +465,8 @@ export function HairCameraView({
             videoRef={videoRef}
             remoteVideoRef={remoteVideoRef}
             hasRemoteVideo={hasRemoteVideo}
-            mirrored={stageMirrored}
+            localMirrored={stageMirrored}
+            remoteMirrored={false}
           />
 
           <Header

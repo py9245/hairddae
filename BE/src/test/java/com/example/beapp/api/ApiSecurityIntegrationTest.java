@@ -2,6 +2,7 @@ package com.example.beapp.api;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -473,6 +474,49 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.hair_id").value(3))
                 .andExpect(jsonPath("$.dataset_code").value("0003"))
                 .andExpect(jsonPath("$.created").value(true));
+    }
+
+    @Test
+    void inferenceHairSyncMissingRequiredParamReturnsBadRequest() throws Exception {
+        MockMultipartFile previewImage = new MockMultipartFile(
+                "preview_image",
+                "main.png",
+                "image/png",
+                "fake-image".getBytes());
+
+        mockMvc.perform(multipart("/api/internal/hairs/sync")
+                        .file(previewImage)
+                        .header("X-Inference-Sync-Secret", "test-inference-sync-secret")
+                        .param("dataset_code", "0010")
+                        .param("slug", "wolf-cut-0010")
+                        .param("category", "medium"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.errors[0].field").value("name"));
+
+        verifyNoInteractions(hairMetadataSyncService);
+    }
+
+    @Test
+    void inferenceHairSyncBlankRequiredParamReturnsBadRequest() throws Exception {
+        MockMultipartFile previewImage = new MockMultipartFile(
+                "preview_image",
+                "main.png",
+                "image/png",
+                "fake-image".getBytes());
+
+        mockMvc.perform(multipart("/api/internal/hairs/sync")
+                        .file(previewImage)
+                        .header("X-Inference-Sync-Secret", "test-inference-sync-secret")
+                        .param("dataset_code", "0011")
+                        .param("name", "")
+                        .param("slug", "wolf-cut-0011")
+                        .param("category", "medium"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.errors[0].field").value("name"));
+
+        verifyNoInteractions(hairMetadataSyncService);
     }
 
     private MockCookie extractCookie(MvcResult result, String cookieName) {

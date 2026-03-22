@@ -1,5 +1,8 @@
 import { Link } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import Autoplay from 'embla-carousel-autoplay'
+import useEmblaCarousel from 'embla-carousel-react'
+import { useCallback, useEffect, useState } from 'react'
+
 import { SplashStartButton } from '@/components/splash-start-button'
 
 const slides = [
@@ -21,52 +24,72 @@ const slides = [
 ] as const
 
 export default function Splash() {
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true }, [
+    Autoplay({ delay: 3000, stopOnInteraction: false }),
+  ])
   const [activeSlide, setActiveSlide] = useState(0)
 
+  const onSelect = useCallback(() => {
+    if (!emblaApi) return
+    setActiveSlide(emblaApi.selectedScrollSnap())
+  }, [emblaApi])
+
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setActiveSlide((prev) => (prev + 1) % slides.length)
-    }, 3000)
-
-    return () => window.clearInterval(intervalId)
-  }, [])
-
-  const currentSlide = slides[activeSlide]
+    if (!emblaApi) return
+    onSelect()
+    emblaApi.on('select', onSelect)
+    emblaApi.on('reInit', onSelect)
+    return () => {
+      emblaApi.off('select', onSelect)
+      emblaApi.off('reInit', onSelect)
+    }
+  }, [emblaApi, onSelect])
 
   return (
     <main className="app-frame-page flex flex-col overflow-hidden bg-bg-primary px-6 pt-16 text-text-dark">
       <div className="mx-auto flex w-full max-w-[390px] flex-1 flex-col">
-        <section className="flex flex-col items-center">
-          <h1 className="whitespace-pre-line px-8 text-center text-[20px] leading-[1.35] font-semibold tracking-[-0.03em] text-text-dark">
-            {currentSlide.title}
-          </h1>
-
-          <div className="mt-[92px] flex w-full justify-center px-5">
-            <img
-              src={currentSlide.imageSrc}
-              alt={currentSlide.imageAlt}
-              width={398}
-              height={320}
-              loading="eager"
-              decoding="async"
-              className="h-auto w-full max-w-[398px] object-contain"
-              draggable={false}
-            />
-          </div>
-
-          <div className="mt-[30px] flex items-center justify-center gap-[7px]">
+        {/* Carousel Viewport */}
+        <div className="w-full overflow-hidden" ref={emblaRef}>
+          {/* Carousel Container */}
+          <div className="flex">
             {slides.map((slide, index) => (
-              <span
-                key={slide.imageSrc}
-                className={`block size-[10px] rounded-full transition-colors ${
-                  index === activeSlide
-                    ? 'bg-indicator-active'
-                    : 'bg-indicator-inactive'
-                }`}
-              />
+              <div className="min-w-0 flex-[0_0_100%]" key={slide.imageSrc}>
+                <section className="flex flex-col items-center">
+                  <h1 className="h-[54px] whitespace-pre-line px-8 text-center text-[20px] leading-[1.35] font-semibold tracking-[-0.03em] text-text-dark">
+                    {slide.title}
+                  </h1>
+
+                  <div className="mt-[92px] flex w-full justify-center px-5">
+                    <img
+                      src={slide.imageSrc}
+                      alt={slide.imageAlt}
+                      width={398}
+                      height={320}
+                      loading={index === 0 ? 'eager' : 'lazy'}
+                      decoding="async"
+                      className="h-auto w-full max-w-[398px] object-contain select-none"
+                      draggable={false}
+                    />
+                  </div>
+                </section>
+              </div>
             ))}
           </div>
-        </section>
+        </div>
+
+        {/* Indicators */}
+        <div className="mt-[30px] flex items-center justify-center gap-[7px]">
+          {slides.map((slide, index) => (
+            <span
+              key={slide.imageSrc}
+              className={`block size-[10px] rounded-full transition-colors ${
+                index === activeSlide
+                  ? 'bg-indicator-active'
+                  : 'bg-indicator-inactive'
+              }`}
+            />
+          ))}
+        </div>
 
         <div className="mt-auto">
           <SplashStartButton asChild>

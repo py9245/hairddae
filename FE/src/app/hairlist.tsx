@@ -4,7 +4,9 @@ import { useState } from 'react'
 
 import { Header } from '@/components/header'
 import { CategoryCard } from '@/components/ui/category-card'
+import { CategorySkeleton } from '@/components/ui/category-skeleton'
 import { HairStyleCard } from '@/components/ui/hair-style-card'
+import { HairStyleSkeleton } from '@/components/ui/hair-style-skeleton'
 import { useCategoryCardList } from '@/hooks/Home/useCategoryCardList'
 import { useCategoryList } from '@/hooks/Home/useCategoryList'
 import { postHairClick } from '@/lib/hair-click'
@@ -49,7 +51,7 @@ export default function HairList() {
   }
 
   return (
-    <main className="app-frame-page h-full overflow-y-auto bg-neutral-500 text-text-warm-500">
+    <main className="app-frame-page h-full overflow-y-auto bg-bg-primary text-text-warm-500">
       <Header
         leftAction={
           <button
@@ -70,43 +72,30 @@ export default function HairList() {
       <div className="mx-auto flex w-full max-w-[390px] flex-col px-4 pt-16">
         <section className="mt-2 overflow-x-auto pb-1">
           <div className="flex min-w-max items-start gap-3">
-            {isCategoryLoading
-              ? [1, 2, 3, 4, 5, 6].map((key) => (
-                  <div
-                    key={key}
-                    className="flex w-[44px] shrink-0 flex-col items-center gap-2"
-                  >
-                    <div className="h-[44px] w-[44px] rounded-[8px] border border-transparent bg-neutral-200 animate-pulse" />
-                    <div className="h-3 w-8 rounded-sm bg-neutral-200 animate-pulse" />
-                  </div>
-                ))
-              : apiCategories.map((category) => (
-                  <button
-                    key={category.categoryID}
-                    type="button"
-                    className="shrink-0"
-                    onClick={() => handleCategoryClick(category.categoryID)}
-                  >
-                    <CategoryCard
-                      label={category.categoryName}
-                      imageSrc={category.image}
-                      active={activeCategory === category.categoryID}
-                    />
-                  </button>
-                ))}
+            {isCategoryLoading ? (
+              <CategorySkeleton count={6} />
+            ) : (
+              apiCategories.map((category) => (
+                <button
+                  key={category.categoryID}
+                  type="button"
+                  className="shrink-0"
+                  onClick={() => handleCategoryClick(category.categoryID)}
+                >
+                  <CategoryCard
+                    label={category.categoryName}
+                    imageSrc={category.image}
+                    active={activeCategory === category.categoryID}
+                  />
+                </button>
+              ))
+            )}
           </div>
         </section>
 
         <section className="mt-4">
           {isCardListLoading ? (
-            <div className="grid grid-cols-2 gap-x-3 gap-y-4">
-              {[1, 2, 3, 4].map((key) => (
-                <div
-                  key={key}
-                  className="h-[240px] w-full rounded-xl bg-neutral-200 animate-pulse"
-                />
-              ))}
-            </div>
+            <HairStyleSkeleton count={4} />
           ) : filteredStyles.length > 0 ? (
             <div className="grid grid-cols-2 gap-x-3 gap-y-4">
               {filteredStyles.map((style) => (

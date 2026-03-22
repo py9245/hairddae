@@ -5,7 +5,9 @@ import { useState } from 'react'
 import { Header } from '@/components/header'
 import { CustomRankBanner } from '@/components/home/custom-rank-banner'
 import { CategoryCard } from '@/components/ui/category-card'
+import { CategorySkeleton } from '@/components/ui/category-skeleton'
 import { HairStyleCard } from '@/components/ui/hair-style-card'
+import { HairStyleSkeleton } from '@/components/ui/hair-style-skeleton'
 import { SortToggle } from '@/components/ui/sort-toggle'
 import { useMe } from '@/hooks/Auth/useMe'
 import { useCategoryList } from '@/hooks/Home/useCategoryList'
@@ -61,7 +63,7 @@ export default function Main() {
   }
 
   return (
-    <main className="app-frame-page h-full overflow-y-auto bg-neutral-500 pb-[108px] text-text-warm-500">
+    <main className="app-frame-page h-full overflow-y-auto bg-bg-primary pb-[108px] text-text-warm-500">
       <div className="mx-auto flex w-full max-w-[390px] flex-col px-4 pt-3">
         <Header
           label="헤어때"
@@ -74,34 +76,28 @@ export default function Main() {
         <section className="mt-4 flex items-start gap-2">
           <div className="min-w-0 flex-1 overflow-x-auto pb-1">
             <div className="flex min-w-max items-start gap-3">
-              {isCategoryLoading
-                ? [1, 2, 3, 4, 5, 6].map((key) => (
-                    <div
-                      key={key}
-                      className="flex w-[44px] shrink-0 flex-col items-center gap-2"
-                    >
-                      <div className="h-[44px] w-[44px] rounded-[8px] border border-transparent bg-neutral-200 animate-pulse" />
-                      <div className="h-3 w-8 rounded-sm bg-neutral-200 animate-pulse" />
-                    </div>
-                  ))
-                : categories.map((category) => (
-                    <button
-                      key={category.categoryID}
-                      type="button"
-                      className="shrink-0"
-                      onClick={() => {
-                        navigate({
-                          to: '/hairlist',
-                          search: { category: category.categoryID },
-                        })
-                      }}
-                    >
-                      <CategoryCard
-                        label={category.categoryName}
-                        imageSrc={category.image}
-                      />
-                    </button>
-                  ))}
+              {isCategoryLoading ? (
+                <CategorySkeleton count={6} />
+              ) : (
+                categories.map((category) => (
+                  <button
+                    key={category.categoryID}
+                    type="button"
+                    className="shrink-0"
+                    onClick={() => {
+                      navigate({
+                        to: '/hairlist',
+                        search: { category: category.categoryID },
+                      })
+                    }}
+                  >
+                    <CategoryCard
+                      label={category.categoryName}
+                      imageSrc={category.image}
+                    />
+                  </button>
+                ))
+              )}
             </div>
           </div>
 
@@ -129,14 +125,7 @@ export default function Main() {
           </div>
 
           {isNormalRankLoading ? (
-            <div className="grid grid-cols-2 gap-x-3 gap-y-4">
-              {[1, 2, 3, 4].map((key) => (
-                <div
-                  key={key}
-                  className="h-[240px] w-full rounded-xl bg-neutral-200 animate-pulse"
-                />
-              ))}
-            </div>
+            <HairStyleSkeleton count={4} />
           ) : (
             <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4">
               {sortedRecommendations.map((card) => (

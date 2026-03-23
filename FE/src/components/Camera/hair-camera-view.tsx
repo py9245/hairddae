@@ -36,169 +36,11 @@ type HairCameraViewProps = {
   autoSelectFirstHair?: boolean
 }
 
-type CameraTrackInfo = {
-  width: number | null
-  height: number | null
-  frameRate: number | null
-}
-
-function resolveCameraErrorMessage(error: unknown) {
-  if (error instanceof DOMException) {
-    if (error.name === 'NotAllowedError') {
-      return '카메라 권한이 필요합니다.'
-    }
-    if (error.name === 'NotFoundError') {
-      return '사용 가능한 전면 카메라를 찾지 못했습니다.'
-    }
-    if (error.name === 'NotReadableError') {
-      return '카메라가 다른 앱에서 사용 중입니다.'
-    }
-  }
-
-  if (error instanceof Error && error.message.trim()) {
-    return error.message
-  }
-
-  return '카메라를 시작하지 못했습니다.'
-}
-
-function formatResolution(width: number | null, height: number | null) {
-  if (!width || !height) {
-    return '-'
-  }
-
-  return `${width}x${height}`
-}
-
-function formatFps(value: number | null) {
-  if (value == null || !Number.isFinite(value)) {
-    return '-'
-  }
-
-  return `${value.toFixed(1)}fps`
-}
-
-function formatMs(value: number | null) {
-  if (value == null || !Number.isFinite(value)) {
-    return '-'
-  }
-
-  return `${Math.round(value)}ms`
-}
-
-function formatBitrate(value: number | null) {
-  if (value == null || !Number.isFinite(value) || value <= 0) {
-    return '-'
-  }
-
-  return `${Math.round(value)}kbps`
-}
-
-function StatusChip({
-  tone = 'neutral',
-  children,
-}: {
-  tone?: 'neutral' | 'success' | 'error'
-  children: React.ReactNode
-}) {
-  const toneClassName =
-    tone === 'error'
-      ? 'border-rose-300/50 bg-rose-500/75 text-white'
-      : tone === 'success'
-        ? 'border-emerald-300/50 bg-emerald-500/75 text-white'
-        : 'border-white/20 bg-black/55 text-white'
-
-  return (
-    <div
-      className={`absolute left-4 top-22 z-20 rounded-full border px-3 py-1.5 text-xs font-medium tracking-[0.01em] backdrop-blur ${toneClassName}`}
-    >
-      {children}
-    </div>
-  )
-}
-
-function MetricsPanel({
-  camera,
-  remoteWidth,
-  remoteHeight,
-  hasRemoteVideo,
-  metrics,
-}: {
-  camera: CameraTrackInfo
-  remoteWidth: number | null
-  remoteHeight: number | null
-  hasRemoteVideo: boolean
-  metrics: ReturnType<typeof useHairRtcSession>['metrics']
-}) {
-  return (
-    <div className="pointer-events-none absolute right-4 top-22 z-20 w-[min(calc(100%-2rem),240px)] rounded-2xl border border-white/12 bg-black/55 px-3 py-3 text-[11px] leading-4 text-white shadow-[0_20px_60px_rgba(15,23,42,0.32)] backdrop-blur">
-      <div className="flex items-center justify-between gap-2">
-        <p className="font-semibold tracking-[0.08em] text-slate-100">
-          RTC Monitor
-        </p>
-        <span className="text-slate-300">
-          {hasRemoteVideo ? 'remote live' : 'warming'}
-        </span>
-      </div>
-
-      <div className="mt-2 grid grid-cols-[56px_1fr] gap-x-3 gap-y-1.5 text-slate-200">
-        <span className="text-slate-400">원본</span>
-        <span>
-          {formatResolution(camera.width, camera.height)} /{' '}
-          {formatFps(camera.frameRate)}
-        </span>
-
-        <span className="text-slate-400">업링크</span>
-        <span>
-          {formatResolution(
-            metrics.senderFrameWidth,
-            metrics.senderFrameHeight,
-          )}{' '}
-          / {formatFps(metrics.senderFps)}
-        </span>
-
-        <span className="text-slate-400">스테이지</span>
-        <span>{`${RTC_STAGE_WIDTH}x${RTC_STAGE_HEIGHT} / ${RTC_STAGE_FPS}fps`}</span>
-
-        <span className="text-slate-400">리모트</span>
-        <span>
-          {hasRemoteVideo
-            ? `${formatResolution(remoteWidth, remoteHeight)} / ${formatFps(metrics.receiverFps)}`
-            : '대기 중'}
-        </span>
-
-        <span className="text-slate-400">비트율</span>
-        <span>{formatBitrate(metrics.senderBitrateKbps)}</span>
-
-        <span className="text-slate-400">RTT</span>
-        <span>
-          {formatMs(metrics.roundTripTimeMs ?? metrics.heartbeatRttMs)}
-        </span>
-
-        <span className="text-slate-400">Infer</span>
-        <span>{formatMs(metrics.inferMs)}</span>
-
-        <span className="text-slate-400">Encode</span>
-        <span>{formatMs(metrics.encodeMs)}</span>
-
-        <span className="text-slate-400">E2E</span>
-        <span>{formatMs(metrics.e2eEstimateMs)}</span>
-
-        <span className="text-slate-400">Queue</span>
-        <span>
-          {metrics.queueDepth} / drop {metrics.droppedPendingCount}
-          {metrics.packetsLost != null ? ` / loss ${metrics.packetsLost}` : ''}
-        </span>
-      </div>
-    </div>
-  )
-}
-
 export function HairCameraView({
   videoRef,
-  cameraStream,
+  cameraStream: _cameraStream,
   cameraReady,
-  cameraError,
+  cameraError: _cameraError,
   initialHairId = null,
   autoSelectFirstHair = false,
 }: HairCameraViewProps) {
@@ -214,11 +56,6 @@ export function HairCameraView({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [stageMirrored, setStageMirrored] = useState(RTC_STAGE_MIRRORED)
   const [uiScale, setUiScale] = useState(1)
-  const [cameraTrackInfo, setCameraTrackInfo] = useState<CameraTrackInfo>({
-    width: null,
-    height: null,
-    frameRate: null,
-  })
 
   const displayHairId = pendingHairId ?? selectedHairId
   const selectedHairItem =
@@ -240,18 +77,13 @@ export function HairCameraView({
     stream: stageStream,
   })
 
-  const {
-    remoteVideoRef,
-    remoteDisplayReady,
-    remoteVideoReady,
-    remoteVideoSize,
-    hasRemoteVideo,
-  } = useHairRtcDisplay({
-    localVideoRef: videoRef,
-    remoteStream: hairRtc.remoteStream,
-    isRenderReady: hairRtc.isRenderReady,
-    isFrameFrozen,
-  })
+  const { remoteVideoRef, remoteDisplayReady, hasRemoteVideo } =
+    useHairRtcDisplay({
+      localVideoRef: videoRef,
+      remoteStream: hairRtc.remoteStream,
+      isRenderReady: hairRtc.isRenderReady,
+      isFrameFrozen,
+    })
 
   useEffect(() => {
     const element = wrapRef.current
@@ -274,26 +106,6 @@ export function HairCameraView({
       observer.disconnect()
     }
   }, [])
-
-  useEffect(() => {
-    const track = cameraStream?.getVideoTracks()[0]
-    if (!track) {
-      setCameraTrackInfo({
-        width: null,
-        height: null,
-        frameRate: null,
-      })
-      return
-    }
-
-    const settings = track.getSettings()
-    setCameraTrackInfo({
-      width: typeof settings.width === 'number' ? settings.width : null,
-      height: typeof settings.height === 'number' ? settings.height : null,
-      frameRate:
-        typeof settings.frameRate === 'number' ? settings.frameRate : null,
-    })
-  }, [cameraStream])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -408,10 +220,6 @@ export function HairCameraView({
     void router.navigate({ to: '/main' })
   }, [isFrameFrozen, router])
 
-  const cameraErrorMessage = cameraError
-    ? resolveCameraErrorMessage(cameraError)
-    : null
-
   const modalOpen = pendingHairId != null && pendingHairId > 0
   const rtcApplyReady =
     modalOpen &&
@@ -420,32 +228,6 @@ export function HairCameraView({
     !hairRtc.error &&
     (hairRtc.appliedHairId === pendingHairId ||
       (hairRtc.isRenderReady && remoteDisplayReady))
-
-  const statusMessage = cameraErrorMessage
-    ? cameraErrorMessage
-    : !cameraReady
-      ? '카메라 준비 중'
-      : displayHairId <= 0
-        ? '스타일 선택 필요'
-        : hairRtc.error
-          ? hairRtc.error
-          : !stageStream
-            ? '업링크 준비 중'
-            : !hairRtc.isConnected
-              ? 'RTC 연결 중'
-              : !remoteVideoReady || !remoteDisplayReady
-                ? '처리 영상 준비 중'
-                : hairRtc.appliedHairId === displayHairId
-                  ? '실시간 적용 중'
-                  : '스타일 반영 중'
-
-  const statusTone: 'neutral' | 'success' | 'error' = cameraErrorMessage
-    ? 'error'
-    : hairRtc.error
-      ? 'error'
-      : displayHairId > 0 && remoteDisplayReady && hairRtc.isConnected
-        ? 'success'
-        : 'neutral'
 
   const resolutionOptions: CameraSettingOption[] = [
     {
@@ -494,16 +276,6 @@ export function HairCameraView({
                 <Settings className="size-12 text-white" />
               </Button>
             }
-          />
-
-          <StatusChip tone={statusTone}>{statusMessage}</StatusChip>
-
-          <MetricsPanel
-            camera={cameraTrackInfo}
-            remoteWidth={remoteVideoSize?.width ?? null}
-            remoteHeight={remoteVideoSize?.height ?? null}
-            hasRemoteVideo={hasRemoteVideo}
-            metrics={hairRtc.metrics}
           />
 
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-40 bg-gradient-to-b from-black/50 via-black/20 to-transparent" />

@@ -1,6 +1,6 @@
 import { Link, useRouter } from '@tanstack/react-router'
 import { Eye, EyeClosed } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AgreementCheckbox } from '@/components/Auth/agreement-checkbox'
 import { BirthDatePicker } from '@/components/Auth/birth-date-picker'
 import { GenderSelect } from '@/components/Auth/gender-select'
@@ -11,6 +11,7 @@ import { useSignUpMutation } from '@/hooks/Auth/SignUp/useSignUpMutation'
 export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false)
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false)
+  const [isSignUpComplete, setIsSignUpComplete] = useState(false)
 
   const router = useRouter()
   const signUpMutation = useSignUpMutation()
@@ -23,6 +24,40 @@ export default function SignUp() {
     handleBlur,
     handleSubmit,
   } = useSignUpForm()
+
+  useEffect(() => {
+    if (!isSignUpComplete) {
+      return
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void router.navigate({ to: '/auth/login' })
+    }, 3000)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [isSignUpComplete, router])
+
+  if (isSignUpComplete) {
+    return (
+      <main className="app-frame-page flex flex-col items-center justify-center bg-bg-primary px-6 mb-20">
+        <h1 className="h-[54px] whitespace-pre-line px-8 text-center text-[20px] leading-[1.35] font-semibold tracking-[-0.03em] text-text-dar mb-20">
+          헤어 어때와 함께 다양한 <br />
+          헤어스타일로 꾸며보아요
+        </h1>
+
+        <img
+          src="/icon/signup.svg"
+          alt="회원가입 성공 이미지"
+          width={398}
+          height={320}
+          decoding="async"
+          className="h-auto w-full max-w-[398px] object-contain select-none"
+        />
+      </main>
+    )
+  }
 
   return (
     <main className="app-frame-page flex flex-col items-center justify-center bg-bg-primary px-6 py-10">
@@ -43,7 +78,7 @@ export default function SignUp() {
                 gender: formValues.gender ?? undefined,
               })
 
-              await router.navigate({ to: '/auth/login' })
+              setIsSignUpComplete(true)
             })
           }
         >

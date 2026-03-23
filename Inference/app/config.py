@@ -83,6 +83,7 @@ class Settings:
     rtc_bald_enabled: bool
     rtc_wait_for_ice_gathering: bool
     rtc_ice_gathering_timeout_ms: int
+    rtc_aioice_gather_timeout_ms: int
     rtc_timing_log_enabled: bool
     rtc_timing_log_interval_ms: int
     rtc_h264_timing_log_enabled: bool
@@ -167,6 +168,7 @@ class Settings:
             rtc_bald_enabled=_env_bool("INFERENCE_RTC_BALD_ENABLED", True),
             rtc_wait_for_ice_gathering=_env_bool("INFERENCE_RTC_WAIT_FOR_ICE_GATHERING", True),
             rtc_ice_gathering_timeout_ms=_env_int("INFERENCE_RTC_ICE_GATHERING_TIMEOUT_MS", 8000),
+            rtc_aioice_gather_timeout_ms=_env_int("INFERENCE_RTC_AIOICE_GATHER_TIMEOUT_MS", 5000),
             rtc_timing_log_enabled=_env_bool("INFERENCE_RTC_TIMING_LOG_ENABLED", False),
             rtc_timing_log_interval_ms=_env_int("INFERENCE_RTC_TIMING_LOG_INTERVAL_MS", 1000),
             rtc_h264_timing_log_enabled=_env_bool("INFERENCE_RTC_H264_TIMING_LOG_ENABLED", False),

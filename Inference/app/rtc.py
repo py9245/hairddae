@@ -18,6 +18,7 @@ from app.catalog import AssetBundle, AssetCatalog
 from app.config import Settings
 from app.face_tracking import ServerFaceTracker
 from app.models import FeatureMessageModel
+from app.rtc_metrics import RtcTransportStats
 from app.server_render import compose_bundle_frame_rgb
 
 try:
@@ -43,6 +44,11 @@ except ImportError:  # pragma: no cover - runtime guarded
     MediaStreamError = RuntimeError
     VideoFrame = None
 
+try:
+    from aioice import Connection as AioiceConnection
+except ImportError:  # pragma: no cover - runtime guarded
+    AioiceConnection = None
+
 
 logger = logging.getLogger("uvicorn.error")
 RENDER_FRAME_DELAY_MS = 60.0
@@ -55,6 +61,43 @@ FRAME_BUNDLE_MAX_LAG_MS = 280.0
 FRAME_BUNDLE_MAX_LEAD_MS = 180.0
 RENDER_MATCH_LOG_INTERVAL_MS = 1000.0
 SERVER_FEATURE_LOG_INTERVAL_MS = 1000.0
+
+_ORIGINAL_AIOICE_GET_COMPONENT_CANDIDATES = (
+    None if AioiceConnection is None else AioiceConnection.get_component_candidates
+)
+_AIOICE_COMPONENT_GATHER_TIMEOUT_SECONDS: float | None = None
+
+
+def _set_aioice_component_gather_timeout(timeout_seconds: float | None) -> None:
+    global _AIOICE_COMPONENT_GATHER_TIMEOUT_SECONDS
+
+    if AioiceConnection is None or _ORIGINAL_AIOICE_GET_COMPONENT_CANDIDATES is None:
+        return
+
+    _AIOICE_COMPONENT_GATHER_TIMEOUT_SECONDS = timeout_seconds
+    if getattr(AioiceConnection.get_component_candidates, "__hairapply_patched__", False):
+        return
+
+    async def _patched_get_component_candidates(
+        self: Any,
+        component: int,
+        addresses: list[str],
+        timeout: float = 5,
+    ) -> list[Any]:
+        effective_timeout = (
+            timeout
+            if _AIOICE_COMPONENT_GATHER_TIMEOUT_SECONDS is None
+            else _AIOICE_COMPONENT_GATHER_TIMEOUT_SECONDS
+        )
+        return await _ORIGINAL_AIOICE_GET_COMPONENT_CANDIDATES(
+            self,
+            component=component,
+            addresses=addresses,
+            timeout=effective_timeout,
+        )
+
+    _patched_get_component_candidates.__hairapply_patched__ = True
+    AioiceConnection.get_component_candidates = _patched_get_component_candidates
 
 
 async def _wait_for_ice_gathering_complete(peer_connection: Any, timeout_seconds: float = 8.0) -> None:
@@ -81,6 +124,13 @@ async def _wait_for_ice_gathering_complete(peer_connection: Any, timeout_seconds
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _aioice_component_gather_timeout_seconds(settings: Settings) -> float | None:
+    timeout_ms = max(0, int(getattr(settings, "rtc_aioice_gather_timeout_ms", 5000) or 0))
+    if timeout_ms <= 0:
+        return None
+    return timeout_ms / 1000.0
 
 
 def _rgb_requires_even_dimensions(frame_rgb: Any) -> bool:
@@ -154,6 +204,8 @@ class RtcSessionState:
     pose_window: deque[tuple[float, float, float]] = field(default_factory=deque)
     data_channel: Any | None = None
     server_processed_seq: int = 0
+    transport_stats: RtcTransportStats = field(default_factory=RtcTransportStats)
+    transport_summary_logged: bool = False
 
 
 @dataclass
@@ -226,6 +278,23 @@ def _build_selection_feature(
             )
         }
     )
+
+
+def _record_rtc_transport_sample(state: RtcSessionState, received_at_ms: float) -> float:
+    sample_ms = max(0.0, (time.monotonic() * 1000.0) - float(received_at_ms))
+    state.transport_stats.record(sample_ms)
+    return sample_ms
+
+
+def _rtc_transport_summary(state: RtcSessionState) -> dict[str, float | int | bool]:
+    stats = state.transport_stats
+    return {
+        "sample_count": stats.sample_count,
+        "average_ms": stats.average_ms,
+        "max_ms": stats.max_ms,
+        "last_ms": stats.last_ms,
+        "first_remote_excluded": stats.first_remote_excluded,
+    }
 
 
 class RtcRenderTrack(VideoStreamTrack):  # type: ignore[misc]
@@ -348,6 +417,7 @@ class RtcRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             frame_height,
         )
         if match is None and frame_width % 2 == 0 and frame_height % 2 == 0:
+            _record_rtc_transport_sample(self._state, buffered_frame.received_at_ms)
             return frame
 
         frame_rgb = frame.to_ndarray(format="rgb24")
@@ -361,6 +431,7 @@ class RtcRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             )
         if _rgb_requires_even_dimensions(output_rgb):
             output_rgb = _crop_rgb_to_even_dimensions(output_rgb)
+        _record_rtc_transport_sample(self._state, buffered_frame.received_at_ms)
         return _build_video_frame_from_rgb(frame, output_rgb)
 
 
@@ -415,12 +486,12 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             self._source_ended = True
             self._frame_available.set()
 
-    async def _next_latest_frame(self) -> Any:
+    async def _next_latest_frame(self) -> BufferedVideoFrame:
         while True:
             if self._buffer:
                 latest = self._buffer.pop()
                 self._buffer.clear()
-                return latest.frame
+                return latest
 
             if self._source_ended:
                 raise MediaStreamError
@@ -493,6 +564,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         bald_ms: float,
         compose_ms: float,
         from_ndarray_ms: float,
+        transport_ms: float,
         no_face: bool,
     ) -> None:
         if not self._settings.rtc_timing_log_enabled:
@@ -525,12 +597,15 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         self._last_timing_log_at_ms = now_ms
         frame_count = max(window.frame_count, 1)
         window_seconds = max(elapsed_ms / 1000.0, 1e-3)
+        transport_summary = _rtc_transport_summary(self._state)
         logger.info(
             (
                 "rtc pipeline timing: frames=%s fps=%.2f avg_total_ms=%.1f max_total_ms=%.1f "
                 "avg_wait_frame_ms=%.1f avg_server_ms=%.1f "
                 "to_ndarray_ms=%.1f tracking_ms=%.1f selection_ms=%.1f channel_ms=%.1f "
-                "bald_ms=%.1f compose_ms=%.1f from_ndarray_ms=%.1f no_face=%s "
+                "bald_ms=%.1f compose_ms=%.1f from_ndarray_ms=%.1f "
+                "transport_ms=%.1f transport_avg_ms=%.1f transport_max_ms=%.1f transport_count=%s "
+                "no_face=%s "
                 "last_seq=%s frame_size=%sx%s face_delegate=%s bald_delegate=%s render_accel=%s"
             ),
             window.frame_count,
@@ -546,6 +621,10 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             window.bald_ms / frame_count,
             window.compose_ms / frame_count,
             window.from_ndarray_ms / frame_count,
+            transport_ms,
+            float(transport_summary["average_ms"]),
+            float(transport_summary["max_ms"]),
+            int(transport_summary["sample_count"]),
             window.no_face_count,
             window.last_seq,
             window.frame_width,
@@ -559,7 +638,8 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
     async def recv(self) -> Any:
         total_started_at = time.perf_counter()
         wait_started_at = total_started_at
-        frame = await self._next_latest_frame()
+        buffered_frame = await self._next_latest_frame()
+        frame = buffered_frame.frame
         wait_frame_ms = (time.perf_counter() - wait_started_at) * 1000.0
         processing_started_at = time.perf_counter()
         frame_width = int(getattr(frame, "width", 0) or 0)
@@ -586,6 +666,10 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 output_rgb = _crop_rgb_to_even_dimensions(output_rgb)
             server_processing_ms = (time.perf_counter() - processing_started_at) * 1000.0
             total_ms = (time.perf_counter() - total_started_at) * 1000.0
+            transport_ms = _record_rtc_transport_sample(
+                self._state,
+                buffered_frame.received_at_ms,
+            )
             self._record_pipeline_timing(
                 seq=next_seq,
                 frame_width=frame_width,
@@ -600,6 +684,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 bald_ms=0.0,
                 compose_ms=0.0,
                 from_ndarray_ms=0.0,
+                transport_ms=transport_ms,
                 no_face=True,
             )
             return _build_video_frame_from_rgb(frame, output_rgb)
@@ -689,6 +774,10 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         )
         channel_ms = (time.perf_counter() - stage_started_at) * 1000.0
         total_ms = (time.perf_counter() - total_started_at) * 1000.0
+        transport_ms = _record_rtc_transport_sample(
+            self._state,
+            buffered_frame.received_at_ms,
+        )
         self._record_pipeline_timing(
             seq=feature.seq,
             frame_width=frame_width,
@@ -703,6 +792,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             bald_ms=bald_ms,
             compose_ms=compose_ms,
             from_ndarray_ms=from_ndarray_ms,
+            transport_ms=transport_ms,
             no_face=False,
         )
         return next_frame
@@ -732,6 +822,10 @@ def _create_peer_connection(settings: Settings) -> Any:
         return None
     if RTCConfiguration is None or RTCIceServer is None:
         return RTCPeerConnection()
+
+    aioice_timeout_seconds = _aioice_component_gather_timeout_seconds(settings)
+    _set_aioice_component_gather_timeout(aioice_timeout_seconds)
+    logger.info("rtc aioice gather timeout seconds: %s", aioice_timeout_seconds)
 
     configured_ice_servers = (
         settings.rtc_internal_ice_servers
@@ -913,6 +1007,20 @@ def attach_rtc_routes(app: FastAPI) -> None:
             logger.info("rtc connection state changed: %s", peer_connection.connectionState)
             if peer_connection.connectionState not in {"failed", "disconnected", "closed"}:
                 return
+            if not session_state.transport_summary_logged:
+                session_state.transport_summary_logged = True
+                transport_summary = _rtc_transport_summary(session_state)
+                logger.info(
+                    (
+                        "rtc transport summary: samples=%s avg_ms=%.1f max_ms=%.1f "
+                        "last_ms=%.1f first_remote_excluded=%s"
+                    ),
+                    int(transport_summary["sample_count"]),
+                    float(transport_summary["average_ms"]),
+                    float(transport_summary["max_ms"]),
+                    float(transport_summary["last_ms"]),
+                    bool(transport_summary["first_remote_excluded"]),
+                )
             await peer_connection.close()
             app.state.rtc_peer_connections.discard(peer_connection)
 

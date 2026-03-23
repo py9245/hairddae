@@ -1,7 +1,7 @@
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import { ChevronLeft } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
+import { HairListBottomNav } from '@/components/hair-list-bottom-nav'
 import { Header } from '@/components/header'
 import { CategoryCard } from '@/components/ui/category-card'
 import { CategorySkeleton } from '@/components/ui/category-skeleton'
@@ -10,6 +10,9 @@ import { HairStyleSkeleton } from '@/components/ui/hair-style-skeleton'
 import { useCategoryCardList } from '@/hooks/Home/useCategoryCardList'
 import { useCategoryList } from '@/hooks/Home/useCategoryList'
 import { postHairClick } from '@/lib/hair-click'
+import { cn } from '@/lib/utils'
+
+const HAIR_LIST_BACK_EXIT_MS = 360
 
 export default function HairList() {
   const navigate = useNavigate()
@@ -17,6 +20,8 @@ export default function HairList() {
   const apiCategories = categoryData?.categoryList || []
   const { category: selectedCategory } = useSearch({ from: '/hairlist' })
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({})
+  const [isLeaving, setIsLeaving] = useState(false)
+  const backExitTimeoutRef = useRef<number | null>(null)
 
   const activeCategory = selectedCategory ?? ''
 
@@ -29,6 +34,18 @@ export default function HairList() {
       to: '/hairlist',
       search: { category: categoryId || undefined },
     })
+  }
+
+  function handleBack() {
+    if (isLeaving) {
+      return
+    }
+
+    setIsLeaving(true)
+    backExitTimeoutRef.current = window.setTimeout(() => {
+      backExitTimeoutRef.current = null
+      navigate({ to: '/main' })
+    }, HAIR_LIST_BACK_EXIT_MS)
   }
 
   async function handleApply(hairId: number) {
@@ -50,18 +67,22 @@ export default function HairList() {
     })
   }
 
+  useEffect(() => {
+    return () => {
+      if (backExitTimeoutRef.current !== null) {
+        window.clearTimeout(backExitTimeoutRef.current)
+      }
+    }
+  }, [])
+
   return (
-    <main className="app-frame-page h-full overflow-y-auto bg-bg-primary text-text-warm-500">
+    <main
+      className={cn(
+        'app-frame-page relative h-full overflow-y-auto bg-bg-primary pb-[108px] text-text-warm-500',
+        isLeaving && 'animate-hair-list-page-out',
+      )}
+    >
       <Header
-        leftAction={
-          <button
-            type="button"
-            onClick={() => navigate({ to: '/main' })}
-            aria-label="뒤로 가기"
-          >
-            <ChevronLeft className="size-6 text-text-warm-500" />
-          </button>
-        }
         centerContent={
           <h1 className="text-base font-semibold text-text-warm-600">
             헤어 스타일
@@ -127,6 +148,12 @@ export default function HairList() {
           )}
         </section>
       </div>
+
+      <HairListBottomNav
+        isExiting={isLeaving}
+        onBack={handleBack}
+        onNavigate={(to) => navigate({ to })}
+      />
     </main>
   )
 }

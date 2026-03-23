@@ -13,6 +13,7 @@ import { useMe } from '@/hooks/Auth/useMe'
 import { useCategoryList } from '@/hooks/Home/useCategoryList'
 import { useNormalRank } from '@/hooks/Home/useNormalRank'
 import { postHairClick } from '@/lib/hair-click'
+import { useToggleLike } from '@/hooks/Home/useToggleLike'
 
 type SortValue = 'popular' | 'latest'
 
@@ -30,12 +31,8 @@ export default function Main() {
   const { data: categoryData, isLoading: isCategoryLoading } = useCategoryList()
   const categories = categoryData?.categoryList || []
 
-  const [likedIds, setLikedIds] = useState<Record<string, boolean>>({
-    'style-1': true,
-    'style-2': true,
-    'style-3': true,
-    'style-4': true,
-  })
+  const [likedIds, setLikedIds] = useState<Record<string, boolean>>({})
+  const { mutate: toggleLike } = useToggleLike()
   const [sortValue, setSortValue] = useState<SortValue>('popular')
 
   const sortedRecommendations =
@@ -138,14 +135,34 @@ export default function Main() {
                   hookText={card.hookText}
                   liked={likedIds[card.hairID.toString()] ?? card.liked}
                   className="w-full"
-                  onLikeToggle={() =>
+                  onLikeToggle={() => {
+                    const currentLiked =
+                      likedIds[card.hairID.toString()] ?? card.liked
+                    // 낙관적 업데이트
                     setLikedIds((prev) => ({
                       ...prev,
-                      [card.hairID.toString()]: !(
-                        prev[card.hairID.toString()] ?? card.liked
-                      ),
+                      [card.hairID.toString()]: !currentLiked,
                     }))
-                  }
+                    toggleLike(
+                      { hairId: card.hairID, currentLiked },
+                      {
+                        onSuccess: (data) => {
+                          // 서버 응답으로 최종 상태 확정
+                          setLikedIds((prev) => ({
+                            ...prev,
+                            [data.hairID.toString()]: data.liked,
+                          }))
+                        },
+                        onError: () => {
+                          // 실패 시 롤백
+                          setLikedIds((prev) => ({
+                            ...prev,
+                            [card.hairID.toString()]: currentLiked,
+                          }))
+                        },
+                      },
+                    )
+                  }}
                   onApply={handleApply}
                 />
               ))}

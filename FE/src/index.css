@@ -234,6 +234,59 @@
 }
 
 @layer components {
+  .animate-hair-list-bottom-nav-in {
+    animation: hair-list-bottom-nav-in 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .animate-hair-list-bottom-nav-out {
+    animation: hair-list-bottom-nav-out 360ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  }
+
+  .animate-hair-list-page-out {
+    animation: hair-list-page-out 360ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  }
+
+  @keyframes hair-list-bottom-nav-in {
+    0% {
+      opacity: 0;
+      transform: translate3d(0, 26px, 0) scale(0.985);
+    }
+
+    60% {
+      opacity: 1;
+      transform: translate3d(0, -2px, 0) scale(1);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+  }
+
+  @keyframes hair-list-bottom-nav-out {
+    0% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+
+    100% {
+      opacity: 0;
+      transform: translate3d(0, 22px, 0) scale(0.985);
+    }
+  }
+
+  @keyframes hair-list-page-out {
+    0% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+
+    100% {
+      opacity: 0.86;
+      transform: translate3d(0, 10px, 0);
+    }
+  }
+
   .app-frame-shell {
     min-height: 100dvh;
     display: flex;
@@ -259,11 +312,11 @@
   .app-frame-content {
     height: 100dvh;
     overflow: hidden;
-    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
   }
 
   .app-frame-page {
     min-height: 100%;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
   }
 
   .app-frame-fill {

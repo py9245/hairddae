@@ -44,7 +44,10 @@ export function CameraSettingsModal({
   }))
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+    <div
+      data-testid="camera-settings-modal"
+      className="absolute inset-0 z-50 flex items-center justify-center bg-black/35 px-4"
+    >
       <div
         className="origin-center"
         style={{

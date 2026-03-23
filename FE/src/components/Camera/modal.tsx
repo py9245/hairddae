@@ -139,6 +139,7 @@ export function ApplyStyleModal({
 
   return (
     <div
+      data-testid="apply-style-modal"
       className="origin-center"
       style={{
         transform: `scale(${scale})`,

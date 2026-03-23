@@ -81,7 +81,7 @@ class HairAppliedHistoryApiIntegrationTest {
     }
 
     @Test
-    void hairClickAndCameraListRequireAuthentication() throws Exception {
+    void hairClickRequiresAuthenticationAndCameraListEndpointIsRemoved() throws Exception {
         mockMvc.perform(post("/api/home/hairclick")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -92,29 +92,23 @@ class HairAppliedHistoryApiIntegrationTest {
                 .andExpect(status().isUnauthorized());
 
         mockMvc.perform(get("/api/hairs/cameralist"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isNotFound());
     }
 
     @Test
-    void hairClickRecordsAppliedHistoryAndCameraListReturnsRecentDeduplicatedItems() throws Exception {
+    void hairClickRecordsAppliedHistoryAndAppliedListReturnsRecentDeduplicatedItems() throws Exception {
         MockCookie accessTokenCookie = login();
 
         recordHairClick(accessTokenCookie, secondHairId);
         recordHairClick(accessTokenCookie, firstHairId);
         recordHairClick(accessTokenCookie, secondHairId);
 
-        mockMvc.perform(get("/api/hairs/cameralist")
+        mockMvc.perform(get("/api/mypage/appliedlist")
                         .cookie(accessTokenCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalCount").value(2))
                 .andExpect(jsonPath("$.hairList[0].hairID").value(secondHairId.intValue()))
                 .andExpect(jsonPath("$.hairList[1].hairID").value(firstHairId.intValue()));
-
-        mockMvc.perform(get("/api/mypage/appliedlist")
-                        .cookie(accessTokenCookie))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.appliedList[0].hairID").value(secondHairId.intValue()))
-                .andExpect(jsonPath("$.appliedList[1].hairID").value(firstHairId.intValue()));
     }
 
     private MockCookie login() throws Exception {

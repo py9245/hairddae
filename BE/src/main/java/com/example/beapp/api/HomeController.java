@@ -25,8 +25,6 @@ import com.example.beapp.service.HomeService;
 
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 
 @RestController
 @RequestMapping("/api/home")
@@ -41,17 +39,13 @@ public class HomeController {
 
     @GetMapping("/customrank")
     @SecurityRequirement(name = "bearerAuth")
-    public ResponseEntity<CustomRankResponse> customRank(
-            Authentication authentication,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size) {
-        return ResponseEntity.ok(homeService.getCustomRank(authentication.getName(), size));
+    public ResponseEntity<CustomRankResponse> customRank(Authentication authentication) {
+        return ResponseEntity.ok(homeService.getCustomRank(authentication.getName()));
     }
 
     @GetMapping({"/normalrank", "/normalrank/"})
-    public ResponseEntity<NormalRankResponse> normalRank(
-            Authentication authentication,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size) {
-        return ResponseEntity.ok(homeService.getNormalRank(userId(authentication), size));
+    public ResponseEntity<NormalRankResponse> normalRank(Authentication authentication) {
+        return ResponseEntity.ok(homeService.getNormalRank(userId(authentication)));
     }
 
     @GetMapping({"/categorylist", "/categorylist/"})
@@ -62,9 +56,8 @@ public class HomeController {
     @GetMapping({"/categorycardlist", "/categorycardlist/"})
     public ResponseEntity<CategoryCardListResponse> categoryCardList(
             Authentication authentication,
-            @RequestParam(required = false) String categoryId,
-            @RequestParam(defaultValue = "50") @Min(1) @Max(500) int size) {
-        return ResponseEntity.ok(homeService.getCategoryCardList(userId(authentication), categoryId, size));
+            @RequestParam(required = false) String categoryId) {
+        return ResponseEntity.ok(homeService.getCategoryCardList(userId(authentication), categoryId));
     }
 
     @PostMapping({"/hairapplybootstrap", "/hairapplybootstrap/"})

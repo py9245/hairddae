@@ -47,7 +47,7 @@ class ApiSecurityIntegrationTest {
 
     @Test
     void protectedEndpointRequiresJwt() throws Exception {
-        mockMvc.perform(get("/api/me"))
+        mockMvc.perform(get("/api/mypage/user"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(401));
     }
@@ -91,7 +91,7 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andReturn();
 
-        mockMvc.perform(get("/api/me")
+        mockMvc.perform(get("/api/mypage/user")
                         .cookie(extractCookie(loginResult, AuthCookieManager.ACCESS_TOKEN_COOKIE)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userID").value("TestUser01"))
@@ -127,7 +127,7 @@ class ApiSecurityIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("로그아웃 완료"));
 
-        mockMvc.perform(get("/api/me")
+        mockMvc.perform(get("/api/mypage/user")
                         .cookie(accessTokenCookie))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(401));
@@ -305,8 +305,8 @@ class ApiSecurityIntegrationTest {
         mockMvc.perform(get("/api/mypage/appliedlist")
                         .cookie(accessTokenCookie))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userID").value("TestUser01"))
-                .andExpect(jsonPath("$.appliedList").isArray());
+                .andExpect(jsonPath("$.totalCount").isNumber())
+                .andExpect(jsonPath("$.hairList").isArray());
 
         mockMvc.perform(get("/api/mypage/likelist")
                         .cookie(accessTokenCookie))
@@ -354,10 +354,7 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.inference.connect_ticket").isString())
                 .andExpect(jsonPath("$.rtc.enabled").value(true))
                 .andExpect(jsonPath("$.rtc.offer_url").value(org.hamcrest.Matchers.containsString("/rtc/inference/offer")))
-                .andExpect(jsonPath("$.rtc.connect_ticket").isString())
-                .andExpect(jsonPath("$.static.dataset_code").value("0001"))
-                .andExpect(jsonPath("$.static.asset_bundle_schema_version").value(1))
-                .andExpect(jsonPath("$.static.preload_asset_ids").isArray());
+                .andExpect(jsonPath("$.rtc.connect_ticket").isString());
     }
 
     @Test

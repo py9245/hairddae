@@ -73,6 +73,27 @@ class HairStaticUrlResolverTests {
     }
 
     @Test
+    void buildsDefaultAssetIndexUrlFromDatasetCodeWhenStoredUrlIsMissing() {
+        HairStaticUrlResolver resolver = new HairStaticUrlResolver(new AppHairProperties(Path.of("/tmp/static"), "/static"));
+        HairEntity hair = new HairEntity("leaf cut", "short", null, "desc");
+        hair.applyCatalogMetadata(
+                "leaf cut",
+                "leaf-cut",
+                "short",
+                "0001",
+                null,
+                null,
+                null,
+                "hair_rgba/preview.png",
+                "desc",
+                true);
+
+        assertEquals(
+                "/static/0001/manifests/asset_index_v0.json",
+                resolver.resolveAssetIndexUrl(hair));
+    }
+
+    @Test
     void resolvesStaticRootFilePathToStaticUrl() {
         HairStaticUrlResolver resolver = new HairStaticUrlResolver(new AppHairProperties(Path.of("/opt/be-static"), "/static"));
         HairEntity hair = new HairEntity("leaf cut", "short", null, "desc");

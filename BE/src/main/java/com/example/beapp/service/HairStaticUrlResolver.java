@@ -115,10 +115,7 @@ public class HairStaticUrlResolver {
             return assetIndexUrl;
         }
 
-        if (hair.getId() == null) {
-            return null;
-        }
-        return "/api/hairs/%d/asset-index".formatted(hair.getId());
+        return buildDatasetAssetUrl(hair.getDatasetCode(), "manifests/asset_index_v0.json");
     }
 
     public String buildDatasetAssetUrl(String datasetCode, String relativePath) {

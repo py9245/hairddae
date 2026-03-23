@@ -39,7 +39,7 @@ export function CustomRankBanner({ onApply }: CustomRankBannerProps) {
   }
 
   return (
-    <div className="flex gap-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [scroll-snap-type:x_mandatory]">
+    <div className="flex snap-x snap-mandatory overflow-x-auto px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {customList.map((item) => {
         const liked = likedOverrides[item.hairID.toString()] ?? item.liked
         return (
@@ -49,7 +49,7 @@ export function CustomRankBanner({ onApply }: CustomRankBannerProps) {
             hairSlug={item.hookText || '추천 헤어'}
             hairName={item.hairName}
             liked={liked}
-            className="w-[360px] shrink-0 [scroll-snap-align:start]"
+            className="w-[calc(100vw-2rem)] max-w-[358px] shrink-0 snap-start"
             onLikeToggle={() => {
               setLikedOverrides((prev) => ({ ...prev, [item.hairID.toString()]: !liked }))
               toggleLike(

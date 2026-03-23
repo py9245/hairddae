@@ -1,3 +1,4 @@
+import useEmblaCarousel from 'embla-carousel-react'
 import { useState } from 'react'
 
 import {
@@ -15,6 +16,7 @@ export function CustomRankBanner({ onApply }: CustomRankBannerProps) {
   const { data: customRankData, isLoading, isError } = useCustomRank()
   const { mutate: toggleLike } = useToggleLike()
   const [likedOverrides, setLikedOverrides] = useState<Record<string, boolean>>({})
+  const [emblaRef] = useEmblaCarousel()
 
   if (isLoading) {
     return <StyleAdsCardSkeleton className="w-full" />
@@ -39,33 +41,35 @@ export function CustomRankBanner({ onApply }: CustomRankBannerProps) {
   }
 
   return (
-    <div className="flex snap-x snap-mandatory overflow-x-auto px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {customList.map((item) => {
-        const liked = likedOverrides[item.hairID.toString()] ?? item.liked
-        return (
-          <StyleAdsCard
-            key={item.hairID}
-            hairImgpath={item.image}
-            hairSlug={item.hookText || '추천 헤어'}
-            hairName={item.hairName}
-            liked={liked}
-            className="w-[calc(100vw-2rem)] max-w-[358px] shrink-0 snap-start"
-            onLikeToggle={() => {
-              setLikedOverrides((prev) => ({ ...prev, [item.hairID.toString()]: !liked }))
-              toggleLike(
-                { hairId: item.hairID, currentLiked: liked },
-                {
-                  onSuccess: (data) =>
-                    setLikedOverrides((prev) => ({ ...prev, [data.hairID.toString()]: data.liked })),
-                  onError: () =>
-                    setLikedOverrides((prev) => ({ ...prev, [item.hairID.toString()]: liked })),
-                },
-              )
-            }}
-            onApply={() => onApply(item.hairID)}
-          />
-        )
-      })}
+    <div className="overflow-hidden" ref={emblaRef}>
+      <div className="flex gap-3">
+        {customList.map((item) => {
+          const liked = likedOverrides[item.hairID.toString()] ?? item.liked
+          return (
+            <StyleAdsCard
+              key={item.hairID}
+              hairImgpath={item.image}
+              hairSlug={item.hookText || '추천 헤어'}
+              hairName={item.hairName}
+              liked={liked}
+              className="w-full shrink-0 flex-[0_0_100%]"
+              onLikeToggle={() => {
+                setLikedOverrides((prev) => ({ ...prev, [item.hairID.toString()]: !liked }))
+                toggleLike(
+                  { hairId: item.hairID, currentLiked: liked },
+                  {
+                    onSuccess: (data) =>
+                      setLikedOverrides((prev) => ({ ...prev, [data.hairID.toString()]: data.liked })),
+                    onError: () =>
+                      setLikedOverrides((prev) => ({ ...prev, [item.hairID.toString()]: liked })),
+                  },
+                )
+              }}
+              onApply={() => onApply(item.hairID)}
+            />
+          )
+        })}
+      </div>
     </div>
   )
 }

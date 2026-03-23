@@ -258,6 +258,7 @@ export function HairCameraView({
                 variant="camera-back"
                 size="camera-icon"
                 onClick={handleTopLeftAction}
+                data-testid="camera-back-button"
                 aria-label={isFrameFrozen ? '캡처 취소' : '닫기'}
               >
                 <X className="size-12 text-white" />
@@ -271,6 +272,7 @@ export function HairCameraView({
                 onClick={() => {
                   setSettingsOpen(true)
                 }}
+                data-testid="camera-settings-button"
                 aria-label="설정 열기"
               >
                 <Settings className="size-12 text-white" />

@@ -45,19 +45,22 @@ public class HairCatalogService {
     private final HistoryJpaRepository historyJpaRepository;
     private final UserJpaRepository userJpaRepository;
     private final HairAssetRecommendationService hairAssetRecommendationService;
+    private final HairStaticUrlResolver hairStaticUrlResolver;
 
     public HairCatalogService(
             HairJpaRepository hairJpaRepository,
             HairLikeJpaRepository hairLikeJpaRepository,
             HistoryJpaRepository historyJpaRepository,
             UserJpaRepository userJpaRepository,
-            HairAssetRecommendationService hairAssetRecommendationService
+            HairAssetRecommendationService hairAssetRecommendationService,
+            HairStaticUrlResolver hairStaticUrlResolver
     ) {
         this.hairJpaRepository = hairJpaRepository;
         this.hairLikeJpaRepository = hairLikeJpaRepository;
         this.historyJpaRepository = historyJpaRepository;
         this.userJpaRepository = userJpaRepository;
         this.hairAssetRecommendationService = hairAssetRecommendationService;
+        this.hairStaticUrlResolver = hairStaticUrlResolver;
     }
 
     @Transactional(readOnly = true)
@@ -104,7 +107,7 @@ public class HairCatalogService {
     public List<CategoryListResponse.CategoryItem> getCategoryItems() {
         List<HairEntity> hairs = hairJpaRepository.findByActiveTrue(PageRequest.of(0, 500, popularSort())).getContent();
         LinkedHashMap<String, CategoryListResponse.CategoryItem> items = new LinkedHashMap<>();
-        String allPreviewImage = hairs.isEmpty() ? null : hairs.get(0).getPreviewImageUrl();
+        String allPreviewImage = hairs.isEmpty() ? null : hairStaticUrlResolver.resolvePreviewImageUrl(hairs.get(0));
         items.put("all", new CategoryListResponse.CategoryItem("all", "전체", allPreviewImage));
 
         for (HairEntity hair : hairs) {
@@ -116,7 +119,7 @@ public class HairCatalogService {
                     new CategoryListResponse.CategoryItem(
                             hair.getCategory(),
                             hair.getCategory(),
-                            hair.getPreviewImageUrl()));
+                            hairStaticUrlResolver.resolvePreviewImageUrl(hair)));
         }
         return new ArrayList<>(items.values());
     }
@@ -147,6 +150,12 @@ public class HairCatalogService {
     }
 
     @Transactional(readOnly = true)
+    public HairListResponse getCameraList(String userId, int page, int size) {
+        List<HairCard> items = buildRecentAppliedCards(userId, 0);
+        return HairListResponse.ok(items.size(), paginate(items, page, size));
+    }
+
+    @Transactional(readOnly = true)
     public HairDetailResponse getHairDetail(String userId, Long hairId) {
         HairEntity hair = getRequiredHair(hairId);
         boolean liked = StringUtils.hasText(userId) && hairLikeJpaRepository.existsByUser_UserIdAndHair_Id(userId, hairId);
@@ -155,15 +164,15 @@ public class HairCatalogService {
                 hair.getName(),
                 hair.getSlug(),
                 hair.getCategory(),
-                hair.getPreviewImageUrl(),
+                hairStaticUrlResolver.resolvePreviewImageUrl(hair),
                 safeCount(hair.getLikeCount()),
                 safeCount(hair.getViewCount()),
                 latestViewedAt(hair),
                 liked,
                 hair.getDescription(),
                 hair.getDatasetCode(),
-                hair.getDatasetRootUrl(),
-                hair.getAssetIndexUrl(),
+                hairStaticUrlResolver.resolveDatasetRootUrl(hair),
+                hairStaticUrlResolver.resolveAssetIndexUrl(hair),
                 hair.getRepresentativeAssetId());
     }
 
@@ -232,27 +241,13 @@ public class HairCatalogService {
 
     @Transactional(readOnly = true)
     public List<HairCard> getRecentAppliedCards(String userId, int minViewSec, int page, int size) {
-        List<HistoryEntity> histories = historyJpaRepository.findRecentByUserIdWithHair(userId, minViewSec);
-        LinkedHashMap<Long, HistoryEntity> deduplicated = new LinkedHashMap<>();
-        for (HistoryEntity history : histories) {
-            deduplicated.putIfAbsent(history.getHair().getId(), history);
-        }
-
-        List<HairEntity> hairs = deduplicated.values().stream()
-                .map(HistoryEntity::getHair)
-                .toList();
-        Set<Long> likedHairIds = resolveLikedHairIds(userId, hairs);
-
-        List<HairCard> items = deduplicated.values().stream()
-                .map(history -> toHairCard(history.getHair(), likedHairIds.contains(history.getHair().getId())))
-                .toList();
-        return paginate(items, page, size);
+        return paginate(buildRecentAppliedCards(userId, minViewSec), page, size);
     }
 
     private HairCard toHairCard(HairEntity hair, boolean liked) {
         return new HairCard(
                 hair.getId().intValue(),
-                hair.getPreviewImageUrl(),
+                hairStaticUrlResolver.resolvePreviewImageUrl(hair),
                 liked,
                 buildHookText(hair),
                 hair.getName(),
@@ -356,6 +351,23 @@ public class HairCatalogService {
 
     private int safeCount(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    private List<HairCard> buildRecentAppliedCards(String userId, int minViewSec) {
+        List<HistoryEntity> histories = historyJpaRepository.findRecentByUserIdWithHair(userId, minViewSec);
+        LinkedHashMap<Long, HistoryEntity> deduplicated = new LinkedHashMap<>();
+        for (HistoryEntity history : histories) {
+            deduplicated.putIfAbsent(history.getHair().getId(), history);
+        }
+
+        List<HairEntity> hairs = deduplicated.values().stream()
+                .map(HistoryEntity::getHair)
+                .toList();
+        Set<Long> likedHairIds = resolveLikedHairIds(userId, hairs);
+
+        return deduplicated.values().stream()
+                .map(history -> toHairCard(history.getHair(), likedHairIds.contains(history.getHair().getId())))
+                .toList();
     }
 
     private <T> List<T> paginate(List<T> values, int page, int size) {

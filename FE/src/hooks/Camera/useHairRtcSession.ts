@@ -25,12 +25,133 @@ type HairRtcMetrics = {
   processedFps: number | null
   queueDepth: number
   droppedPendingCount: number
+  transportRoundTripTimeMs: number | null
+  estimatedOneWayTransportMs: number | null
+  availableOutgoingBitrateKbps: number | null
+  outboundBitrateKbps: number | null
+  inboundBitrateKbps: number | null
+  outboundFramesPerSecond: number | null
+  inboundFramesPerSecond: number | null
+  outboundFrameWidth: number | null
+  outboundFrameHeight: number | null
+  inboundFrameWidth: number | null
+  inboundFrameHeight: number | null
+  serverProcessingMs: number | null
 }
+
+type HairRtcDebugLog = {
+  atIso: string
+  type: 'connected' | 'processed' | 'heartbeat_ack' | 'error'
+  summary: string
+  raw: string
+}
+
+type HairRtcTransportSnapshot = Pick<
+  HairRtcMetrics,
+  | 'transportRoundTripTimeMs'
+  | 'estimatedOneWayTransportMs'
+  | 'availableOutgoingBitrateKbps'
+  | 'outboundBitrateKbps'
+  | 'inboundBitrateKbps'
+  | 'outboundFramesPerSecond'
+  | 'inboundFramesPerSecond'
+  | 'outboundFrameWidth'
+  | 'outboundFrameHeight'
+  | 'inboundFrameWidth'
+  | 'inboundFrameHeight'
+>
 
 const RECONNECT_DELAY_MS = 800
 const ICE_GATHERING_TIMEOUT_MS = 1500
 const REMOTE_READY_MIN_PROCESSED = 1
 const REMOTE_READY_MIN_STABLE_ASSET = 1
+const RTC_STATS_POLL_INTERVAL_MS = 1000
+const MAX_DEBUG_LOGS = 8
+
+function createEmptyTransportSnapshot(): HairRtcTransportSnapshot {
+  return {
+    transportRoundTripTimeMs: null,
+    estimatedOneWayTransportMs: null,
+    availableOutgoingBitrateKbps: null,
+    outboundBitrateKbps: null,
+    inboundBitrateKbps: null,
+    outboundFramesPerSecond: null,
+    inboundFramesPerSecond: null,
+    outboundFrameWidth: null,
+    outboundFrameHeight: null,
+    inboundFrameWidth: null,
+    inboundFrameHeight: null,
+  }
+}
+
+function readStatNumber(report: RTCStats, key: string) {
+  const value = (report as RTCStats & Record<string, unknown>)[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function readStatBoolean(report: RTCStats, key: string) {
+  const value = (report as RTCStats & Record<string, unknown>)[key]
+  return typeof value === 'boolean' ? value : null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value != null && !Array.isArray(value)
+}
+
+function readNestedNumber(
+  source: unknown,
+  path: readonly string[],
+): number | null {
+  let current: unknown = source
+  for (const part of path) {
+    if (!isRecord(current) || !(part in current)) {
+      return null
+    }
+    current = current[part]
+  }
+
+  return typeof current === 'number' && Number.isFinite(current) ? current : null
+}
+
+function extractServerProcessingMs(rawMessage: unknown) {
+  const candidatePaths = [
+    ['processing_ms'],
+    ['server_processing_ms'],
+    ['inference_ms'],
+    ['elapsed_ms'],
+    ['total_processing_ms'],
+    ['timings', 'processing_ms'],
+    ['timings', 'inference_ms'],
+    ['timings', 'total_ms'],
+    ['metrics', 'processing_ms'],
+    ['metrics', 'inference_ms'],
+    ['metrics', 'total_ms'],
+    ['debug', 'processing_ms'],
+    ['debug', 'inference_ms'],
+    ['profiling', 'processing_ms'],
+    ['profiling', 'inference_ms'],
+    ['profiling', 'total_ms'],
+    ['log', 'processing_ms'],
+    ['log', 'inference_ms'],
+  ] as const
+
+  for (const path of candidatePaths) {
+    const value = readNestedNumber(rawMessage, path)
+    if (value != null) {
+      return value
+    }
+  }
+
+  return null
+}
+
+function stringifyDebugPayload(rawMessage: unknown) {
+  try {
+    return JSON.stringify(rawMessage)
+  } catch {
+    return String(rawMessage)
+  }
+}
 
 async function configureRtcSender(sender: RTCRtpSender) {
   const track = sender.track
@@ -116,11 +237,25 @@ export function useHairRtcSession({
   const sessionRef = useRef<HairApplyV2Response | null>(null)
   const sessionHairIdRef = useRef<number | null>(null)
   const reconnectTimerRef = useRef<number | null>(null)
+  const statsTimerRef = useRef<number | null>(null)
   const lastProcessedAtRef = useRef<number | null>(null)
   const processedCountRef = useRef(0)
   const stableAssetCountRef = useRef(0)
   const lastAssetIdRef = useRef<string | null>(null)
   const processedFpsEmaRef = useRef<number | null>(null)
+  const transportSnapshotRef = useRef<HairRtcTransportSnapshot>(
+    createEmptyTransportSnapshot(),
+  )
+  const lastServerProcessingMsRef = useRef<number | null>(null)
+  const lastStatsSampleRef = useRef<{
+    timestampMs: number | null
+    outboundBytes: number | null
+    inboundBytes: number | null
+  }>({
+    timestampMs: null,
+    outboundBytes: null,
+    inboundBytes: null,
+  })
   const bootstrapRequestRef = useRef(0)
   const latestEnabledRef = useRef(enabled)
   const latestHairIdRef = useRef<number | null>(hairId ?? null)
@@ -142,7 +277,10 @@ export function useHairRtcSession({
     processedFps: null,
     queueDepth: 0,
     droppedPendingCount: 0,
+    ...createEmptyTransportSnapshot(),
+    serverProcessingMs: null,
   })
+  const [debugLogs, setDebugLogs] = useState<HairRtcDebugLog[]>([])
 
   latestEnabledRef.current = enabled
   latestHairIdRef.current = hairId ?? null
@@ -155,6 +293,24 @@ export function useHairRtcSession({
     }
     window.clearTimeout(reconnectTimerRef.current)
     reconnectTimerRef.current = null
+  }, [])
+  const clearStatsPolling = useCallback(() => {
+    if (statsTimerRef.current != null) {
+      window.clearInterval(statsTimerRef.current)
+      statsTimerRef.current = null
+    }
+
+    lastStatsSampleRef.current = {
+      timestampMs: null,
+      outboundBytes: null,
+      inboundBytes: null,
+    }
+    transportSnapshotRef.current = createEmptyTransportSnapshot()
+  }, [])
+
+  const appendDebugLog = useCallback((entry: HairRtcDebugLog) => {
+    console.info('[hair-rtc]', entry.summary, entry.raw)
+    setDebugLogs((previous) => [entry, ...previous].slice(0, MAX_DEBUG_LOGS))
   }, [])
 
   const teardownConnection = useCallback((manual: boolean) => {
@@ -181,18 +337,24 @@ export function useHairRtcSession({
     lastAssetIdRef.current = null
     processedFpsEmaRef.current = null
     isRenderReadyRef.current = false
+    lastServerProcessingMsRef.current = null
+    transportSnapshotRef.current = createEmptyTransportSnapshot()
     setIsRenderReady(false)
     setMetrics({
       inferenceRttMs: null,
       processedFps: null,
       queueDepth: 0,
       droppedPendingCount: 0,
+      ...createEmptyTransportSnapshot(),
+      serverProcessingMs: null,
     })
+    setDebugLogs([])
   }, [])
 
   const resetRuntime = useCallback(
     ({ clearSession }: { clearSession: boolean }) => {
       clearReconnect()
+      clearStatsPolling()
       reconnectingRef.current = false
       teardownConnection(true)
       resetMetrics()
@@ -203,8 +365,140 @@ export function useHairRtcSession({
         sessionHairIdRef.current = null
       }
     },
-    [clearReconnect, resetMetrics, teardownConnection],
+    [clearReconnect, clearStatsPolling, resetMetrics, teardownConnection],
   )
+
+  const sampleTransportStats = useCallback(async () => {
+    const peerConnection = peerConnectionRef.current
+    if (!peerConnection) {
+      return
+    }
+
+    try {
+      const report = await peerConnection.getStats()
+      let selectedCandidatePair: RTCStats | null = null
+      let outboundVideo: RTCStats | null = null
+      let inboundVideo: RTCStats | null = null
+
+      report.forEach((statsItem) => {
+        if (statsItem.type === 'candidate-pair') {
+          const isSelected =
+            readStatBoolean(statsItem, 'selected') === true ||
+            readStatBoolean(statsItem, 'nominated') === true
+          const isSucceeded =
+            (statsItem as RTCStats & Record<string, unknown>).state === 'succeeded'
+
+          if (!selectedCandidatePair && (isSelected || isSucceeded)) {
+            selectedCandidatePair = statsItem
+          }
+          return
+        }
+
+        if (
+          statsItem.type === 'outbound-rtp' &&
+          (statsItem as RTCStats & Record<string, unknown>).kind === 'video'
+        ) {
+          outboundVideo = statsItem
+          return
+        }
+
+        if (
+          statsItem.type === 'inbound-rtp' &&
+          (statsItem as RTCStats & Record<string, unknown>).kind === 'video'
+        ) {
+          inboundVideo = statsItem
+        }
+      })
+
+      const currentRoundTripTimeSeconds = selectedCandidatePair
+        ? readStatNumber(selectedCandidatePair, 'currentRoundTripTime')
+        : null
+      const availableOutgoingBitrateBps = selectedCandidatePair
+        ? readStatNumber(selectedCandidatePair, 'availableOutgoingBitrate')
+        : null
+      const outboundBytes = outboundVideo
+        ? readStatNumber(outboundVideo, 'bytesSent')
+        : null
+      const inboundBytes = inboundVideo
+        ? readStatNumber(inboundVideo, 'bytesReceived')
+        : null
+      const now = performance.now()
+      const previous = lastStatsSampleRef.current
+
+      let outboundBitrateKbps: number | null = null
+      let inboundBitrateKbps: number | null = null
+
+      if (previous.timestampMs != null) {
+        const deltaMs = now - previous.timestampMs
+        if (deltaMs > 0) {
+          if (outboundBytes != null && previous.outboundBytes != null) {
+            outboundBitrateKbps =
+              ((outboundBytes - previous.outboundBytes) * 8) / deltaMs
+          }
+          if (inboundBytes != null && previous.inboundBytes != null) {
+            inboundBitrateKbps =
+              ((inboundBytes - previous.inboundBytes) * 8) / deltaMs
+          }
+        }
+      }
+
+      lastStatsSampleRef.current = {
+        timestampMs: now,
+        outboundBytes,
+        inboundBytes,
+      }
+
+      transportSnapshotRef.current = {
+        transportRoundTripTimeMs:
+          currentRoundTripTimeSeconds != null
+            ? currentRoundTripTimeSeconds * 1000
+            : null,
+        estimatedOneWayTransportMs:
+          currentRoundTripTimeSeconds != null
+            ? currentRoundTripTimeSeconds * 500
+            : null,
+        availableOutgoingBitrateKbps:
+          availableOutgoingBitrateBps != null
+            ? availableOutgoingBitrateBps / 1000
+            : null,
+        outboundBitrateKbps,
+        inboundBitrateKbps,
+        outboundFramesPerSecond: outboundVideo
+          ? readStatNumber(outboundVideo, 'framesPerSecond')
+          : null,
+        inboundFramesPerSecond: inboundVideo
+          ? readStatNumber(inboundVideo, 'framesPerSecond')
+          : null,
+        outboundFrameWidth: outboundVideo
+          ? readStatNumber(outboundVideo, 'frameWidth')
+          : null,
+        outboundFrameHeight: outboundVideo
+          ? readStatNumber(outboundVideo, 'frameHeight')
+          : null,
+        inboundFrameWidth: inboundVideo
+          ? readStatNumber(inboundVideo, 'frameWidth')
+          : null,
+        inboundFrameHeight: inboundVideo
+          ? readStatNumber(inboundVideo, 'frameHeight')
+          : null,
+      }
+
+      setMetrics((previousMetrics) => ({
+        ...previousMetrics,
+        ...transportSnapshotRef.current,
+      }))
+    } catch (error) {
+      console.warn('RTC getStats failed:', error)
+    }
+  }, [])
+
+  const startStatsPolling = useCallback(() => {
+    clearStatsPolling()
+    void sampleTransportStats()
+    statsTimerRef.current = window.setInterval(() => {
+      void sampleTransportStats()
+    }, RTC_STATS_POLL_INTERVAL_MS)
+  }, [clearStatsPolling, sampleTransportStats])
 
   const scheduleReconnect = useCallback(
     (reason: string) => {
@@ -219,6 +513,7 @@ export function useHairRtcSession({
 
       reconnectingRef.current = true
       setError(reason)
+      clearStatsPolling()
       teardownConnection(false)
 
       reconnectTimerRef.current = window.setTimeout(() => {
@@ -226,7 +521,7 @@ export function useHairRtcSession({
         setReconnectVersion((value) => value + 1)
       }, RECONNECT_DELAY_MS)
     },
-    [teardownConnection],
+    [clearStatsPolling, teardownConnection],
   )
 
   const openSession = useCallback(
@@ -277,6 +572,7 @@ export function useHairRtcSession({
         setRemoteStream(remoteMediaStream)
         setConnectionState(peerConnection.connectionState)
         setError(null)
+        startStatsPolling()
 
         peerConnection.addEventListener('connectionstatechange', () => {
           const nextState = peerConnection.connectionState
@@ -320,20 +616,42 @@ export function useHairRtcSession({
 
         dataChannel.addEventListener('message', (event) => {
           try {
-            const message = parseInferenceMessage(
-              JSON.parse(String(event.data)) as unknown,
-            )
-            if (
-              message.type === 'connected' ||
-              message.type === 'heartbeat_ack'
-            ) {
+            const rawMessage = JSON.parse(String(event.data)) as unknown
+            const message = parseInferenceMessage(rawMessage)
+            const raw = stringifyDebugPayload(rawMessage)
+
+            if (message.type === 'connected') {
+              appendDebugLog({
+                atIso: new Date().toISOString(),
+                type: 'connected',
+                summary: `connected node=${message.nodeId}`,
+                raw,
+              })
+              return
+            }
+
+            if (message.type === 'heartbeat_ack') {
+              appendDebugLog({
+                atIso: new Date().toISOString(),
+                type: 'heartbeat_ack',
+                summary: 'heartbeat_ack',
+                raw,
+              })
               return
             }
             if (message.type === 'error') {
               setError(message.message)
+              appendDebugLog({
+                atIso: new Date().toISOString(),
+                type: 'error',
+                summary: `error ${message.code}: ${message.message}`,
+                raw,
+              })
               return
             }
 
+            const serverProcessingMs = extractServerProcessingMs(rawMessage)
+            lastServerProcessingMsRef.current = serverProcessingMs
             setAsset(message.asset)
             processedCountRef.current += 1
 
@@ -371,6 +689,26 @@ export function useHairRtcSession({
               processedFps: processedFpsEmaRef.current,
               queueDepth: message.queueDepth,
               droppedPendingCount: message.droppedPendingCount,
+              ...transportSnapshotRef.current,
+              serverProcessingMs,
+            })
+            appendDebugLog({
+              atIso: new Date().toISOString(),
+              type: 'processed',
+              summary: [
+                `processed seq=${message.processedSeq}`,
+                `queue=${message.queueDepth}`,
+                `drop=${message.droppedPendingCount}`,
+                serverProcessingMs != null
+                  ? `server=${serverProcessingMs.toFixed(1)}ms`
+                  : null,
+                transportSnapshotRef.current.transportRoundTripTimeMs != null
+                  ? `rtc_rtt=${transportSnapshotRef.current.transportRoundTripTimeMs.toFixed(1)}ms`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(' '),
+              raw,
             })
           } catch (caught) {
             console.error('RTC data channel parse failed:', caught)
@@ -408,7 +746,7 @@ export function useHairRtcSession({
         scheduleReconnect('RTC 세션 재시도 중')
       }
     },
-    [resetRuntime, scheduleReconnect],
+    [appendDebugLog, resetRuntime, scheduleReconnect, startStatsPolling],
   )
 
   useEffect(() => {
@@ -436,5 +774,6 @@ export function useHairRtcSession({
     isRenderReady,
     error,
     metrics,
+    debugLogs,
   }
 }

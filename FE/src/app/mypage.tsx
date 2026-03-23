@@ -1,16 +1,22 @@
 import { useNavigate } from '@tanstack/react-router'
+import { useState } from 'react'
 
 import { Header } from '@/components/header'
 import { ProfileCard, ProfileCardSkeleton } from '@/components/profile-card'
 import { HairStyleCard } from '@/components/ui/hair-style-card'
 import { useMe } from '@/hooks/Auth/useMe'
 import { useLikeList } from '@/hooks/MyPage/useLikeList'
+import { useToggleLike } from '@/hooks/Home/useToggleLike'
 import { auth } from '@/lib/auth'
 
 export default function MyPage() {
   const navigate = useNavigate()
   const { data: meData, isLoading } = useMe()
   const { data: likeData, isLoading: isLikeLoading } = useLikeList()
+  const [likedIds, setLikedIds] = useState<Record<string, boolean>>({})
+  const { mutate: toggleLike } = useToggleLike()
+  const visibleLikeList =
+    likeData?.likeList.filter((item) => likedIds[item.hairID.toString()] ?? item.liked) ?? []
 
   async function handleLogout() {
     await auth.logout()
@@ -44,9 +50,9 @@ export default function MyPage() {
                 />
               ))}
             </div>
-          ) : likeData && likeData.likeList.length > 0 ? (
+          ) : visibleLikeList.length > 0 ? (
             <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              {likeData.likeList.map((item) => (
+              {visibleLikeList.map((item) => (
                 <div key={item.hairID} className="shrink-0">
                   <HairStyleCard
                     hairId={item.hairID}
@@ -54,7 +60,22 @@ export default function MyPage() {
                     imageAlt={item.hairName}
                     hairName={item.hairName}
                     hookText={item.hookText}
-                    liked={item.liked}
+                    liked={likedIds[item.hairID.toString()] ?? item.liked}
+                    onLikeToggle={() => {
+                      const currentLiked = likedIds[item.hairID.toString()] ?? item.liked
+                      setLikedIds((prev) => ({ ...prev, [item.hairID.toString()]: !currentLiked }))
+                      toggleLike(
+                        { hairId: item.hairID, currentLiked },
+                        {
+                          onSuccess: (data) => {
+                            setLikedIds((prev) => ({ ...prev, [data.hairID.toString()]: data.liked }))
+                          },
+                          onError: () => {
+                            setLikedIds((prev) => ({ ...prev, [item.hairID.toString()]: currentLiked }))
+                          },
+                        },
+                      )
+                    }}
                   />
                 </div>
               ))}

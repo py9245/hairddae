@@ -66,8 +66,6 @@ export function BottomSheet({
           className,
         )}
       >
-        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-neutral-200" />
-
         {title && (
           <h2 className="mb-4 text-base font-semibold text-text-dark">
             {title}

@@ -1,4 +1,6 @@
 import { X } from 'lucide-react'
+import type { PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { BottomSheet } from '@/components/ui/bottom-sheet'
 import { CategoryCard } from '@/components/ui/category-card'
@@ -19,6 +21,9 @@ type CategoryBottomSheetProps = {
   className?: string
 }
 
+const DRAG_DISMISS_THRESHOLD = 24
+const DRAG_CLOSE_DURATION_MS = 180
+
 export function CategoryBottomSheet({
   open,
   onClose,
@@ -27,6 +32,141 @@ export function CategoryBottomSheet({
   onSelect,
   className,
 }: CategoryBottomSheetProps) {
+  const activePointerIdRef = useRef<number | null>(null)
+  const closeTimeoutRef = useRef<number | null>(null)
+  const dragOffsetRef = useRef(0)
+  const dragStartYRef = useRef(0)
+  const [isDragging, setIsDragging] = useState(false)
+  const [isClosingByDrag, setIsClosingByDrag] = useState(false)
+  const [translateY, setTranslateY] = useState(0)
+
+  function clearCloseTimeout() {
+    if (closeTimeoutRef.current === null) {
+      return
+    }
+
+    window.clearTimeout(closeTimeoutRef.current)
+    closeTimeoutRef.current = null
+  }
+
+  function setDragOffset(nextOffset: number) {
+    dragOffsetRef.current = nextOffset
+    setTranslateY(nextOffset)
+  }
+
+  function resetDragState() {
+    activePointerIdRef.current = null
+    dragStartYRef.current = 0
+    setIsDragging(false)
+    setIsClosingByDrag(false)
+    setDragOffset(0)
+  }
+
+  function handleDragDismiss() {
+    setIsDragging(false)
+    setIsClosingByDrag(true)
+    setDragOffset(window.innerHeight)
+    clearCloseTimeout()
+    closeTimeoutRef.current = window.setTimeout(() => {
+      clearCloseTimeout()
+      onClose()
+      resetDragState()
+    }, DRAG_CLOSE_DURATION_MS)
+  }
+
+  function handleDragRelease() {
+    if (dragOffsetRef.current >= DRAG_DISMISS_THRESHOLD) {
+      handleDragDismiss()
+      return
+    }
+
+    activePointerIdRef.current = null
+    dragStartYRef.current = 0
+    setIsDragging(false)
+    setDragOffset(0)
+  }
+
+  function handleHeaderPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (isClosingByDrag) {
+      return
+    }
+
+    if (event.pointerType === 'mouse' && event.button !== 0) {
+      return
+    }
+
+    activePointerIdRef.current = event.pointerId
+    dragStartYRef.current = event.clientY
+    setIsDragging(true)
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function handleHeaderPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (
+      !isDragging ||
+      isClosingByDrag ||
+      activePointerIdRef.current !== event.pointerId
+    ) {
+      return
+    }
+
+    const nextOffset = Math.max(0, event.clientY - dragStartYRef.current)
+    setDragOffset(nextOffset)
+  }
+
+  function handleHeaderPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (activePointerIdRef.current !== event.pointerId) {
+      return
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    handleDragRelease()
+  }
+
+  function handleHeaderPointerCancel(event: ReactPointerEvent<HTMLDivElement>) {
+    if (activePointerIdRef.current !== event.pointerId) {
+      return
+    }
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+
+    activePointerIdRef.current = null
+    dragStartYRef.current = 0
+    setIsDragging(false)
+    setDragOffset(0)
+  }
+
+  useEffect(() => {
+    if (open) {
+      return
+    }
+
+    if (closeTimeoutRef.current !== null) {
+      window.clearTimeout(closeTimeoutRef.current)
+      closeTimeoutRef.current = null
+    }
+
+    activePointerIdRef.current = null
+    dragStartYRef.current = 0
+    setIsDragging(false)
+    setIsClosingByDrag(false)
+    dragOffsetRef.current = 0
+    setTranslateY(0)
+  }, [open])
+
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current !== null) {
+        window.clearTimeout(closeTimeoutRef.current)
+      }
+    }
+  }, [])
+
   return (
     <BottomSheet
       isOpen={open}
@@ -40,9 +180,30 @@ export function CategoryBottomSheet({
       ariaLabel="카테고리 선택"
     >
       <div className="relative">
-        <div className="relative mb-[94px] max-h-[calc(100dvh-6.5rem)] overflow-y-auto rounded-[32px] border border-white/70 bg-[#fffaf7] px-5 pb-5 pt-4 shadow-[0_-18px_40px_rgba(47,47,47,0.16)]">
+        <div
+          className={cn(
+            'relative mb-[94px] max-h-[calc(100dvh-6.5rem)] overflow-y-auto rounded-[32px] border border-white/70 bg-[#fffaf7] px-5 pb-5 pt-4 shadow-[0_-18px_40px_rgba(47,47,47,0.16)] will-change-transform',
+            isDragging
+              ? 'transition-none'
+              : 'transition-transform duration-200 ease-out',
+          )}
+          style={{
+            transform: `translateY(${translateY}px)`,
+          }}
+        >
           <div className="mb-4 flex items-start justify-between gap-3">
-            <div className="space-y-1">
+            <div
+              className={cn(
+                'space-y-1 touch-none select-none',
+                isClosingByDrag
+                  ? 'cursor-default'
+                  : 'cursor-grab active:cursor-grabbing',
+              )}
+              onPointerDown={handleHeaderPointerDown}
+              onPointerMove={handleHeaderPointerMove}
+              onPointerUp={handleHeaderPointerUp}
+              onPointerCancel={handleHeaderPointerCancel}
+            >
               <h2 className="text-lg font-semibold tracking-[-0.03em] text-text-dark">
                 어떤 카테고리를 살펴볼까요?
               </h2>

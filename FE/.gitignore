@@ -27,5 +27,6 @@ dist-ssr
 storybook-static
 
 .env
+/.playwright-mcp/
 /playwright-report/
 /test-results/

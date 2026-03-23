@@ -10,6 +10,7 @@ import { z } from 'zod'
 import Adsense from '@/app/adsense'
 import Camera from '@/app/camera'
 import HairList from '@/app/hairlist'
+import Landing from '@/app/landing'
 import Login from '@/app/login'
 import Main from '@/app/main'
 import MyPage from '@/app/mypage'
@@ -32,6 +33,12 @@ const splashRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
   component: Splash,
+})
+
+const landingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'landing',
+  component: Landing,
 })
 
 const authRoute = createRoute({
@@ -83,6 +90,7 @@ const hairListRoute = createProtectedRoute('hairlist', HairList, (search) =>
 
 const routeTree = rootRoute.addChildren([
   splashRoute,
+  landingRoute,
   authRoute.addChildren([loginRoute, signupRoute]),
   mainRoute,
   cameraRoute,

@@ -9,5 +9,6 @@ logs
 static/
 
 .codex
+/.playwright-mcp/
 
 !Inference/.env.example

@@ -5,8 +5,8 @@ import { Header } from '@/components/header'
 import { ProfileCard, ProfileCardSkeleton } from '@/components/profile-card'
 import { HairStyleCard } from '@/components/ui/hair-style-card'
 import { useMe } from '@/hooks/Auth/useMe'
-import { useLikeList } from '@/hooks/MyPage/useLikeList'
 import { useToggleLike } from '@/hooks/Home/useToggleLike'
+import { useLikeList } from '@/hooks/MyPage/useLikeList'
 import { auth } from '@/lib/auth'
 
 export default function MyPage() {
@@ -16,7 +16,9 @@ export default function MyPage() {
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({})
   const { mutate: toggleLike } = useToggleLike()
   const visibleLikeList =
-    likeData?.likeList.filter((item) => likedIds[item.hairID.toString()] ?? item.liked) ?? []
+    likeData?.likeList.filter(
+      (item) => likedIds[item.hairID.toString()] ?? item.liked,
+    ) ?? []
 
   async function handleLogout() {
     await auth.logout()
@@ -24,9 +26,9 @@ export default function MyPage() {
   }
 
   return (
-    <main className="app-frame-page bg-bg-primary px-4 pt-3">
-      <div className="mx-auto flex w-full max-w-[390px] flex-col">
-        <Header label="내정보" />
+    <main className="app-frame-page h-full overflow-y-auto bg-bg-primary pb-[108px]">
+      <div className="mx-auto flex w-full max-w-[390px] flex-col px-4 pt-3">
+        <Header label="내정보" className="px-0 pb-3 pt-2" />
         <div className="mt-8">
           {isLoading ? (
             <ProfileCardSkeleton />
@@ -40,7 +42,9 @@ export default function MyPage() {
         </div>
 
         <div className="mt-8">
-          <h2 className="mb-3 text-base font-bold text-text-primary">찜한 스타일</h2>
+          <h2 className="mb-3 text-base font-bold text-text-primary">
+            찜한 스타일
+          </h2>
           {isLikeLoading ? (
             <div className="flex gap-3 overflow-x-auto pb-2">
               {Array.from({ length: 3 }).map((_, i) => (
@@ -62,16 +66,26 @@ export default function MyPage() {
                     hookText={item.hookText}
                     liked={likedIds[item.hairID.toString()] ?? item.liked}
                     onLikeToggle={() => {
-                      const currentLiked = likedIds[item.hairID.toString()] ?? item.liked
-                      setLikedIds((prev) => ({ ...prev, [item.hairID.toString()]: !currentLiked }))
+                      const currentLiked =
+                        likedIds[item.hairID.toString()] ?? item.liked
+                      setLikedIds((prev) => ({
+                        ...prev,
+                        [item.hairID.toString()]: !currentLiked,
+                      }))
                       toggleLike(
                         { hairId: item.hairID, currentLiked },
                         {
                           onSuccess: (data) => {
-                            setLikedIds((prev) => ({ ...prev, [data.hairID.toString()]: data.liked }))
+                            setLikedIds((prev) => ({
+                              ...prev,
+                              [data.hairID.toString()]: data.liked,
+                            }))
                           },
                           onError: () => {
-                            setLikedIds((prev) => ({ ...prev, [item.hairID.toString()]: currentLiked }))
+                            setLikedIds((prev) => ({
+                              ...prev,
+                              [item.hairID.toString()]: currentLiked,
+                            }))
                           },
                         },
                       )

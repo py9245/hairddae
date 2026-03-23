@@ -1,10 +1,16 @@
+import { cn } from '@/lib/utils'
+
 interface HairStyleSkeletonProps {
   count?: number
+  className?: string
 }
 
-export function HairStyleSkeleton({ count = 4 }: HairStyleSkeletonProps) {
+export function HairStyleSkeleton({
+  count = 4,
+  className,
+}: HairStyleSkeletonProps) {
   return (
-    <div className="grid grid-cols-2 gap-x-3 gap-y-4">
+    <div className={cn('grid grid-cols-2 gap-x-3 gap-y-4', className)}>
       {Array.from(
         { length: count },
         (_, index) => `hair-style-skeleton-${index + 1}`,

@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { addHairLike, removeHairLike } from '@/lib/hairs'
-import type { NormalRankResponse, CustomRankResponse } from '@/lib/home'
+import type { CustomRankResponse, NormalRankResponse } from '@/lib/home'
 
 type ToggleLikeParams = {
   hairId: number
@@ -19,12 +19,17 @@ export function useToggleLike() {
       await queryClient.cancelQueries({ queryKey: ['normalRank'] })
       await queryClient.cancelQueries({ queryKey: ['customRank'] })
 
-      const prevNormalRank = queryClient.getQueryData<NormalRankResponse>(['normalRank'])
-      const prevCustomRankEntries = queryClient.getQueriesData<CustomRankResponse>({
-        queryKey: ['customRank'],
-      })
+      const prevNormalRank = queryClient.getQueryData<NormalRankResponse>([
+        'normalRank',
+      ])
+      const prevCustomRankEntries =
+        queryClient.getQueriesData<CustomRankResponse>({
+          queryKey: ['customRank'],
+        })
 
-      const patch = <T extends { hairID: number; liked: boolean }>(item: T): T =>
+      const patch = <T extends { hairID: number; liked: boolean }>(
+        item: T,
+      ): T =>
         item.hairID === hairId ? { ...item, liked: !currentLiked } : item
 
       if (prevNormalRank) {

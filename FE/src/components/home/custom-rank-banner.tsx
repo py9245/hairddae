@@ -15,7 +15,9 @@ type CustomRankBannerProps = {
 export function CustomRankBanner({ onApply }: CustomRankBannerProps) {
   const { data: customRankData, isLoading, isError } = useCustomRank()
   const { mutate: toggleLike } = useToggleLike()
-  const [likedOverrides, setLikedOverrides] = useState<Record<string, boolean>>({})
+  const [likedOverrides, setLikedOverrides] = useState<Record<string, boolean>>(
+    {},
+  )
   const [emblaRef] = useEmblaCarousel()
 
   if (isLoading) {
@@ -54,14 +56,23 @@ export function CustomRankBanner({ onApply }: CustomRankBannerProps) {
               liked={liked}
               className="flex-[0_0_88%] shrink-0"
               onLikeToggle={() => {
-                setLikedOverrides((prev) => ({ ...prev, [item.hairID.toString()]: !liked }))
+                setLikedOverrides((prev) => ({
+                  ...prev,
+                  [item.hairID.toString()]: !liked,
+                }))
                 toggleLike(
                   { hairId: item.hairID, currentLiked: liked },
                   {
                     onSuccess: (data) =>
-                      setLikedOverrides((prev) => ({ ...prev, [data.hairID.toString()]: data.liked })),
+                      setLikedOverrides((prev) => ({
+                        ...prev,
+                        [data.hairID.toString()]: data.liked,
+                      })),
                     onError: () =>
-                      setLikedOverrides((prev) => ({ ...prev, [item.hairID.toString()]: liked })),
+                      setLikedOverrides((prev) => ({
+                        ...prev,
+                        [item.hairID.toString()]: liked,
+                      })),
                   },
                 )
               }}

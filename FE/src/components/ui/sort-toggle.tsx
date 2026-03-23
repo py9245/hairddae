@@ -25,7 +25,7 @@ function SortToggle<T extends string>({
           type="button"
           onClick={() => onChange(option.value)}
           className={cn(
-            'rounded-full px-4 py-1 text-sm font-medium transition-colors',
+            'rounded-full px-3 py-1 text-xs font-medium transition-colors sm:px-4 sm:text-sm',
             option.value === value
               ? 'bg-white text-primary-300'
               : 'bg-transparent text-white',

@@ -23,7 +23,9 @@ async function requestHairLike(
       const errorBody = await res.json()
       if (errorBody?.message) message = errorBody.message
     } catch (e) {
-      throw new Error(`${message} (응답 파싱 실패: ${e instanceof Error ? e.message : String(e)})`)
+      throw new Error(
+        `${message} (응답 파싱 실패: ${e instanceof Error ? e.message : String(e)})`,
+      )
     }
     throw new Error(message)
   }

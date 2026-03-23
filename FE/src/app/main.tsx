@@ -9,11 +9,12 @@ import { CategorySkeleton } from '@/components/ui/category-skeleton'
 import { HairStyleCard } from '@/components/ui/hair-style-card'
 import { HairStyleSkeleton } from '@/components/ui/hair-style-skeleton'
 import { SortToggle } from '@/components/ui/sort-toggle'
+import { SortToggleSkeleton } from '@/components/ui/sort-toggle-skeleton'
 import { useMe } from '@/hooks/Auth/useMe'
 import { useCategoryList } from '@/hooks/Home/useCategoryList'
 import { useNormalRank } from '@/hooks/Home/useNormalRank'
-import { postHairClick } from '@/lib/hair-click'
 import { useToggleLike } from '@/hooks/Home/useToggleLike'
+import { postHairClick } from '@/lib/hair-click'
 
 type SortValue = 'popular' | 'latest'
 
@@ -109,22 +110,27 @@ export default function Main() {
 
         <section className="mt-4">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-24 leading-none font-extrabold tracking-[-0.05em] text-text-warm-600">
-              {meData?.userID ? `${meData.userID}님` : '회원님'}을 위한 추천
-              헤어
-            </h2>
 
-            <SortToggle
-              options={sortOptions}
-              value={sortValue}
-              onChange={setSortValue}
-            />
+              <h2 className="text-24 leading-none font-extrabold tracking-[-0.05em] text-text-warm-600">
+                {meData?.userID ? `${meData.userID}님` : '회원님'}을 위한 추천
+                헤어
+              </h2>
+
+            {isNormalRankLoading ? (
+              <SortToggleSkeleton />
+            ) : (
+              <SortToggle
+                options={sortOptions}
+                value={sortValue}
+                onChange={setSortValue}
+              />
+            )}
           </div>
 
           {isNormalRankLoading ? (
-            <HairStyleSkeleton count={4} />
+            <HairStyleSkeleton count={4} className="mt-[10px] sm:mt-4" />
           ) : (
-            <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-4">
+            <div className="mt-[10px] grid grid-cols-2 gap-x-3 gap-y-4 sm:mt-4">
               {sortedRecommendations.map((card) => (
                 <HairStyleCard
                   key={card.hairID}

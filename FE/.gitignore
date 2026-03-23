@@ -30,3 +30,4 @@ storybook-static
 /.playwright-mcp/
 /playwright-report/
 /test-results/
+public/component/image copy 2.png

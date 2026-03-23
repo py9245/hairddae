@@ -338,6 +338,41 @@ import { HairStyleCard } from '@/components/ui/hair-style-card'
 
 ---
 
+### BottomSheet (`src/components/ui/bottom-sheet.tsx`)
+
+```tsx
+import { BottomSheet } from '@/components/ui/bottom-sheet'
+
+<BottomSheet
+  isOpen={isOpen}
+  onClose={() => setIsOpen(false)}
+  title="시트 제목"
+>
+  {/* 시트 내부 콘텐츠 */}
+</BottomSheet>
+```
+
+---
+
+### CategoryBottomSheet (`src/components/ui/category-bottom-sheet.tsx`)
+
+```tsx
+import { CategoryBottomSheet } from '@/components/ui/category-bottom-sheet'
+
+<CategoryBottomSheet
+  open={isCategorySheetOpen}
+  onClose={() => setIsCategorySheetOpen(false)}
+  categories={categories}
+  selectedCategory={selectedCategoryId}
+  onSelect={(categoryID) => {
+    // 선택 처리
+    setIsCategorySheetOpen(false)
+  }}
+/>
+```
+
+---
+
 ### StyleAdsCard (`src/components/ui/style-ads-card.tsx`)
 
 ```tsx

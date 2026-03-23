@@ -239,11 +239,11 @@
   }
 
   .animate-hair-list-bottom-nav-out {
-    animation: hair-list-bottom-nav-out 360ms cubic-bezier(0.4, 0, 0.2, 1) both;
+    animation: hair-list-bottom-nav-out 180ms cubic-bezier(0.4, 0, 0.2, 1) both;
   }
 
   .animate-hair-list-page-out {
-    animation: hair-list-page-out 360ms cubic-bezier(0.4, 0, 0.2, 1) both;
+    animation: hair-list-page-out 220ms cubic-bezier(0.4, 0, 0.2, 1) both;
   }
 
   @keyframes hair-list-bottom-nav-in {

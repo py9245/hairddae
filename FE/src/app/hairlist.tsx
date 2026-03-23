@@ -12,7 +12,7 @@ import { useCategoryList } from '@/hooks/Home/useCategoryList'
 import { postHairClick } from '@/lib/hair-click'
 import { cn } from '@/lib/utils'
 
-const HAIR_LIST_BACK_EXIT_MS = 360
+const HAIR_LIST_BACK_EXIT_MS = 220
 
 export default function HairList() {
   const navigate = useNavigate()

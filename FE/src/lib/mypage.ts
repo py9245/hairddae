@@ -1,4 +1,5 @@
 import { buildApiUrl } from './api'
+import { postHairClick } from './hair-click'
 
 export type MyPageHairItem = {
   hairID: number
@@ -54,4 +55,10 @@ export async function getAppliedList(): Promise<AppliedListResponse> {
   }
 
   return res.json()
+}
+
+export async function applyMyPageHair(hairId: number): Promise<number> {
+  const response = await postHairClick(hairId)
+
+  return response.hair_id
 }

@@ -9,7 +9,7 @@ import { useToggleLike } from '@/hooks/Home/useToggleLike'
 import { useAppliedList } from '@/hooks/MyPage/useAppliedList'
 import { useLikeList } from '@/hooks/MyPage/useLikeList'
 import { auth } from '@/lib/auth'
-import type { MyPageHairItem } from '@/lib/mypage'
+import { applyMyPageHair, type MyPageHairItem } from '@/lib/mypage'
 
 type HairSectionProps = {
   title: string
@@ -18,6 +18,7 @@ type HairSectionProps = {
   emptyMessage: string
   likedIds: Record<string, boolean>
   onLikeToggle: (item: MyPageHairItem) => void
+  onApply: (hairId: number) => Promise<void>
 }
 
 function HairSection({
@@ -27,6 +28,7 @@ function HairSection({
   emptyMessage,
   likedIds,
   onLikeToggle,
+  onApply,
 }: HairSectionProps) {
   return (
     <div className="mt-8">
@@ -52,6 +54,7 @@ function HairSection({
                 hookText={item.hookText}
                 liked={likedIds[item.hairID.toString()] ?? item.liked}
                 onLikeToggle={() => onLikeToggle(item)}
+                onApply={onApply}
               />
             </div>
           ))}
@@ -110,6 +113,24 @@ export default function MyPage() {
     )
   }
 
+  async function handleApply(hairId: number) {
+    let targetHairId = hairId
+
+    try {
+      targetHairId = await applyMyPageHair(hairId)
+    } catch (error) {
+      console.error('mypage hair apply failed:', error)
+    }
+
+    await navigate({
+      to: '/camera',
+      search: {
+        applyLatest: true,
+        hairId: targetHairId,
+      },
+    })
+  }
+
   return (
     <main className="app-frame-page h-full overflow-y-auto bg-bg-primary pb-[108px]">
       <div className="mx-auto flex w-full max-w-[390px] flex-col px-4 pt-3">
@@ -133,6 +154,7 @@ export default function MyPage() {
           emptyMessage="최근 적용한 헤어가 없습니다."
           likedIds={likedIds}
           onLikeToggle={handleLikeToggle}
+          onApply={handleApply}
         />
 
         <HairSection
@@ -142,6 +164,7 @@ export default function MyPage() {
           emptyMessage="찜한 스타일이 없습니다."
           likedIds={likedIds}
           onLikeToggle={handleLikeToggle}
+          onApply={handleApply}
         />
       </div>
     </main>

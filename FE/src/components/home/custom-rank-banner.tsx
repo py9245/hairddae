@@ -5,6 +5,7 @@ import {
   StyleAdsCardSkeleton,
 } from '@/components/ui/style-ads-card'
 import { useCustomRank } from '@/hooks/Home/useCustomRank'
+import { useToggleLike } from '@/hooks/Home/useToggleLike'
 
 type CustomRankBannerProps = {
   onApply: (hairId: number) => void
@@ -13,7 +14,9 @@ type CustomRankBannerProps = {
 export function CustomRankBanner({ onApply }: CustomRankBannerProps) {
   const { data: customRankData, isLoading, isError } = useCustomRank()
   const topCustomRank = customRankData?.customList?.[0]
-  const [heroLiked, setHeroLiked] = useState(true)
+  const { mutate: toggleLike } = useToggleLike()
+  const [likedOverride, setLikedOverride] = useState<boolean | null>(null)
+  const heroLiked = likedOverride ?? topCustomRank?.liked ?? false
 
   if (isLoading) {
     return <StyleAdsCardSkeleton className="w-full" />
@@ -35,7 +38,16 @@ export function CustomRankBanner({ onApply }: CustomRankBannerProps) {
         hairName={topCustomRank.hairName}
         liked={heroLiked}
         className="w-full"
-        onLikeToggle={() => setHeroLiked((prev) => !prev)}
+        onLikeToggle={() => {
+          setLikedOverride(!heroLiked)
+          toggleLike(
+            { hairId: topCustomRank.hairID, currentLiked: heroLiked },
+            {
+              onSuccess: (data) => setLikedOverride(data.liked),
+              onError: () => setLikedOverride(heroLiked),
+            },
+          )
+        }}
         onApply={() => onApply(topCustomRank.hairID)}
       />
     )

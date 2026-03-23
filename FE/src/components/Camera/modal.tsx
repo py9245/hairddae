@@ -185,3 +185,69 @@ export function ApplyStyleModal({
     </div>
   )
 }
+
+type CameraNoticeModalProps = {
+  open: boolean
+  title: string
+  description: string[]
+  confirmLabel?: string
+  onConfirm: () => void
+  onClose?: () => void
+  scale?: number
+}
+
+export function CameraNoticeModal({
+  open,
+  title,
+  description,
+  confirmLabel = '홈으로 이동',
+  onConfirm,
+  onClose,
+  scale = 1,
+}: CameraNoticeModalProps) {
+  if (!open) return null
+
+  return (
+    <div
+      className="origin-center"
+      style={{
+        transform: `scale(${scale})`,
+      }}
+    >
+      <div className="relative w-[380px] rounded-[24px] bg-white p-0 shadow-none">
+        {onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="모달 닫기"
+            className="absolute right-5 top-5 inline-flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-black"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        ) : null}
+
+        <div className="space-y-6 px-6 py-6">
+          <div className="space-y-2">
+            <h2 className="pr-10 text-xl font-bold leading-snug text-black">
+              {title}
+            </h2>
+
+            <div className="space-y-1 text-sm leading-snug text-gray-500">
+              {description.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="h-12 w-full rounded-xl bg-primary-300 px-6 text-base font-medium text-neutral-100 transition hover:bg-primary-hover"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}

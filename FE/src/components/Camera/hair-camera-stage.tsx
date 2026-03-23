@@ -27,8 +27,8 @@ export function HairCameraStage({
         muted
         className={
           hasRemoteVideo
-            ? `absolute inset-0 h-full w-full object-cover ${localMirrorClassName} opacity-0`
-            : `block h-full w-full object-cover ${localMirrorClassName}`
+            ? `absolute inset-0 h-full w-full object-cover object-center ${localMirrorClassName} opacity-0`
+            : `block h-full w-full object-cover object-center ${localMirrorClassName}`
         }
       />
 
@@ -39,7 +39,7 @@ export function HairCameraStage({
         muted
         className={
           hasRemoteVideo
-            ? `absolute inset-0 z-10 h-full w-full object-cover ${remoteMirrorClassName}`
+            ? `absolute inset-0 z-10 h-full w-full object-cover object-center ${remoteMirrorClassName}`
             : 'hidden'
         }
       />

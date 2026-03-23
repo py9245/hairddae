@@ -8,9 +8,13 @@ declare global {
 
 type AdsenseProps = {
   loading?: boolean
+  forceVisible?: boolean
 }
 
-export default function Adsense({ loading = false }: AdsenseProps) {
+export default function Adsense({
+  loading = false,
+  forceVisible = false,
+}: AdsenseProps) {
   const initializedRef = useRef(false)
 
   useEffect(() => {
@@ -28,7 +32,13 @@ export default function Adsense({ loading = false }: AdsenseProps) {
   }, [loading])
 
   return (
-    <aside className="hidden w-[450px] shrink-0 xl:block">
+    <aside
+      className={
+        forceVisible
+          ? 'block w-[450px] shrink-0'
+          : 'hidden w-[450px] shrink-0 xl:block'
+      }
+    >
       <div className="sticky top-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
         <p className="mb-3 text-sm font-semibold text-slate-700">광고</p>
 

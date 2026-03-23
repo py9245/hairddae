@@ -24,6 +24,7 @@ export default function SignUp() {
     handleBlur,
     handleSubmit,
   } = useSignUpForm()
+  const userIdLength = values.userId.length
 
   useEffect(() => {
     if (!isSignUpComplete) {
@@ -83,12 +84,14 @@ export default function SignUp() {
           }
         >
           <div>
-            <label
-              htmlFor="userId"
-              className="mb-2 block text-base font-semibold text-slate-700"
-            >
-              아이디
-            </label>
+            <div className="mb-2 flex items-center">
+              <label
+                htmlFor="userId"
+                className="block text-base font-semibold text-slate-700"
+              >
+                아이디
+              </label>
+            </div>
             <input
               id="userId"
               type="text"
@@ -106,6 +109,9 @@ export default function SignUp() {
             {errors.userId && (
               <p className="mt-2 text-sm text-error">{errors.userId}</p>
             )}
+            <span className="ml-auto block text-right text-sm text-gray-400">
+              {userIdLength}/20자
+            </span>
           </div>
 
           <div>

@@ -67,7 +67,7 @@ export type MeResponse = {
 }
 
 export async function fetchMe(): Promise<MeResponse | null> {
-  const response = await fetch(`${BaseUrl}/me/`, {
+  const response = await fetch(`${BaseUrl}/mypage/user/`, {
     credentials: 'include',
   })
 

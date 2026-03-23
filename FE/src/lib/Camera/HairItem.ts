@@ -33,7 +33,7 @@ const HairListResponseSchema = z.object({
 export async function fetchHairItems(
   signal?: AbortSignal,
 ): Promise<HairItem[]> {
-  const response = await fetch(buildApiUrl('/hairs/cameralist/'), {
+  const response = await fetch(buildApiUrl('/mypage/appliedlist/'), {
     method: 'GET',
     credentials: 'include',
     signal,

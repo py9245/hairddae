@@ -41,7 +41,7 @@ export function CustomRankBanner({ onApply }: CustomRankBannerProps) {
   }
 
   return (
-    <div className="overflow-hidden" ref={emblaRef}>
+    <div className="overflow-hidden px-2 py-2" ref={emblaRef}>
       <div className="flex gap-3">
         {customList.map((item) => {
           const liked = likedOverrides[item.hairID.toString()] ?? item.liked
@@ -52,7 +52,7 @@ export function CustomRankBanner({ onApply }: CustomRankBannerProps) {
               hairSlug={item.hookText || '추천 헤어'}
               hairName={item.hairName}
               liked={liked}
-              className="w-full shrink-0 flex-[0_0_100%]"
+              className="flex-[0_0_88%] shrink-0"
               onLikeToggle={() => {
                 setLikedOverrides((prev) => ({ ...prev, [item.hairID.toString()]: !liked }))
                 toggleLike(

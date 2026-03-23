@@ -43,7 +43,7 @@ export function StyleAdsCard({
   onLikeToggle,
   onApply,
 }: StyleAdsCardProps) {
-  const heartIconSrc = liked ? '/icon/heart-fill.svg' : '/icon/hair-empty.svg'
+  const heartIconSrc = liked ? '/icon/heart-fill.svg' : '/icon/heart-empty.svg'
   const heartLabel = liked ? '찜 해제' : '찜하기'
 
   return (

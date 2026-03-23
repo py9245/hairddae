@@ -27,7 +27,7 @@ export function HairStyleCard({
   onApply,
 }: HairStyleCardProps) {
   const [isApplying, setIsApplying] = useState(false)
-  const heartIconSrc = liked ? '/icon/heart-fill.svg' : '/icon/hair-empty.svg'
+  const heartIconSrc = liked ? '/icon/heart-fill.svg' : '/icon/heart-empty.svg'
   const heartLabel = liked ? '찜 해제' : '찜하기'
 
   async function handleApplyClick() {

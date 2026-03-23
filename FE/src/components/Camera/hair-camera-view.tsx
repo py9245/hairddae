@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { HairCameraStage } from '@/components/Camera/hair-camera-stage'
 import { HairSelector } from '@/components/Camera/hair-selector'
-import { ApplyStyleModal } from '@/components/Camera/modal'
+import { ApplyStyleModal, CameraNoticeModal } from '@/components/Camera/modal'
 import {
   type CameraSettingOption,
   CameraSettingsModal,
@@ -52,6 +52,10 @@ export function HairCameraView({
   const [pendingHairId, setPendingHairId] = useState<number | null>(null)
   const [hairItems, setHairItems] = useState<HairItem[]>(HAIR_ITEMS)
   const [isHairItemsLoading, setIsHairItemsLoading] = useState(true)
+  const [hairItemsError, setHairItemsError] = useState<{
+    title: string
+    description: string[]
+  } | null>(null)
   const [isFrameFrozen, setIsFrameFrozen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [stageMirrored, setStageMirrored] = useState(RTC_STAGE_MIRRORED)
@@ -111,13 +115,30 @@ export function HairCameraView({
     const controller = new AbortController()
 
     setIsHairItemsLoading(true)
+    setHairItemsError(null)
     fetchHairItems(controller.signal)
       .then((items) => {
-        setHairItems(items.length > 1 ? items : HAIR_ITEMS)
+        if (items.length <= 1) {
+          setHairItems(HAIR_ITEMS)
+          setHairItemsError({
+            title: '헤어 스타일 목록을 불러올 수 없어요',
+            description: [
+              '현재 적용 가능한 헤어 스타일 정보가 없습니다.',
+              '홈 화면에서 적용하기를 선택해 주세요.',
+            ],
+          })
+          return
+        }
+
+        setHairItems(items)
       })
       .catch((error) => {
         console.error('hair item load failed:', error)
         setHairItems(HAIR_ITEMS)
+        setHairItemsError({
+          title: '헤어 스타일 목록을 불러올 수 없어요',
+          description: ['네트워크 상태를 확인한 뒤 다시 시도해 주세요.'],
+        })
       })
       .finally(() => {
         if (!controller.signal.aborted) {
@@ -221,6 +242,7 @@ export function HairCameraView({
   }, [isFrameFrozen, router])
 
   const modalOpen = pendingHairId != null && pendingHairId > 0
+  const hairItemsErrorOpen = hairItemsError != null
   const rtcApplyReady =
     modalOpen &&
     pendingHairId != null &&
@@ -237,8 +259,8 @@ export function HairCameraView({
   ]
 
   return (
-    <main className="app-frame-page relative overflow-hidden bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.14),transparent_34%),linear-gradient(180deg,#1f2937_0%,#020617_100%)] text-white">
-      <div className="relative flex h-full w-full items-center justify-center overflow-hidden px-0">
+    <main className="app-frame-page relative flex min-h-full items-center justify-center overflow-hidden bg-black text-white">
+      <div className="relative flex h-full min-h-full w-full items-center justify-center overflow-hidden px-0">
         <div
           ref={wrapRef}
           className="relative aspect-[9/16] w-full max-w-[min(100%,calc((100dvh-1rem)*9/16))] overflow-hidden bg-black shadow-[0_24px_80px_rgba(2,6,23,0.45)]"
@@ -280,8 +302,6 @@ export function HairCameraView({
             }
           />
 
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-40 bg-gradient-to-b from-black/50 via-black/20 to-transparent" />
-
           <HairSelector
             items={hairItems}
             selectedId={displayHairId}
@@ -299,6 +319,23 @@ export function HairCameraView({
                 completed={rtcApplyReady}
                 onFinish={handleModalFinish}
                 onClose={handleModalClose}
+                scale={uiScale}
+              />
+            </div>
+          ) : null}
+
+          {hairItemsErrorOpen ? (
+            <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/20 px-4">
+              <CameraNoticeModal
+                open={hairItemsErrorOpen}
+                title={hairItemsError.title}
+                description={hairItemsError.description}
+                onConfirm={() => {
+                  void router.navigate({ to: '/main' })
+                }}
+                onClose={() => {
+                  void router.navigate({ to: '/main' })
+                }}
                 scale={uiScale}
               />
             </div>

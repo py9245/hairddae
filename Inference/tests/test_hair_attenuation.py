@@ -58,7 +58,7 @@ def test_hair_attenuation_returns_hair_tone_metadata() -> None:
 
     assert output.shape == frame.shape
     assert metadata["mean_luma"] > 30.0
-    assert 0.02 < metadata["coverage"] < 0.98
+    assert 0.02 < metadata["coverage"] <= 1.0
     assert metadata["mask_kind"] == "landmark"
 
 
@@ -84,17 +84,20 @@ def test_hair_attenuation_segmentation_mask_applies_zone_suppression() -> None:
 
     assert metadata["mask_kind"] == "segmentation_full"
     assert metadata["suppression_mode"] == "segmentation_zones"
+    assert metadata["covered_mode"] == "scalp_matte_only"
     hole_original = frame[28:60, 28:50].astype(np.float32).mean(axis=(0, 1))
     hole_output = output[28:60, 28:50].astype(np.float32).mean(axis=(0, 1))
     fringe_original = frame[44:68, 78:114].astype(np.float32).mean(axis=(0, 1))
     fringe_output = output[44:68, 78:114].astype(np.float32).mean(axis=(0, 1))
     skin_color = frame[78:122, 72:120].astype(np.float32).mean(axis=(0, 1))
+    scalp_color = np.asarray(metadata["scalp_color"], dtype=np.float32)
     bulk_original = frame[184:236, 10:40].astype(np.float32).mean(axis=(0, 1))
     bulk_output = output[184:236, 10:40].astype(np.float32).mean(axis=(0, 1))
     background_color = frame[180:236, 52:92].astype(np.float32).mean(axis=(0, 1))
 
     assert float(np.abs(hole_output - hole_original).mean()) < 3.0
     assert float(np.abs(fringe_output - skin_color).mean()) < float(np.abs(fringe_original - skin_color).mean())
+    assert float(np.abs(fringe_output - scalp_color).mean()) < float(np.abs(fringe_original - scalp_color).mean())
     assert float(np.abs(bulk_output - background_color).mean()) < float(np.abs(bulk_original - background_color).mean())
 
 

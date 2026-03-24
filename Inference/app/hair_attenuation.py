@@ -204,10 +204,6 @@ class HairAttenuator:
         cv2.ellipse(mask, left_side_center, side_axes, roll_deg, 0, 360, 255, -1)
         cv2.ellipse(mask, right_side_center, side_axes, roll_deg, 0, 360, 255, -1)
 
-        protect = self._build_face_protect_mask(frame_shape, landmarks_px, user_row=user_row)
-        if protect is None:
-            protect = np.zeros_like(mask)
-        mask = cv2.subtract(mask, protect)
         cutoff_y = int(
             np.clip(
                 round(forehead_center[1] + face_height * 0.88),
@@ -218,47 +214,6 @@ class HairAttenuator:
         if cutoff_y < height:
             mask[cutoff_y:, :] = 0
         return mask
-
-    def _build_face_protect_mask(
-        self,
-        frame_shape: tuple[int, ...],
-        landmarks_px: np.ndarray,
-        *,
-        user_row: dict[str, Any] | None = None,
-    ) -> np.ndarray | None:
-        if landmarks_px.ndim != 2 or landmarks_px.shape[1] < 2:
-            return None
-        height, width = frame_shape[:2]
-        forehead_top = _point(landmarks_px, "forehead_top")
-        forehead_mid = _point(landmarks_px, "forehead_mid")
-        lower_left = _point(landmarks_px, "lower_left")
-        lower_right = _point(landmarks_px, "lower_right")
-        chin_center = _point(landmarks_px, "chin_center")
-        forehead_center = (forehead_top + forehead_mid) * 0.5
-        face_center = (forehead_center + chin_center) * 0.5
-        face_height = max(1.0, float(chin_center[1] - forehead_center[1]))
-        jaw_width = float(np.linalg.norm(lower_right - lower_left))
-        face_width = max(1.0, jaw_width * 0.82)
-        roll_deg = float(((user_row or {}).get("pose") or {}).get("roll_float", 0.0))
-
-        protect = np.zeros((height, width), dtype=np.uint8)
-        protect_center = _clip_point(
-            np.array(
-                [
-                    face_center[0],
-                    forehead_center[1] + face_height * 0.54,
-                ],
-                dtype=np.float32,
-            ),
-            width,
-            height,
-        )
-        protect_axes = (
-            max(1, int(round(face_width * 0.50))),
-            max(1, int(round(face_height * 0.60))),
-        )
-        cv2.ellipse(protect, protect_center, protect_axes, roll_deg, 0, 360, 255, -1)
-        return protect
 
     @staticmethod
     def _normalize_confidence_mask(
@@ -347,6 +302,93 @@ class HairAttenuator:
         if not samples:
             return None
         return np.median(np.stack(samples, axis=0), axis=0).astype(np.float32)
+
+    @staticmethod
+    def _resolve_scalp_color(skin_color: np.ndarray) -> np.ndarray:
+        color = np.asarray(skin_color, dtype=np.float32).reshape(-1)
+        if color.size < 3:
+            return np.array([160.0, 180.0, 205.0], dtype=np.float32)
+        swatch = np.clip(color[:3], 0.0, 255.0).astype(np.uint8).reshape(1, 1, 3)
+        hsv = cv2.cvtColor(swatch, cv2.COLOR_BGR2HSV).astype(np.float32)
+        hsv[:, :, 1] *= 0.92
+        hsv[:, :, 2] = np.clip(hsv[:, :, 2] * 0.985 + 1.5, 0.0, 255.0)
+        scalp = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).reshape(3).astype(np.float32)
+        return scalp
+
+    def _estimate_lower_boundary_skin_color(
+        self,
+        frame_bgr: np.ndarray,
+        hair_mask: np.ndarray,
+        landmarks_px: np.ndarray | None,
+        *,
+        reference_skin_color: np.ndarray | None = None,
+    ) -> np.ndarray | None:
+        if hair_mask.ndim != 2 or hair_mask.shape[:2] != frame_bgr.shape[:2]:
+            return None
+        active = np.where(hair_mask > 0, np.uint8(255), np.uint8(0))
+        if int(np.count_nonzero(active)) < 64:
+            return None
+
+        height, width = active.shape
+        x, y, mask_width, mask_height = cv2.boundingRect(active)
+        if mask_width <= 1 or mask_height <= 1:
+            return None
+
+        edge_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 5))
+        eroded = cv2.erode(active, edge_kernel, iterations=1)
+        lower_edge = cv2.subtract(active, eroded)
+        if int(np.count_nonzero(lower_edge)) == 0:
+            return None
+
+        band_px = max(2, min(16, int(round(mask_height * 0.08))))
+        below_band = np.zeros_like(active)
+        for offset in range(1, band_px + 1):
+            below_band[offset:, :] = np.maximum(below_band[offset:, :], lower_edge[:-offset, :])
+        below_band = cv2.bitwise_and(below_band, cv2.bitwise_not(active))
+
+        if landmarks_px is not None and landmarks_px.ndim == 2 and landmarks_px.shape[1] >= 2:
+            forehead_mid = _point(landmarks_px, "forehead_mid")
+            left_temple = _point(landmarks_px, "left_temple")
+            right_temple = _point(landmarks_px, "right_temple")
+            chin_center = _point(landmarks_px, "chin_center")
+            lower_left = _point(landmarks_px, "lower_left")
+            lower_right = _point(landmarks_px, "lower_right")
+            face_height = max(1.0, float(chin_center[1] - forehead_mid[1]))
+            face_width = max(1.0, float(np.linalg.norm(lower_right - lower_left)))
+            forehead_band = np.zeros_like(active)
+            x0 = int(np.clip(round(min(left_temple[0], right_temple[0]) - face_width * 0.08), 0, width - 1))
+            x1 = int(np.clip(round(max(left_temple[0], right_temple[0]) + face_width * 0.08), 0, width))
+            y0 = int(np.clip(round(forehead_mid[1] - face_height * 0.06), 0, height - 1))
+            y1 = int(np.clip(round(forehead_mid[1] + face_height * 0.42), 0, height))
+            if x1 > x0 and y1 > y0:
+                forehead_band[y0:y1, x0:x1] = 255
+                below_band = cv2.bitwise_and(below_band, forehead_band)
+
+        if int(np.count_nonzero(below_band)) < 24:
+            return None
+
+        candidate_pixels = frame_bgr[below_band > 0]
+        if candidate_pixels.size < 72:
+            return None
+
+        candidate_pixels = candidate_pixels.reshape(-1, 3).astype(np.uint8)
+        candidate_ycrcb = cv2.cvtColor(candidate_pixels.reshape(-1, 1, 3), cv2.COLOR_BGR2YCrCb).reshape(-1, 3).astype(np.float32)
+        candidate_luma = candidate_ycrcb[:, 0]
+        keep_mask = candidate_luma >= 45.0
+
+        if reference_skin_color is not None:
+            reference = np.clip(np.asarray(reference_skin_color, dtype=np.float32).reshape(-1)[:3], 0.0, 255.0).astype(np.uint8)
+            if reference.size == 3:
+                reference_ycrcb = cv2.cvtColor(reference.reshape(1, 1, 3), cv2.COLOR_BGR2YCrCb).reshape(3).astype(np.float32)
+                chroma_distance = np.abs(candidate_ycrcb[:, 1] - reference_ycrcb[1]) + np.abs(candidate_ycrcb[:, 2] - reference_ycrcb[2])
+                keep_mask &= chroma_distance <= 42.0
+
+        filtered = candidate_pixels[keep_mask]
+        if filtered.shape[0] < 24:
+            filtered = candidate_pixels
+        if filtered.shape[0] < 24:
+            return None
+        return np.median(filtered.astype(np.float32), axis=0).astype(np.float32)
 
     @staticmethod
     def _estimate_color_from_mask(
@@ -642,14 +684,6 @@ class HairAttenuator:
         )
         mask = np.zeros((height, width), dtype=np.uint8)
         cv2.ellipse(mask, center, axes, roll_deg, 0, 360, 255, -1)
-        face_protect = self._build_face_protect_mask(frame_shape, landmarks_px, user_row=user_row)
-        if face_protect is not None:
-            softened = cv2.erode(
-                face_protect,
-                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11)),
-                iterations=1,
-            )
-            mask = cv2.bitwise_and(mask, cv2.bitwise_not(softened))
         return mask
 
     def _build_segmentation_seed_mask(
@@ -796,6 +830,13 @@ class HairAttenuator:
             )
             if confidence_mask is not None:
                 confidence_mask = np.clip(confidence_mask, 0.0, 1.0)
+                if landmarks_px is not None:
+                    confidence_mask = self._refine_segmentation_confidence_mask(
+                        confidence_mask,
+                        frame_bgr.shape,
+                        landmarks_px,
+                        user_row=user_row,
+                    )
                 mask_kind = "segmentation_full"
 
         segmentation_alpha_threshold = max(0.08, self.profile.segmentation_confidence_threshold * 0.42)
@@ -805,6 +846,14 @@ class HairAttenuator:
                 np.uint8(255),
                 np.uint8(0),
             )
+            close_kernel = cv2.getStructuringElement(
+                cv2.MORPH_ELLIPSE,
+                (
+                    min(9, _odd_kernel(max(frame_bgr.shape[:2]) * 0.008, minimum=5)),
+                    min(9, _odd_kernel(max(frame_bgr.shape[:2]) * 0.008, minimum=5)),
+                ),
+            )
+            binary_mask = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, close_kernel, iterations=1)
         else:
             if landmarks_px is None:
                 return frame_bgr, {}
@@ -813,7 +862,6 @@ class HairAttenuator:
                 return frame_bgr, {}
 
         upper_region_mask: np.ndarray | None = None
-        face_protect_mask: np.ndarray | None = None
         x, y, width, height = cv2.boundingRect(binary_mask)
         if width <= 1 or height <= 1:
             return frame_bgr, {}
@@ -879,16 +927,7 @@ class HairAttenuator:
                 tone_source_gray,
                 np.clip(confidence_work * 255.0, 0.0, 255.0).astype(np.uint8),
             )
-            hair_mask_full = np.where(
-                confidence_mask >= segmentation_alpha_threshold,
-                np.uint8(255),
-                np.uint8(0),
-            )
-            face_protect_mask = (
-                self._build_face_protect_mask(frame_bgr.shape, landmarks_px, user_row=user_row)
-                if landmarks_px is not None
-                else None
-            )
+            hair_mask_full = np.array(binary_mask, copy=True)
             head_prior_mask = (
                 self._build_binary_mask(frame_bgr.shape, landmarks_px, user_row=user_row)
                 if landmarks_px is not None
@@ -954,27 +993,24 @@ class HairAttenuator:
             covered_soft_work = cv2.cvtColor(blurred_hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
             weakened_work = blurred_work.copy()
             scalp_matte_work: np.ndarray | None = None
+            scalp_color: np.ndarray | None = None
 
             skin_color = self._estimate_skin_color(frame_bgr, landmarks_px)
-            if skin_color is not None:
-                skin_fill = np.empty_like(roi_work, dtype=np.float32)
-                skin_fill[:] = skin_color
-                local_luma = cv2.cvtColor(blurred_work, cv2.COLOR_BGR2GRAY).astype(np.float32)
-                active_region = confidence_work >= segmentation_alpha_threshold
-                if bool(np.any(active_region)):
-                    mean_luma = float(local_luma[active_region].mean())
-                else:
-                    mean_luma = float(local_luma.mean())
-                mean_luma = max(mean_luma, 1.0)
-                shade = np.clip(local_luma / mean_luma, 0.88, 1.14)[..., None]
-                skin_shaded = np.clip(skin_fill * shade, 0.0, 255.0)
-                ambient_scalp = blurred_work.astype(np.float32) * 0.26 + skin_shaded * 0.74
-                scalp_matte_work = np.clip(ambient_scalp, 0.0, 255.0).astype(np.uint8)
+            boundary_skin_color = self._estimate_lower_boundary_skin_color(
+                frame_bgr,
+                hair_mask_full,
+                landmarks_px,
+                reference_skin_color=skin_color,
+            )
+            scalp_source_color = boundary_skin_color if boundary_skin_color is not None else skin_color
+            if scalp_source_color is not None:
+                scalp_color = self._resolve_scalp_color(scalp_source_color)
+                scalp_matte_work = np.empty_like(roi_work, dtype=np.uint8)
+                scalp_matte_work[:] = np.clip(scalp_color, 0.0, 255.0).astype(np.uint8)
             if scalp_matte_work is not None and np.any(fringe_work):
                 weakened_work = weakened_work.astype(np.float32)
                 weakened_work[fringe_work] = (
-                    scalp_matte_work.astype(np.float32)[fringe_work] * 0.90
-                    + weakened_work[fringe_work] * 0.10
+                    scalp_matte_work.astype(np.float32)[fringe_work]
                 )
                 weakened_work = np.clip(weakened_work, 0, 255).astype(np.uint8)
                 alpha_work = np.where(
@@ -986,7 +1022,6 @@ class HairAttenuator:
             background_color = self._estimate_background_color(
                 frame_bgr,
                 outer_bulk_mask_full,
-                protect_mask=face_protect_mask,
             )
             if np.any(covered_work):
                 covered_work_rgb = (
@@ -994,12 +1029,6 @@ class HairAttenuator:
                     if scalp_matte_work is not None
                     else covered_soft_work.astype(np.float32)
                 )
-                if background_color is not None:
-                    background_fill = np.empty_like(covered_soft_work, dtype=np.float32)
-                    background_fill[:] = background_color
-                    covered_work_rgb[covered_work] = (
-                        covered_work_rgb[covered_work] * 0.86 + background_fill[covered_work] * 0.14
-                    )
                 weakened_work = weakened_work.astype(np.float32)
                 weakened_work[covered_work] = covered_work_rgb[covered_work]
                 weakened_work = np.clip(weakened_work, 0, 255).astype(np.uint8)
@@ -1023,7 +1052,11 @@ class HairAttenuator:
                 )
 
             tone_metadata["suppression_mode"] = "segmentation_zones"
-            tone_metadata["covered_mode"] = "scalp_matte_mix"
+            tone_metadata["covered_mode"] = (
+                "scalp_matte_only"
+                if scalp_matte_work is not None
+                else "soft_blur"
+            )
             hair_pixel_count = max(1, int(np.count_nonzero(hair_mask_full)))
             tone_metadata["fringe_ratio"] = round(float(np.count_nonzero(fringe_mask_full)) / float(hair_pixel_count), 6)
             tone_metadata["outer_bulk_ratio"] = round(float(np.count_nonzero(outer_bulk_mask_full)) / float(hair_pixel_count), 6)
@@ -1031,10 +1064,10 @@ class HairAttenuator:
             tone_metadata["outer_bulk_mask"] = outer_bulk_mask_full
             if upper_region_mask is not None:
                 tone_metadata["upper_region_mask"] = upper_region_mask
-            if face_protect_mask is not None:
-                tone_metadata["face_protect_mask"] = face_protect_mask
             if background_color is not None:
                 tone_metadata["background_color"] = np.asarray(background_color, dtype=np.float32)
+            if scalp_color is not None:
+                tone_metadata["scalp_color"] = np.asarray(scalp_color, dtype=np.float32)
             if self.profile.bald_test_mode:
                 matte_work = blurred_work.astype(np.float32)
                 skin_color = self._estimate_skin_color(frame_bgr, landmarks_px)

@@ -563,7 +563,11 @@ def test_compose_single_bundle_render_frame_passes_tone_gain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runtime = build_runtime_stub()
-    captured: dict[str, object] = {"rgb_gain": None, "original_frame_image": None}
+    captured: dict[str, object] = {
+        "rgb_gain": None,
+        "original_frame_image": None,
+        "skin_replacement_color_rgb": None,
+    }
 
     monkeypatch.setattr(
         runtime,
@@ -591,6 +595,7 @@ def test_compose_single_bundle_render_frame_passes_tone_gain(
     def fake_compose_bundle_frame(frame_image, bundle, *, rgb_gain=None, **kwargs):
         captured["rgb_gain"] = rgb_gain
         captured["original_frame_image"] = kwargs.get("original_frame_image")
+        captured["skin_replacement_color_rgb"] = kwargs.get("skin_replacement_color_rgb")
         return frame_image
 
     monkeypatch.setattr("app.hairddae_runtime.compose_bundle_frame", fake_compose_bundle_frame)
@@ -603,6 +608,7 @@ def test_compose_single_bundle_render_frame_passes_tone_gain(
             "face_bbox": {"x": 0.1, "y": 0.1, "w": 0.4, "h": 0.4},
             "anchors": {},
             "_hair_tone": {"mean_luma": 86.0, "coverage": 0.12},
+            "_hair_scalp_color": np.array([90.0, 130.0, 170.0], dtype=np.float32),
         },
         frame,
         {"asset_id": "asset-a"},
@@ -614,6 +620,10 @@ def test_compose_single_bundle_render_frame_passes_tone_gain(
     assert captured["rgb_gain"] is not None
     assert float(captured["rgb_gain"]) > 1.0
     assert captured["original_frame_image"] is not None
+    assert np.array_equal(
+        np.asarray(captured["skin_replacement_color_rgb"]),
+        np.array([170.0, 130.0, 90.0], dtype=np.float32),
+    )
 
 
 def test_apply_overlay_postprocess_ignores_non_upper_residual_hair() -> None:
@@ -662,8 +672,7 @@ def test_apply_overlay_postprocess_backgroundizes_upper_residual_more_aggressive
         coverage_mask=coverage,
     )
 
-    assert int(postprocessed[1, 3, 0]) > int(postprocessed[5, 3, 0])
-    assert np.array_equal(postprocessed[4, 3], output[4, 3])
+    assert np.array_equal(postprocessed, output)
 
 
 def test_apply_overlay_postprocess_limits_backgroundization_to_upper_arch() -> None:
@@ -689,9 +698,7 @@ def test_apply_overlay_postprocess_limits_backgroundization_to_upper_arch() -> N
         coverage_mask=coverage,
     )
 
-    assert int(postprocessed[1, 3, 0]) > int(output[1, 3, 0])
-    assert np.array_equal(postprocessed[3, 1], output[3, 1])
-    assert np.array_equal(postprocessed[5, 3], output[5, 3])
+    assert np.array_equal(postprocessed, output)
 
 
 def test_apply_overlay_postprocess_preserves_face_protect_region() -> None:
@@ -720,5 +727,4 @@ def test_apply_overlay_postprocess_preserves_face_protect_region() -> None:
         coverage_mask=coverage,
     )
 
-    assert np.array_equal(postprocessed[2, 3], output[2, 3])
-    assert int(postprocessed[1, 3, 0]) > int(output[1, 3, 0])
+    assert np.array_equal(postprocessed, output)

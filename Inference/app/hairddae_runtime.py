@@ -2506,6 +2506,12 @@ class HairOverlayRuntime:
             protect_face_mask_path=entry.protect_face_mask_path,
         )
         rgb_gain = resolve_hair_tone_gain(user_row, entry.hair_luma)
+        skin_replacement_color_rgb = None
+        scalp_color = user_row.get("_hair_scalp_color")
+        if scalp_color is not None:
+            scalp_color_array = np.asarray(scalp_color, dtype=np.float32).reshape(-1)
+            if scalp_color_array.size >= 3 and bool(np.all(np.isfinite(scalp_color_array[:3]))):
+                skin_replacement_color_rgb = scalp_color_array[:3][::-1].astype(np.float32)
         frame_image = Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
         original_frame_image = None
         if isinstance(source_frame_bgr, np.ndarray) and source_frame_bgr.shape == frame_bgr.shape:
@@ -2516,6 +2522,7 @@ class HairOverlayRuntime:
             payload,
             rgb_gain=rgb_gain,
             original_frame_image=original_frame_image,
+            skin_replacement_color_rgb=skin_replacement_color_rgb,
             debug_payload=debug_payload,
         )
         coverage_mask = debug_payload.get("coverage_mask")

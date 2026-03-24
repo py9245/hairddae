@@ -175,6 +175,7 @@ def _replace_asset_skin_with_base_roi(
     warped_patch: Image.Image,
     base_roi: Image.Image,
     *,
+    skin_replacement_color_rgb: np.ndarray | None,
     face_mask_path: Path | None,
     protect_face_mask_path: Path | None,
     hair_bbox: dict[str, object] | None,
@@ -246,6 +247,14 @@ def _replace_asset_skin_with_base_roi(
     replaced = warped_rgba.copy()
     asset_rgb = warped_rgba[:, :, :3]
     base_rgb = base_rgba[:, :, :3]
+    replacement_color = None
+    if skin_replacement_color_rgb is not None:
+        replacement_color_array = np.asarray(skin_replacement_color_rgb, dtype=np.float32).reshape(-1)
+        if replacement_color_array.size >= 3 and bool(np.all(np.isfinite(replacement_color_array[:3]))):
+            replacement_color = np.clip(replacement_color_array[:3], 0.0, 255.0).astype(np.uint8)
+    if replacement_color is not None:
+        replaced[:, :, :3][replace_mask] = replacement_color
+        return Image.fromarray(replaced, mode="RGBA")
     asset_ycrcb = cv2.cvtColor(asset_rgb, cv2.COLOR_RGB2YCrCb).astype(np.float32)
     base_ycrcb = cv2.cvtColor(base_rgb, cv2.COLOR_RGB2YCrCb).astype(np.float32)
     matched_ycrcb = asset_ycrcb.copy()
@@ -277,6 +286,7 @@ def compose_bundle_frame(
     reference_height: int | None = None,
     rgb_gain: float | None = None,
     original_frame_image: Image.Image | None = None,
+    skin_replacement_color_rgb: np.ndarray | None = None,
     preserve_uncovered_base: bool = True,
     coverage_feather_px: int | None = None,
     debug_payload: dict[str, object] | None = None,
@@ -383,6 +393,7 @@ def compose_bundle_frame(
     warped_patch = _replace_asset_skin_with_base_roi(
         warped_patch,
         base_roi,
+        skin_replacement_color_rgb=skin_replacement_color_rgb,
         face_mask_path=face_mask_path,
         protect_face_mask_path=protect_face_mask_path,
         hair_bbox=hair_bbox,

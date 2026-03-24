@@ -213,15 +213,12 @@ def prepare_runtime_frame(
         upper_region_mask = hair_tone_metadata.get("upper_region_mask")
         if isinstance(upper_region_mask, np.ndarray) and upper_region_mask.shape == frame_bgr.shape[:2]:
             tracked_user_row["_hair_upper_region_mask"] = upper_region_mask
-        face_protect_mask = hair_tone_metadata.get("face_protect_mask")
-        if isinstance(face_protect_mask, np.ndarray) and face_protect_mask.shape == frame_bgr.shape[:2]:
-            tracked_user_row["_hair_face_protect_mask"] = face_protect_mask
         background_color = hair_tone_metadata.get("background_color")
         if background_color is not None:
             tracked_user_row["_hair_background_color"] = np.asarray(background_color, dtype=np.float32)
-
-    if bool(getattr(settings, "rtc_bald_test_mode", False)):
-        tracked_user_row["_force_bundle_render"] = True
+        scalp_color = hair_tone_metadata.get("scalp_color")
+        if scalp_color is not None:
+            tracked_user_row["_hair_scalp_color"] = np.asarray(scalp_color, dtype=np.float32)
 
     if hair_confidence_mask is not None and tracking_result is None:
         attenuation_status = "segmented_only"

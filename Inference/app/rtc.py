@@ -902,11 +902,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             dataset_code=self._active_dataset_code(),
             frame_bgr=frame_bgr,
             render_frame_bgr=prepared_frame_bgr,
-            source_frame_bgr=(
-                prepared_frame_bgr
-                if bool(getattr(self._settings, "rtc_bald_test_mode", False))
-                else frame_bgr
-            ),
+            source_frame_bgr=prepared_frame_bgr,
             tracked_user_row=tracked_user_row,
             prefer_latency=prefer_latency,
             session_id=self._claims.apply_session_id,

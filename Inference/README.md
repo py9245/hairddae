@@ -171,3 +171,33 @@ repo 내부 참조가 없던 스크립트는 `hairddae_tools/archive/`로 이동
 6. `app/hairddae_runtime.py`
 7. `app/catalog.py`
 8. `app/server_render.py`
+
+## 7. CUDA OpenCV
+
+로컬 `.venv`와 Docker 이미지 모두 기본 wheel OpenCV 위에 CUDA 빌드 바이너리를 overlay해서 사용한다.
+
+- 로컬 설치: `./scripts/install_opencv_cuda_local.sh`
+- 로컬 확인: `./.venv/bin/python scripts/inspect_opencv_cuda.py`
+- Docker 빌드: `docker compose -f docker-compose.gpu.yml build inference`
+
+주의:
+
+- `docker-compose.gpu.yml`은 `/app/.venv`를 별도 volume으로 유지한다. 이미지에 bake된 CUDA OpenCV가 호스트 `.venv` bind mount에 가려지지 않게 하기 위한 설정이다.
+- 이미지 안 `.venv`를 새로 받으려면 기존 volume을 지우고 다시 올려야 한다.
+  예: `docker compose -f docker-compose.gpu.yml down -v && docker compose -f docker-compose.gpu.yml up -d`
+
+
+## 7. BE 데이터 등록 API 양식
+  curl -X POST 'https://hairddae.store/api/internal/hairs/sync/' \
+    -H 'X-Inference-Sync-Secret: <APP_INFERENCE_METADATA_SYNC_SECRET>' \
+    -F 'dataset_code=0001' \
+    -F 'name=leaf cut' \
+    -F 'slug=leaf-cut' \
+    -F 'category=short' \
+    -F 'description=Hair dataset imported from static asset pack 0001.' \
+    -F 'dataset_root_url=/static/0001' \
+    -F 'asset_index_url=/static/0001/manifests/asset_index_v0.json' \
+    -F 'representative_asset_id=base_pose_bank__yaw+00_pitch+01_roll-01_frame000922' \
+    -F 'preview_image_url=/static/0001/hair_rgba/base_pose_bank__yaw+00_pitch+01_roll-
+  01_frame000922.png' \
+    -F 'active=true'

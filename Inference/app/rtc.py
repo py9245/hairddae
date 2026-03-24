@@ -1130,10 +1130,35 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 runtime_result["score"] = fallback_bundle.score
                 runtime_result["status"] = "degraded_ok"
                 runtime_result["selection_mode"] = "bundle_render_fallback"
-                runtime_result["overlay_latency_ms"] = round(
-                    float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0) + fallback_latency_ms,
+                primary_overlay_latency_ms = round(
+                    float(
+                        runtime_result.get(
+                            "primary_overlay_latency_ms",
+                            runtime_result.get("overlay_latency_ms", 0.0),
+                        )
+                        or 0.0
+                    ),
                     3,
                 )
+                runtime_result["primary_overlay_latency_ms"] = primary_overlay_latency_ms
+                runtime_result["fallback_latency_ms"] = round(float(fallback_latency_ms), 3)
+                runtime_result["overlay_latency_ms"] = round(
+                    primary_overlay_latency_ms + fallback_latency_ms,
+                    3,
+                )
+                overlay_detail_ms = runtime_result.get("overlay_detail_ms")
+                if isinstance(overlay_detail_ms, dict):
+                    merged_overlay_detail_ms = dict(overlay_detail_ms)
+                    merged_overlay_detail_ms["fallback_ms"] = round(float(fallback_latency_ms), 3)
+                    merged_overlay_detail_ms["overlay_total_after_fallback_ms"] = float(
+                        runtime_result["overlay_latency_ms"]
+                    )
+                    runtime_result["overlay_detail_ms"] = merged_overlay_detail_ms
+                    selection_trace = runtime_result.get("selection_trace")
+                    if isinstance(selection_trace, dict):
+                        merged_selection_trace = dict(selection_trace)
+                        merged_selection_trace["overlay_detail_ms"] = merged_overlay_detail_ms
+                        runtime_result["selection_trace"] = merged_selection_trace
                 logger.info(
                     "rtc bundle render fallback applied: asset=%s latency_ms=%.1f",
                     fallback_bundle.asset_id,
@@ -1259,7 +1284,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                         "rtc perf detail: seq=%s frame_age=%.1f queue_depth=%s dropped_total=%s "
                         "control_last=%s control_ms=%.2f control_err=%s control_count=%s "
                         "channel_state=%s buffered_amount=%s send_count=%s last_send=%.3f "
-                        "feature_ms=%.1f overlay_ms=%.1f user_parse_ms=%.1f"
+                        "feature_ms=%.1f primary_overlay_ms=%.1f fallback_ms=%.1f overlay_ms=%.1f user_parse_ms=%.1f"
                     ),
                     next_seq,
                     frame_age_ms,
@@ -1274,8 +1299,24 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                     self._state.data_channel_send_count,
                     self._state.last_channel_send_latency_ms,
                     float(runtime_result.get("feature_latency_ms", 0.0) or 0.0),
+                    float(runtime_result.get("primary_overlay_latency_ms", 0.0) or 0.0),
+                    float(runtime_result.get("fallback_latency_ms", 0.0) or 0.0),
                     float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
                     float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
+                )
+            if (
+                float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0) >= 80.0
+                or str(runtime_result.get("status") or "ok") != "ok"
+            ):
+                logger.info(
+                    "rtc overlay detail: seq=%s asset=%s status=%s selection_mode=%s overlay_detail=%s compose_detail=%s bundle_detail=%s",
+                    next_seq,
+                    runtime_result.get("selected_asset_id"),
+                    runtime_result.get("status"),
+                    runtime_result.get("selection_mode"),
+                    runtime_result.get("overlay_detail_ms") or {},
+                    runtime_result.get("compose_detail_ms") or {},
+                    runtime_result.get("bundle_detail_ms") or {},
                 )
             self._maybe_emit_stats(
                 queue_depth=queue_depth,
@@ -1344,7 +1385,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                     "rtc perf detail: seq=%s frame_age=%.1f queue_depth=%s dropped_total=%s "
                     "control_last=%s control_ms=%.2f control_err=%s control_count=%s "
                     "channel_state=%s buffered_amount=%s send_count=%s last_send=%.3f "
-                    "feature_ms=%.1f overlay_ms=%.1f user_parse_ms=%.1f"
+                    "feature_ms=%.1f primary_overlay_ms=%.1f fallback_ms=%.1f overlay_ms=%.1f user_parse_ms=%.1f"
                 ),
                 next_seq,
                 frame_age_ms,
@@ -1359,9 +1400,25 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 self._state.data_channel_send_count,
                 self._state.last_channel_send_latency_ms,
                 float(runtime_result.get("feature_latency_ms", 0.0) or 0.0),
+                float(runtime_result.get("primary_overlay_latency_ms", 0.0) or 0.0),
+                float(runtime_result.get("fallback_latency_ms", 0.0) or 0.0),
                 float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
                 float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
             )
+            if (
+                float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0) >= 80.0
+                or str(runtime_result.get("status") or "ok") != "ok"
+            ):
+                logger.info(
+                    "rtc overlay detail: seq=%s asset=%s status=%s selection_mode=%s overlay_detail=%s compose_detail=%s bundle_detail=%s",
+                    next_seq,
+                    runtime_result.get("selected_asset_id"),
+                    runtime_result.get("status"),
+                    runtime_result.get("selection_mode"),
+                    runtime_result.get("overlay_detail_ms") or {},
+                    runtime_result.get("compose_detail_ms") or {},
+                    runtime_result.get("bundle_detail_ms") or {},
+                )
 
         self._maybe_emit_stats(
             queue_depth=queue_depth,

@@ -16,6 +16,21 @@ from app.models import FeatureMessageModel
 from app.render import build_render_task
 
 
+def _asset_index_candidates(asset_root_path: Path) -> tuple[Path, ...]:
+    return (
+        asset_root_path / "manifests" / "asset_index_v0.json",
+        asset_root_path / "manifests" / "manifest.json",
+        asset_root_path / "indices" / "asset_manifest.json",
+    )
+
+
+def _resolve_asset_index_path(asset_root_path: Path) -> Path | None:
+    for candidate in _asset_index_candidates(asset_root_path):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def _normalize_url(base_url: str, dataset_code: str, relative_path: str | None) -> str | None:
     if not relative_path:
         return None
@@ -142,8 +157,8 @@ class AssetCatalog:
         )
 
     def dataset_exists(self, dataset_code: str) -> bool:
-        asset_index_path = self._settings.static_root / dataset_code / "manifests" / "asset_index_v0.json"
-        return asset_index_path.is_file()
+        asset_root_path = self._settings.static_root / dataset_code
+        return _resolve_asset_index_path(asset_root_path) is not None
 
     def ensure_control_target(
         self,
@@ -323,13 +338,11 @@ class AssetCatalog:
                 return dataset
 
             asset_root_path = self._settings.static_root / dataset_code
-            asset_index_path = asset_root_path / "manifests" / "asset_index_v0.json"
+            asset_index_path = _resolve_asset_index_path(asset_root_path)
+            if asset_index_path is None:
+                raise ValueError(f"unknown dataset_code {dataset_code}")
             payload = json.loads(asset_index_path.read_text(encoding="utf-8"))
-            items = [
-                dict(item)
-                for item in payload.get("items", [])
-                if isinstance(item, dict) and str(item.get("asset_id") or "")
-            ]
+            items = self._load_manifest_items(asset_root_path, payload)
             runtime_items = tuple(build_runtime_asset_rows(asset_root_path, items))
             dataset = DatasetRecord(
                 dataset_code=dataset_code,
@@ -341,6 +354,53 @@ class AssetCatalog:
             )
             self._cache[dataset_code] = dataset
             return dataset
+
+    def _load_manifest_items(
+        self,
+        asset_root_path: Path,
+        payload: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        raw_items = payload.get("items", [])
+        if not isinstance(raw_items, list):
+            return []
+
+        items: list[dict[str, Any]] = []
+        for raw_item in raw_items:
+            if not isinstance(raw_item, dict):
+                continue
+            asset_id = str(raw_item.get("asset_id") or "")
+            if not asset_id:
+                continue
+            item = dict(raw_item)
+            metadata_path = str(item.get("metadata_path") or "")
+            if metadata_path and self._item_needs_metadata_enrichment(item):
+                metadata_file = asset_root_path / metadata_path
+                if metadata_file.is_file():
+                    metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
+                    if isinstance(metadata, dict):
+                        merged = dict(metadata)
+                        merged.update(item)
+                        item = merged
+            items.append(item)
+        return items
+
+    @staticmethod
+    def _item_needs_metadata_enrichment(item: dict[str, Any]) -> bool:
+        for field_name in (
+            "alpha_path",
+            "hair_mask_path",
+            "face_mask_path",
+            "protect_face_mask_path",
+            "yaw_1deg",
+            "pitch_1deg",
+            "roll_1deg",
+            "approved",
+            "quality_score",
+            "hair_mean_confidence",
+        ):
+            if item.get(field_name) in (None, ""):
+                return True
+        return False
 
     def _load_metadata(self, dataset: DatasetRecord, asset: dict[str, Any]) -> dict[str, Any]:
         asset_id = str(asset["asset_id"])

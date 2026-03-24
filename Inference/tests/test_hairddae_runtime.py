@@ -465,7 +465,7 @@ def test_resolve_compose_mode_prefers_bundle_render_for_large_latency_asset(
     monkeypatch.setattr(
         runtime,
         "_bundle_render_entry_for_asset",
-        lambda asset_row: RuntimeBundleRenderEntry(
+        lambda asset_row, **kwargs: RuntimeBundleRenderEntry(
             asset_id=str(asset_row["asset_id"]),
             metadata={},
             anchors_payload={},
@@ -502,7 +502,7 @@ def test_resolve_compose_mode_forces_bundle_render_when_requested(
     monkeypatch.setattr(
         runtime,
         "_bundle_render_entry_for_asset",
-        lambda asset_row: RuntimeBundleRenderEntry(
+        lambda asset_row, **kwargs: RuntimeBundleRenderEntry(
             asset_id=str(asset_row["asset_id"]),
             metadata={},
             anchors_payload={},
@@ -572,7 +572,7 @@ def test_compose_single_bundle_render_frame_passes_tone_gain(
     monkeypatch.setattr(
         runtime,
         "_bundle_render_entry_for_asset",
-        lambda asset_row: RuntimeBundleRenderEntry(
+        lambda asset_row, **kwargs: RuntimeBundleRenderEntry(
             asset_id="asset-a",
             metadata={},
             anchors_payload={},
@@ -596,11 +596,15 @@ def test_compose_single_bundle_render_frame_passes_tone_gain(
         captured["rgb_gain"] = rgb_gain
         captured["original_frame_image"] = kwargs.get("original_frame_image")
         captured["skin_replacement_color_rgb"] = kwargs.get("skin_replacement_color_rgb")
+        debug_payload = kwargs.get("debug_payload")
+        if isinstance(debug_payload, dict):
+            debug_payload["timings_ms"] = {"total_ms": 6.5, "rgba_load_ms": 1.25}
         return frame_image
 
     monkeypatch.setattr("app.hairddae_runtime.compose_bundle_frame", fake_compose_bundle_frame)
 
     frame = np.full((8, 8, 3), 28, dtype=np.uint8)
+    compose_debug: dict[str, object] = {}
     output, coverage_mask = runtime._compose_single_bundle_render_frame(
         {
             "image_size": {"width": 8, "height": 8},
@@ -613,6 +617,7 @@ def test_compose_single_bundle_render_frame_passes_tone_gain(
         frame,
         {"asset_id": "asset-a"},
         source_frame_bgr=np.full_like(frame, 16),
+        debug_payload=compose_debug,
     )
 
     assert np.array_equal(output, frame)
@@ -620,10 +625,71 @@ def test_compose_single_bundle_render_frame_passes_tone_gain(
     assert captured["rgb_gain"] is not None
     assert float(captured["rgb_gain"]) > 1.0
     assert captured["original_frame_image"] is not None
+    assert compose_debug["bundle_frame_detail_ms"]["total_ms"] == 6.5
+    assert compose_debug["bundle_frame_detail_ms"]["rgba_load_ms"] == 1.25
     assert np.array_equal(
         np.asarray(captured["skin_replacement_color_rgb"]),
         np.array([170.0, 130.0, 90.0], dtype=np.float32),
     )
+
+
+def test_process_frame_returns_overlay_and_compose_details(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime = build_runtime_stub()
+    asset = {"asset_id": "asset-a", "pose_key": "pose-a"}
+
+    monkeypatch.setattr(runtime, "_set_active_renderer", lambda renderer_name: "mesh_v3")
+    monkeypatch.setattr(runtime, "_is_face_tracking_outlier", lambda raw_user_row: False)
+    monkeypatch.setattr(runtime, "_smooth_user_row", lambda user_row: dict(user_row))
+    monkeypatch.setattr(
+        runtime,
+        "_parse_user_masks",
+        lambda frame_bgr, user_row, renderer_name, prefer_latency=False: (None, "disabled", 0.0),
+    )
+    monkeypatch.setattr(runtime, "_attach_runtime_fit_context", lambda user_row, user_mask_bundle: user_row)
+    monkeypatch.setattr(
+        runtime,
+        "_select_asset",
+        lambda user_row, representative_asset_id=None: (
+            runtime.__setattr__("_last_selection_trace", {"decision": "initial"}) or asset,
+            1.0,
+            "initial",
+            [(asset, 1.0)],
+        ),
+    )
+
+    def fake_compose(
+        user_row: dict[str, object],
+        frame_bgr: np.ndarray,
+        blend_assets: list[tuple[dict[str, object], float]],
+        renderer_name: str,
+        user_mask_bundle: dict[str, object] | None,
+        *,
+        prefer_latency: bool,
+        source_frame_bgr=None,
+    ):
+        runtime._merge_selection_trace_fields(
+            compose_detail_ms={"compose_mode": "overlay", "overlay_blend_ms": 3.2}
+        )
+        return np.full_like(frame_bgr, 77), 1.0, None, renderer_name, None
+
+    monkeypatch.setattr(runtime, "_compose_output_frame", fake_compose)
+
+    result = runtime.process_frame(
+        np.zeros((8, 8, 3), dtype=np.uint8),
+        tracked_user_row={
+            "ok": True,
+            "pose": {"yaw_1deg": 0, "pitch_1deg": 0, "roll_1deg": 0},
+            "face_bbox": {"x": 0.1, "y": 0.1, "w": 0.4, "h": 0.4},
+        },
+        session_id="runtime-detail",
+    )
+
+    assert result["overlay_detail_ms"] is not None
+    assert "smooth_ms" in result["overlay_detail_ms"]
+    assert "select_and_compose_ms" in result["overlay_detail_ms"]
+    assert "overlay_total_ms" in result["overlay_detail_ms"]
+    assert result["compose_detail_ms"]["compose_mode"] == "overlay"
+    assert result["selection_trace"]["overlay_detail_ms"]["overlay_total_ms"] == result["overlay_detail_ms"]["overlay_total_ms"]
 
 
 def test_apply_overlay_postprocess_ignores_non_upper_residual_hair() -> None:

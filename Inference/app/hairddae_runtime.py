@@ -624,6 +624,21 @@ class HairOverlayRuntime:
             trace["selection_latency_ms"] = round(float(selection_latency_ms), 3)
         return trace
 
+    def _merge_selection_trace_fields(self, **fields: Any) -> dict[str, Any] | None:
+        if self._current_session is None or self._last_selection_trace is None:
+            return None
+
+        trace = dict(self._last_selection_trace)
+        for key, value in fields.items():
+            if isinstance(trace.get(key), dict) and isinstance(value, dict):
+                merged_value = dict(trace[key])
+                merged_value.update(value)
+                trace[key] = merged_value
+            else:
+                trace[key] = value
+        self._last_selection_trace = trace
+        return trace
+
     def _asset_bundle_integrity_error(self, asset_row: dict[str, Any]) -> str | None:
         cached = asset_row.get("_bundle_integrity_error")
         if isinstance(cached, str):
@@ -943,7 +958,6 @@ class HairOverlayRuntime:
                 )
                 selected_asset_id = str(best_asset["asset_id"])
                 selected_pose_key = str(best_asset["pose_key"])
-                selection_trace = self._last_selection_trace
                 compose_started_at = time.perf_counter()
                 output_frame, transition_progress, transition_from_asset_id, effective_renderer_name, coverage_mask = self._compose_output_frame(
                     user_row,
@@ -955,6 +969,7 @@ class HairOverlayRuntime:
                     source_frame_bgr=source_frame_bgr,
                 )
                 compose_latency_ms = round((time.perf_counter() - compose_started_at) * 1000.0, 3)
+                selection_trace = self._last_selection_trace
                 if selection_trace is not None:
                     selection_trace = dict(selection_trace)
                     selection_trace["compose_latency_ms"] = compose_latency_ms
@@ -968,6 +983,8 @@ class HairOverlayRuntime:
                 if fallback_used and selection_trace is not None:
                     selection_trace = dict(selection_trace)
                     selection_trace["render_fallback_used"] = True
+                if selection_trace is not None:
+                    self._last_selection_trace = selection_trace
                 return {
                     "status": "ok",
                     "output_frame": output_frame,
@@ -2291,13 +2308,18 @@ class HairOverlayRuntime:
         prefer_latency: bool,
         source_frame_bgr: np.ndarray | None = None,
     ) -> tuple[np.ndarray, float, str | None, str, np.ndarray | None]:
+        resolve_mode_started_at = time.perf_counter()
         compose_mode = self._resolve_compose_mode(
             user_row,
             renderer_name,
             blend_assets,
             prefer_latency=prefer_latency,
         )
+        resolve_compose_mode_ms = round((time.perf_counter() - resolve_mode_started_at) * 1000.0, 3)
         if compose_mode == "bundle_render":
+            self._merge_selection_trace_fields(
+                compose_detail_ms={"compose_mode": "bundle_render", "resolve_compose_mode_ms": resolve_compose_mode_ms}
+            )
             return self._compose_bundle_output_frame(
                 user_row,
                 frame_bgr,
@@ -2306,8 +2328,11 @@ class HairOverlayRuntime:
                 prefer_latency=prefer_latency,
             )
 
+        resolve_renderer_started_at = time.perf_counter()
         effective_renderer_name = self._resolve_compose_renderer(user_row, renderer_name, blend_assets)
+        resolve_compose_renderer_ms = round((time.perf_counter() - resolve_renderer_started_at) * 1000.0, 3)
         if self._transition is None:
+            overlay_blend_started_at = time.perf_counter()
             target_frame = compose_overlay_blend_frame(
                 user_row,
                 frame_bgr,
@@ -2316,8 +2341,19 @@ class HairOverlayRuntime:
                 renderer_name=effective_renderer_name,
                 user_mask_bundle=user_mask_bundle,
             )
+            overlay_blend_ms = round((time.perf_counter() - overlay_blend_started_at) * 1000.0, 3)
+            self._merge_selection_trace_fields(
+                compose_detail_ms={
+                    "compose_mode": "overlay",
+                    "resolve_compose_mode_ms": resolve_compose_mode_ms,
+                    "resolve_compose_renderer_ms": resolve_compose_renderer_ms,
+                    "overlay_blend_ms": overlay_blend_ms,
+                    "transition_blend_ms": 0.0,
+                }
+            )
             return target_frame, 1.0, None, effective_renderer_name, None
 
+        overlay_transition_started_at = time.perf_counter()
         from_frame, target_frame = compose_overlay_transition_frames(
             user_row,
             frame_bgr,
@@ -2327,12 +2363,24 @@ class HairOverlayRuntime:
             renderer_name=effective_renderer_name,
             user_mask_bundle=user_mask_bundle,
         )
+        overlay_transition_frames_ms = round((time.perf_counter() - overlay_transition_started_at) * 1000.0, 3)
         self._transition["step"] += 1
         transition_progress = min(1.0, self._transition["step"] / float(self._transition["steps"]))
+        transition_blend_started_at = time.perf_counter()
         blended_frame = cv2.addWeighted(from_frame, 1.0 - transition_progress, target_frame, transition_progress, 0.0)
+        transition_blend_ms = round((time.perf_counter() - transition_blend_started_at) * 1000.0, 3)
         from_asset_id = str(self._transition["from_asset_id"])
         if transition_progress >= 1.0:
             self._transition = None
+        self._merge_selection_trace_fields(
+            compose_detail_ms={
+                "compose_mode": "overlay_transition",
+                "resolve_compose_mode_ms": resolve_compose_mode_ms,
+                "resolve_compose_renderer_ms": resolve_compose_renderer_ms,
+                "overlay_transition_frames_ms": overlay_transition_frames_ms,
+                "transition_blend_ms": transition_blend_ms,
+            }
+        )
         return blended_frame, transition_progress, from_asset_id, effective_renderer_name, None
 
     def _resolve_compose_mode(
@@ -2405,11 +2453,24 @@ class HairOverlayRuntime:
     def _bundle_render_entry_for_asset(
         self,
         asset_row: dict[str, Any],
+        *,
+        debug_payload: dict[str, object] | None = None,
     ) -> RuntimeBundleRenderEntry:
+        entry_started_at = time.perf_counter()
         cache_key = str(asset_row.get("asset_id") or asset_row.get("metadata_path") or "").strip()
         if cache_key:
             cached_entry = self._bundle_render_entry_cache.get(cache_key)
             if cached_entry is not None:
+                if debug_payload is not None:
+                    debug_payload.update(
+                        {
+                            "entry_cache_hit": True,
+                            "metadata_json_ms": 0.0,
+                            "anchors_json_ms": 0.0,
+                            "hair_luma_ms": 0.0,
+                            "entry_total_ms": round((time.perf_counter() - entry_started_at) * 1000.0, 3),
+                        }
+                    )
                 return cached_entry
 
         metadata_path_raw = str(asset_row.get("metadata_path") or "").strip()
@@ -2417,8 +2478,12 @@ class HairOverlayRuntime:
         if not metadata_path_raw or not anchors_path_raw:
             raise FileNotFoundError("missing metadata_path or anchors_path for bundle render")
 
+        metadata_started_at = time.perf_counter()
         metadata = read_json(resolve_asset_path(self.asset_root, metadata_path_raw))
+        metadata_json_ms = round((time.perf_counter() - metadata_started_at) * 1000.0, 3)
+        anchors_started_at = time.perf_counter()
         anchors_payload = read_json(resolve_asset_path(self.asset_root, anchors_path_raw))
+        anchors_json_ms = round((time.perf_counter() - anchors_started_at) * 1000.0, 3)
         hair_rgba_path_raw = str(metadata.get("hair_rgba_path") or "").strip()
         face_mask_path_raw = str(metadata.get("face_mask_path") or "").strip()
         protect_face_mask_path_raw = str(metadata.get("protect_face_mask_path") or "").strip()
@@ -2443,7 +2508,9 @@ class HairOverlayRuntime:
         )
         if protect_face_mask_path is not None and not protect_face_mask_path.is_file():
             protect_face_mask_path = None
+        hair_luma_started_at = time.perf_counter()
         hair_luma = self._estimate_hair_rgba_luma(hair_rgba_path)
+        hair_luma_ms = round((time.perf_counter() - hair_luma_started_at) * 1000.0, 3)
 
         entry = RuntimeBundleRenderEntry(
             asset_id=str(asset_row.get("asset_id") or metadata_path_raw),
@@ -2457,6 +2524,16 @@ class HairOverlayRuntime:
         )
         if cache_key:
             self._bundle_render_entry_cache[cache_key] = entry
+        if debug_payload is not None:
+            debug_payload.update(
+                {
+                    "entry_cache_hit": False,
+                    "metadata_json_ms": metadata_json_ms,
+                    "anchors_json_ms": anchors_json_ms,
+                    "hair_luma_ms": hair_luma_ms,
+                    "entry_total_ms": round((time.perf_counter() - entry_started_at) * 1000.0, 3),
+                }
+            )
         return entry
 
     def _feature_message_from_user_row(self, user_row: dict[str, Any]) -> FeatureMessageModel:
@@ -2485,11 +2562,15 @@ class HairOverlayRuntime:
         asset_row: dict[str, Any],
         *,
         source_frame_bgr: np.ndarray | None = None,
+        debug_payload: dict[str, object] | None = None,
     ) -> tuple[np.ndarray, np.ndarray | None]:
-        entry = self._bundle_render_entry_for_asset(asset_row)
+        compose_started_at = time.perf_counter()
+        entry_debug_payload: dict[str, object] = {}
+        entry = self._bundle_render_entry_for_asset(asset_row, debug_payload=entry_debug_payload)
         if entry.hair_rgba_path is None or entry.hair_bbox is None:
             raise FileNotFoundError(f"bundle render unavailable for asset {entry.asset_id}")
 
+        render_task_started_at = time.perf_counter()
         render_task = build_render_task(
             feature=self._feature_message_from_user_row(user_row),
             asset_anchors_payload=entry.anchors_payload,
@@ -2497,6 +2578,7 @@ class HairOverlayRuntime:
         )
         if render_task is None:
             raise RuntimeError(f"failed to build render_task for asset {entry.asset_id}")
+        render_task_build_ms = round((time.perf_counter() - render_task_started_at) * 1000.0, 3)
 
         payload = RuntimeBundleRenderPayload(
             hair_rgba_path=entry.hair_rgba_path,
@@ -2512,23 +2594,48 @@ class HairOverlayRuntime:
             scalp_color_array = np.asarray(scalp_color, dtype=np.float32).reshape(-1)
             if scalp_color_array.size >= 3 and bool(np.all(np.isfinite(scalp_color_array[:3]))):
                 skin_replacement_color_rgb = scalp_color_array[:3][::-1].astype(np.float32)
+        frame_to_pil_started_at = time.perf_counter()
         frame_image = Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+        frame_to_pil_ms = round((time.perf_counter() - frame_to_pil_started_at) * 1000.0, 3)
         original_frame_image = None
+        source_to_pil_ms = 0.0
         if isinstance(source_frame_bgr, np.ndarray) and source_frame_bgr.shape == frame_bgr.shape:
+            source_to_pil_started_at = time.perf_counter()
             original_frame_image = Image.fromarray(cv2.cvtColor(source_frame_bgr, cv2.COLOR_BGR2RGB))
-        debug_payload: dict[str, object] = {}
+            source_to_pil_ms = round((time.perf_counter() - source_to_pil_started_at) * 1000.0, 3)
+        server_debug_payload: dict[str, object] = {}
+        compose_bundle_started_at = time.perf_counter()
         rendered_image = compose_bundle_frame(
             frame_image,
             payload,
             rgb_gain=rgb_gain,
             original_frame_image=original_frame_image,
             skin_replacement_color_rgb=skin_replacement_color_rgb,
-            debug_payload=debug_payload,
+            debug_payload=server_debug_payload,
         )
-        coverage_mask = debug_payload.get("coverage_mask")
+        compose_bundle_frame_ms = round((time.perf_counter() - compose_bundle_started_at) * 1000.0, 3)
+        pil_to_bgr_started_at = time.perf_counter()
+        rendered_bgr = cv2.cvtColor(np.asarray(rendered_image), cv2.COLOR_RGB2BGR)
+        pil_to_bgr_ms = round((time.perf_counter() - pil_to_bgr_started_at) * 1000.0, 3)
+        coverage_mask = server_debug_payload.get("coverage_mask")
         if not isinstance(coverage_mask, np.ndarray) or coverage_mask.shape != frame_bgr.shape[:2]:
             coverage_mask = None
-        return cv2.cvtColor(np.asarray(rendered_image), cv2.COLOR_RGB2BGR), coverage_mask
+        if debug_payload is not None:
+            debug_payload.update(
+                {
+                    "asset_id": entry.asset_id,
+                    "entry_cache_hit": bool(entry_debug_payload.get("entry_cache_hit")),
+                    "entry_detail_ms": entry_debug_payload,
+                    "render_task_build_ms": render_task_build_ms,
+                    "frame_to_pil_ms": frame_to_pil_ms,
+                    "source_to_pil_ms": source_to_pil_ms,
+                    "compose_bundle_frame_ms": compose_bundle_frame_ms,
+                    "pil_to_bgr_ms": pil_to_bgr_ms,
+                    "bundle_frame_detail_ms": dict(server_debug_payload.get("timings_ms") or {}),
+                    "total_ms": round((time.perf_counter() - compose_started_at) * 1000.0, 3),
+                }
+            )
+        return rendered_bgr, coverage_mask
 
     def _compose_bundle_output_frame(
         self,
@@ -2540,14 +2647,24 @@ class HairOverlayRuntime:
         prefer_latency: bool,
     ) -> tuple[np.ndarray, float, str | None, str, np.ndarray | None]:
         primary_asset = blend_assets[0][0]
+        target_debug_payload: dict[str, object] = {}
         target_frame, target_coverage_mask = self._compose_single_bundle_render_frame(
             user_row,
             frame_bgr,
             primary_asset,
             source_frame_bgr=source_frame_bgr,
+            debug_payload=target_debug_payload,
         )
 
         primary_render_cost_ratio = self._asset_render_cost_ratio(primary_asset)
+        compose_detail_ms: dict[str, object] = {
+            "compose_mode": "bundle_render",
+            "primary_asset_id": str(primary_asset.get("asset_id") or ""),
+            "primary_render_cost_ratio": round(primary_render_cost_ratio, 6),
+            "target_bundle_ms": round(float(target_debug_payload.get("total_ms") or 0.0), 3),
+            "target_entry_cache_hit": bool(target_debug_payload.get("entry_cache_hit")),
+            "transition_enabled": bool(self._transition is not None and self.bundle_render_allow_transition and not prefer_latency),
+        }
         if (
             self._transition is None
             or not self.bundle_render_allow_transition
@@ -2557,6 +2674,11 @@ class HairOverlayRuntime:
                 self.render_cost_renderer_downgrade_ratio,
             )
         ):
+            compose_detail_ms["transition_blend_ms"] = 0.0
+            self._merge_selection_trace_fields(
+                compose_detail_ms=compose_detail_ms,
+                bundle_detail_ms={"target": target_debug_payload},
+            )
             return target_frame, 1.0, None, "bundle_render", target_coverage_mask
 
         from_asset_id = str(self._transition["from_asset_id"])
@@ -2570,16 +2692,24 @@ class HairOverlayRuntime:
         )
         if from_asset is None:
             self._transition = None
+            compose_detail_ms["transition_blend_ms"] = 0.0
+            self._merge_selection_trace_fields(
+                compose_detail_ms=compose_detail_ms,
+                bundle_detail_ms={"target": target_debug_payload},
+            )
             return target_frame, 1.0, None, "bundle_render", target_coverage_mask
 
+        from_debug_payload: dict[str, object] = {}
         from_frame, from_coverage_mask = self._compose_single_bundle_render_frame(
             user_row,
             frame_bgr,
             from_asset,
             source_frame_bgr=source_frame_bgr,
+            debug_payload=from_debug_payload,
         )
         self._transition["step"] += 1
         transition_progress = min(1.0, self._transition["step"] / float(self._transition["steps"]))
+        transition_blend_started_at = time.perf_counter()
         blended_frame = cv2.addWeighted(
             from_frame,
             1.0 - transition_progress,
@@ -2587,6 +2717,7 @@ class HairOverlayRuntime:
             transition_progress,
             0.0,
         )
+        transition_blend_ms = round((time.perf_counter() - transition_blend_started_at) * 1000.0, 3)
         blended_coverage_mask = target_coverage_mask
         if (
             isinstance(target_coverage_mask, np.ndarray)
@@ -2596,6 +2727,18 @@ class HairOverlayRuntime:
             blended_coverage_mask = np.maximum(target_coverage_mask, from_coverage_mask)
         if transition_progress >= 1.0:
             self._transition = None
+        compose_detail_ms.update(
+            {
+                "from_asset_id": from_asset_id,
+                "from_bundle_ms": round(float(from_debug_payload.get("total_ms") or 0.0), 3),
+                "from_entry_cache_hit": bool(from_debug_payload.get("entry_cache_hit")),
+                "transition_blend_ms": transition_blend_ms,
+            }
+        )
+        self._merge_selection_trace_fields(
+            compose_detail_ms=compose_detail_ms,
+            bundle_detail_ms={"target": target_debug_payload, "from": from_debug_payload},
+        )
         return blended_frame, transition_progress, from_asset_id, "bundle_render", blended_coverage_mask
 
     def _apply_overlay_postprocess(
@@ -2692,6 +2835,7 @@ class HairOverlayRuntime:
                 user_mask_bundle: dict[str, Any] | None = None
                 user_parsing_status = "disabled"
                 user_parsing_latency_ms = 0.0
+                overlay_detail_ms: dict[str, float | str] = {}
                 selection_trace: dict[str, Any] | None = self._last_selection_trace
                 effective_renderer_name = resolved_renderer
 
@@ -2701,10 +2845,12 @@ class HairOverlayRuntime:
                         self._missing_face_count = 0
                         self._invalid_face_count += 1
                         if self._invalid_face_count < 2 and self._smoothed_user_row is not None:
+                            hold_started_at = time.perf_counter()
                             user_row, output_frame, selected_asset_id, selected_pose_key, blend_assets = self._hold_previous_tracking_frame(
                                 compose_frame_bgr,
                                 resolved_renderer,
                             )
+                            overlay_detail_ms["hold_previous_ms"] = round((time.perf_counter() - hold_started_at) * 1000.0, 3)
                             runtime_status = "face_tracking_outlier_hold"
                             selection_mode = "hold_tracking"
                             transition_progress = 1.0 if blend_assets else 0.0
@@ -2714,14 +2860,20 @@ class HairOverlayRuntime:
                                 selection_trace["decision"] = selection_mode
                         else:
                             self._invalid_face_count = 0
+                            smooth_started_at = time.perf_counter()
                             user_row = self._smooth_user_row(raw_user_row)
+                            overlay_detail_ms["smooth_ms"] = round((time.perf_counter() - smooth_started_at) * 1000.0, 3)
                             user_mask_bundle, user_parsing_status, user_parsing_latency_ms = self._parse_user_masks(
                                 frame_bgr,
                                 user_row,
                                 resolved_renderer,
                                 prefer_latency=prefer_latency,
                             )
+                            overlay_detail_ms["parse_user_masks_ms"] = round(float(user_parsing_latency_ms), 3)
+                            attach_context_started_at = time.perf_counter()
                             user_row = self._attach_runtime_fit_context(user_row, user_mask_bundle)
+                            overlay_detail_ms["attach_context_ms"] = round((time.perf_counter() - attach_context_started_at) * 1000.0, 3)
+                            render_flow_started_at = time.perf_counter()
                             render_result = self._select_and_compose_output_frame(
                                 user_row=user_row,
                                 compose_frame_bgr=compose_frame_bgr,
@@ -2731,6 +2883,7 @@ class HairOverlayRuntime:
                                 representative_asset_id=representative_asset_id,
                                 prefer_latency=prefer_latency,
                             )
+                            overlay_detail_ms["select_and_compose_ms"] = round((time.perf_counter() - render_flow_started_at) * 1000.0, 3)
                             output_frame = render_result["output_frame"]
                             selected_asset_id = render_result["selected_asset_id"]
                             selected_pose_key = render_result["selected_pose_key"]
@@ -2744,6 +2897,7 @@ class HairOverlayRuntime:
                             runtime_status = render_result["status"]
                             effective_renderer_name = str(render_result.get("effective_renderer_name") or resolved_renderer)
                             overlay_coverage_mask = render_result.get("coverage_mask")
+                            postprocess_started_at = time.perf_counter()
                             output_frame = self._apply_overlay_postprocess(
                                 output_frame,
                                 compose_frame_bgr,
@@ -2751,17 +2905,24 @@ class HairOverlayRuntime:
                                 renderer_name=effective_renderer_name,
                                 coverage_mask=overlay_coverage_mask,
                             )
+                            overlay_detail_ms["postprocess_ms"] = round((time.perf_counter() - postprocess_started_at) * 1000.0, 3)
                     else:
                         self._missing_face_count = 0
                         self._invalid_face_count = 0
+                        smooth_started_at = time.perf_counter()
                         user_row = self._smooth_user_row(raw_user_row)
+                        overlay_detail_ms["smooth_ms"] = round((time.perf_counter() - smooth_started_at) * 1000.0, 3)
                         user_mask_bundle, user_parsing_status, user_parsing_latency_ms = self._parse_user_masks(
                             frame_bgr,
                             user_row,
                             resolved_renderer,
                             prefer_latency=prefer_latency,
                         )
+                        overlay_detail_ms["parse_user_masks_ms"] = round(float(user_parsing_latency_ms), 3)
+                        attach_context_started_at = time.perf_counter()
                         user_row = self._attach_runtime_fit_context(user_row, user_mask_bundle)
+                        overlay_detail_ms["attach_context_ms"] = round((time.perf_counter() - attach_context_started_at) * 1000.0, 3)
+                        render_flow_started_at = time.perf_counter()
                         render_result = self._select_and_compose_output_frame(
                             user_row=user_row,
                             compose_frame_bgr=compose_frame_bgr,
@@ -2771,6 +2932,7 @@ class HairOverlayRuntime:
                             representative_asset_id=representative_asset_id,
                             prefer_latency=prefer_latency,
                         )
+                        overlay_detail_ms["select_and_compose_ms"] = round((time.perf_counter() - render_flow_started_at) * 1000.0, 3)
                         output_frame = render_result["output_frame"]
                         selected_asset_id = render_result["selected_asset_id"]
                         selected_pose_key = render_result["selected_pose_key"]
@@ -2784,6 +2946,7 @@ class HairOverlayRuntime:
                         runtime_status = render_result["status"]
                         effective_renderer_name = str(render_result.get("effective_renderer_name") or resolved_renderer)
                         overlay_coverage_mask = render_result.get("coverage_mask")
+                        postprocess_started_at = time.perf_counter()
                         output_frame = self._apply_overlay_postprocess(
                             output_frame,
                             compose_frame_bgr,
@@ -2791,6 +2954,7 @@ class HairOverlayRuntime:
                             renderer_name=effective_renderer_name,
                             coverage_mask=overlay_coverage_mask,
                         )
+                        overlay_detail_ms["postprocess_ms"] = round((time.perf_counter() - postprocess_started_at) * 1000.0, 3)
                 else:
                     runtime_status = str(raw_user_row.get("reason", "no_face_or_pose"))
                     selection_mode = "no_face"
@@ -2799,6 +2963,19 @@ class HairOverlayRuntime:
                     if self._missing_face_count >= 3:
                         self._reset_session_state(session)
                 overlay_latency_ms = round((time.perf_counter() - overlay_started_at) * 1000.0, 3)
+                overlay_detail_ms["overlay_total_ms"] = overlay_latency_ms
+                overlay_detail_ms["user_parsing_status"] = user_parsing_status
+                if selection_trace is not None:
+                    selection_trace = dict(selection_trace)
+                    existing_overlay_detail = selection_trace.get("overlay_detail_ms")
+                    merged_overlay_detail = (
+                        dict(existing_overlay_detail)
+                        if isinstance(existing_overlay_detail, dict)
+                        else {}
+                    )
+                    merged_overlay_detail.update(overlay_detail_ms)
+                    selection_trace["overlay_detail_ms"] = merged_overlay_detail
+                    self._last_selection_trace = selection_trace
                 session.last_seen_monotonic = time.monotonic()
                 active_session_count = len(self._sessions)
             finally:
@@ -2813,6 +2990,9 @@ class HairOverlayRuntime:
         compose_latency_ms = 0.0
         candidate_source = None
         candidate_pool_size = None
+        compose_detail_ms: dict[str, object] | None = None
+        bundle_detail_ms: dict[str, object] | None = None
+        overlay_detail_payload: dict[str, object] | None = None
         if selection_trace is not None:
             selection_latency_ms = float(selection_trace.get("selection_latency_ms") or 0.0)
             compose_latency_ms = float(selection_trace.get("compose_latency_ms") or 0.0)
@@ -2820,6 +3000,15 @@ class HairOverlayRuntime:
             if isinstance(candidate_metrics, dict):
                 candidate_source = candidate_metrics.get("source")
                 candidate_pool_size = candidate_metrics.get("candidate_pool_size")
+            compose_detail_candidate = selection_trace.get("compose_detail_ms")
+            if isinstance(compose_detail_candidate, dict):
+                compose_detail_ms = compose_detail_candidate
+            bundle_detail_candidate = selection_trace.get("bundle_detail_ms")
+            if isinstance(bundle_detail_candidate, dict):
+                bundle_detail_ms = bundle_detail_candidate
+            overlay_detail_candidate = selection_trace.get("overlay_detail_ms")
+            if isinstance(overlay_detail_candidate, dict):
+                overlay_detail_payload = overlay_detail_candidate
         if total_latency_ms >= 100.0 or overlay_latency_ms >= 80.0:
             logger.info(
                 "hair runtime perf dataset=%s selection_mode=%s asset=%s feature_ms=%.1f selection_ms=%.1f compose_ms=%.1f parsing_ms=%.1f overlay_ms=%.1f total_ms=%.1f candidate_source=%s candidate_pool=%s",
@@ -2835,6 +3024,29 @@ class HairOverlayRuntime:
                 candidate_source,
                 candidate_pool_size,
             )
+            logger.info(
+                "hair runtime overlay detail dataset=%s selection_mode=%s asset=%s detail=%s",
+                self.asset_root.name,
+                selection_mode,
+                selected_asset_id,
+                overlay_detail_payload or {},
+            )
+            if compose_detail_ms is not None:
+                logger.info(
+                    "hair runtime compose detail dataset=%s selection_mode=%s asset=%s detail=%s",
+                    self.asset_root.name,
+                    selection_mode,
+                    selected_asset_id,
+                    compose_detail_ms,
+                )
+            if bundle_detail_ms is not None:
+                logger.info(
+                    "hair runtime bundle detail dataset=%s selection_mode=%s asset=%s detail=%s",
+                    self.asset_root.name,
+                    selection_mode,
+                    selected_asset_id,
+                    bundle_detail_ms,
+                )
         return {
             "image_bytes": encoded.tobytes(),
             "output_frame_bgr": output_frame,
@@ -2855,11 +3067,16 @@ class HairOverlayRuntime:
             "feature_latency_ms": feature_latency_ms,
             "selection_latency_ms": selection_latency_ms,
             "compose_latency_ms": compose_latency_ms,
+            "primary_overlay_latency_ms": overlay_latency_ms,
+            "fallback_latency_ms": 0.0,
             "overlay_latency_ms": overlay_latency_ms,
             "user_parsing_status": user_parsing_status,
             "user_parsing_latency_ms": user_parsing_latency_ms,
             "session_id": session.session_id,
             "active_session_count": active_session_count,
+            "overlay_detail_ms": overlay_detail_payload,
+            "compose_detail_ms": compose_detail_ms,
+            "bundle_detail_ms": bundle_detail_ms,
             "selection_trace": selection_trace,
             "render_error": render_error,
         }

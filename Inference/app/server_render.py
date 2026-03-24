@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+import time
 
 import cv2
 import numpy as np
@@ -182,6 +183,7 @@ def _replace_asset_skin_with_base_roi(
     inverse: tuple[float, ...],
     roi_width: int,
     roi_height: int,
+    debug_payload: dict[str, object] | None = None,
 ) -> Image.Image:
     if hair_bbox is None:
         return warped_patch
@@ -201,9 +203,18 @@ def _replace_asset_skin_with_base_roi(
         return warped_patch
 
     combined_face_mask = np.zeros((roi_height, roi_width), dtype=np.uint8)
+    mask_load_ms = 0.0
+    mask_load_count = 0
+    mask_cache_hits = 0
     for mask_path in usable_mask_paths:
         try:
+            mask_cache_info_before = _load_mask_image.cache_info()
+            mask_load_started_at = time.perf_counter()
             source_mask = _load_mask_image(str(mask_path))
+            mask_load_ms += (time.perf_counter() - mask_load_started_at) * 1000.0
+            mask_load_count += 1
+            if _load_mask_image.cache_info().hits > mask_cache_info_before.hits:
+                mask_cache_hits += 1
         except Exception:
             continue
         source_patch = source_mask.crop((source_x, source_y, source_x + source_w, source_y + source_h))
@@ -217,6 +228,10 @@ def _replace_asset_skin_with_base_roi(
         if warped_face_mask.ndim != 2:
             continue
         combined_face_mask = np.maximum(combined_face_mask, warped_face_mask)
+    if debug_payload is not None:
+        debug_payload["mask_load_ms"] = round(mask_load_ms, 3)
+        debug_payload["mask_load_count"] = mask_load_count
+        debug_payload["mask_cache_hits"] = mask_cache_hits
 
     face_mask = combined_face_mask
     if int(np.count_nonzero(face_mask >= 16)) == 0:
@@ -299,6 +314,10 @@ def compose_bundle_frame(
     ):
         return frame_image
 
+    timings_ms: dict[str, object] = {}
+    compose_started_at = time.perf_counter()
+
+    scale_render_task_started_at = time.perf_counter()
     render_task = bundle.render_task
     if reference_width is not None and reference_height is not None:
         render_task = _scale_render_task(
@@ -308,6 +327,7 @@ def compose_bundle_frame(
             frame_width=frame_image.width,
             frame_height=frame_image.height,
         )
+    timings_ms["scale_render_task_ms"] = round((time.perf_counter() - scale_render_task_started_at) * 1000.0, 3)
     destination_roi = render_task.get("destination_roi")
     matrix = render_task.get("matrix")
     if not destination_roi or not matrix:
@@ -318,7 +338,11 @@ def compose_bundle_frame(
     if roi_width <= 0 or roi_height <= 0:
         return frame_image
 
+    rgba_cache_info_before = _load_rgba_image.cache_info()
+    rgba_load_started_at = time.perf_counter()
     source_patch = _load_rgba_image(str(bundle.hair_rgba_path))
+    timings_ms["rgba_load_ms"] = round((time.perf_counter() - rgba_load_started_at) * 1000.0, 3)
+    timings_ms["rgba_cache_hit"] = _load_rgba_image.cache_info().hits > rgba_cache_info_before.hits
     source_origin_x = int(bundle.hair_bbox["x"])
     source_origin_y = int(bundle.hair_bbox["y"])
 
@@ -335,6 +359,7 @@ def compose_bundle_frame(
         - float(destination_roi["y"])
     )
 
+    inverse_started_at = time.perf_counter()
     inverse = _invert_affine(
         float(matrix["a"]),
         float(matrix["b"]),
@@ -343,17 +368,23 @@ def compose_bundle_frame(
         local_e,
         local_f,
     )
+    timings_ms["inverse_affine_ms"] = round((time.perf_counter() - inverse_started_at) * 1000.0, 3)
     if inverse is None:
         return frame_image
 
+    warp_started_at = time.perf_counter()
     warped_patch = source_patch.transform(
         (roi_width, roi_height),
         Image.AFFINE,
         inverse,
         resample=RESAMPLE_FILTER,
     )
+    timings_ms["warp_patch_ms"] = round((time.perf_counter() - warp_started_at) * 1000.0, 3)
+    rgb_gain_started_at = time.perf_counter()
     if rgb_gain is not None:
         warped_patch = _apply_rgba_rgb_gain(warped_patch, float(rgb_gain))
+    timings_ms["rgb_gain_ms"] = round((time.perf_counter() - rgb_gain_started_at) * 1000.0, 3)
+    coverage_started_at = time.perf_counter()
     warped_rgba = np.asarray(warped_patch, dtype=np.uint8)
     hard_coverage_mask = None
     if warped_rgba.ndim == 3 and warped_rgba.shape[2] == 4:
@@ -364,6 +395,7 @@ def compose_bundle_frame(
                 cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
                 iterations=1,
             )
+    timings_ms["coverage_mask_ms"] = round((time.perf_counter() - coverage_started_at) * 1000.0, 3)
 
     output = frame_image if frame_image.mode == "RGB" else frame_image.convert("RGB")
     box = (
@@ -372,7 +404,10 @@ def compose_bundle_frame(
         int(destination_roi["x"]) + roi_width,
         int(destination_roi["y"]) + roi_height,
     )
+    base_crop_started_at = time.perf_counter()
     base_roi = output.crop(box).convert("RGBA")
+    timings_ms["base_roi_crop_ms"] = round((time.perf_counter() - base_crop_started_at) * 1000.0, 3)
+    restore_base_ms = 0.0
     if preserve_uncovered_base and original_frame_image is not None:
         original_output = (
             original_frame_image
@@ -381,15 +416,20 @@ def compose_bundle_frame(
         )
         if original_output.size == output.size:
             original_roi = original_output.crop(box).convert("RGBA")
+            restore_base_started_at = time.perf_counter()
             base_roi = _restore_uncovered_base_roi(
                 base_roi,
                 original_roi,
                 warped_patch,
                 feather_px=coverage_feather_px,
             )
+            restore_base_ms = round((time.perf_counter() - restore_base_started_at) * 1000.0, 3)
+    timings_ms["restore_uncovered_base_ms"] = restore_base_ms
     face_mask_path = getattr(bundle, "face_mask_path", None)
     protect_face_mask_path = getattr(bundle, "protect_face_mask_path", None)
     hair_bbox = getattr(bundle, "hair_bbox", None)
+    skin_replace_debug_payload: dict[str, object] = {}
+    skin_replace_started_at = time.perf_counter()
     warped_patch = _replace_asset_skin_with_base_roi(
         warped_patch,
         base_roi,
@@ -400,12 +440,23 @@ def compose_bundle_frame(
         inverse=inverse,
         roi_width=roi_width,
         roi_height=roi_height,
+        debug_payload=skin_replace_debug_payload,
     )
+    timings_ms["mask_load_ms"] = round(float(skin_replace_debug_payload.get("mask_load_ms", 0.0) or 0.0), 3)
+    timings_ms["mask_load_count"] = int(skin_replace_debug_payload.get("mask_load_count", 0) or 0)
+    timings_ms["mask_cache_hits"] = int(skin_replace_debug_payload.get("mask_cache_hits", 0) or 0)
+    timings_ms["skin_replace_ms"] = round((time.perf_counter() - skin_replace_started_at) * 1000.0, 3)
+    alpha_started_at = time.perf_counter()
     composited_roi = Image.alpha_composite(base_roi, warped_patch)
+    timings_ms["alpha_composite_ms"] = round((time.perf_counter() - alpha_started_at) * 1000.0, 3)
+    paste_started_at = time.perf_counter()
     output.paste(composited_roi.convert(output.mode), box[:2])
+    timings_ms["paste_ms"] = round((time.perf_counter() - paste_started_at) * 1000.0, 3)
+    timings_ms["total_ms"] = round((time.perf_counter() - compose_started_at) * 1000.0, 3)
     if debug_payload is not None:
         full_frame_coverage = np.zeros((output.height, output.width), dtype=np.uint8)
         if hard_coverage_mask is not None:
             full_frame_coverage[box[1] : box[3], box[0] : box[2]] = hard_coverage_mask
         debug_payload["coverage_mask"] = full_frame_coverage
+        debug_payload["timings_ms"] = timings_ms
     return output

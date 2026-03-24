@@ -206,3 +206,48 @@ def test_compose_bundle_frame_replaces_bright_fringe_connected_to_face_mask(tmp_
     base_pixel = np.array([118, 118, 118], dtype=np.float32)
     asset_pixel = np.array([220, 198, 192], dtype=np.float32)
     assert np.mean(np.abs(fringe_pixel - base_pixel)) < np.mean(np.abs(fringe_pixel - asset_pixel))
+
+
+def test_compose_bundle_frame_populates_debug_timings(tmp_path) -> None:
+    rgba = np.zeros((4, 4, 4), dtype=np.uint8)
+    rgba[1:3, 1:3, :3] = np.array([64, 96, 180], dtype=np.uint8)
+    rgba[1:3, 1:3, 3] = 255
+    hair_path = tmp_path / "hair.png"
+    Image.fromarray(rgba, mode="RGBA").save(hair_path)
+
+    bundle = AssetBundle(
+        asset_id="asset-a",
+        pose_key="0_0_0",
+        yaw_1deg=0,
+        pitch_1deg=0,
+        roll_1deg=0,
+        hair_rgba_path=hair_path,
+        hair_rgba_url=None,
+        hair_mask_url=None,
+        anchors_url=None,
+        metadata_url=None,
+        hair_bbox={"x": 0, "y": 0, "w": 4, "h": 4},
+        face_mask_url=None,
+        protect_face_mask_url=None,
+        render_task={
+            "destination_roi": {"x": 0, "y": 0, "w": 4, "h": 4},
+            "matrix": {"a": 1.0, "b": 0.0, "c": 0.0, "d": 1.0, "e": 0.0, "f": 0.0},
+        },
+        revision="r1",
+        score=1.0,
+    )
+
+    debug_payload: dict[str, object] = {}
+    output = compose_bundle_frame(
+        Image.fromarray(np.full((4, 4, 3), 24, dtype=np.uint8), mode="RGB"),
+        bundle,
+        debug_payload=debug_payload,
+    )
+
+    assert output.size == (4, 4)
+    assert "coverage_mask" in debug_payload
+    timings_ms = debug_payload["timings_ms"]
+    assert timings_ms["rgba_load_ms"] >= 0.0
+    assert timings_ms["warp_patch_ms"] >= 0.0
+    assert timings_ms["alpha_composite_ms"] >= 0.0
+    assert timings_ms["total_ms"] >= 0.0

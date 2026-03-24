@@ -126,10 +126,13 @@ function createProtectedRoute<
     getParentRoute: () => rootRoute,
     path,
     validateSearch,
-    beforeLoad: async ({ context }) => {
+    beforeLoad: async ({ context, location }) => {
       if (!(await context.auth.ensureAuthenticated())) {
         throw redirect({
-          to: '/',
+          to: '/auth/login',
+          search: {
+            redirect: location.href,
+          },
         })
       }
     },

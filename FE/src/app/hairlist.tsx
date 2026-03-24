@@ -9,6 +9,7 @@ import { HairStyleCard } from '@/components/ui/hair-style-card'
 import { HairStyleSkeleton } from '@/components/ui/hair-style-skeleton'
 import { useCategoryCardList } from '@/hooks/Home/useCategoryCardList'
 import { useCategoryList } from '@/hooks/Home/useCategoryList'
+import { useToggleLike } from '@/hooks/Home/useToggleLike'
 import { postHairClick } from '@/lib/hair-click'
 import { cn } from '@/lib/utils'
 
@@ -20,6 +21,7 @@ export default function HairList() {
   const apiCategories = categoryData?.categoryList || []
   const { category: selectedCategory } = useSearch({ from: '/hairlist' })
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({})
+  const { mutate: toggleLike } = useToggleLike()
   const [isLeaving, setIsLeaving] = useState(false)
   const backExitTimeoutRef = useRef<number | null>(null)
 
@@ -129,14 +131,33 @@ export default function HairList() {
                   hookText={style.hookText}
                   liked={likedIds[style.hairID.toString()] ?? style.liked}
                   className="w-full"
-                  onLikeToggle={() =>
+                  onLikeToggle={() => {
+                    const currentLiked =
+                      likedIds[style.hairID.toString()] ?? style.liked
+
                     setLikedIds((prev) => ({
                       ...prev,
-                      [style.hairID.toString()]: !(
-                        prev[style.hairID.toString()] ?? style.liked
-                      ),
+                      [style.hairID.toString()]: !currentLiked,
                     }))
-                  }
+
+                    toggleLike(
+                      { hairId: style.hairID, currentLiked },
+                      {
+                        onSuccess: (data) => {
+                          setLikedIds((prev) => ({
+                            ...prev,
+                            [data.hairID.toString()]: data.liked,
+                          }))
+                        },
+                        onError: () => {
+                          setLikedIds((prev) => ({
+                            ...prev,
+                            [style.hairID.toString()]: currentLiked,
+                          }))
+                        },
+                      },
+                    )
+                  }}
                   onApply={handleApply}
                 />
               ))}

@@ -11,9 +11,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.context.annotation.Profile;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,7 +21,6 @@ import com.example.beapp.api.dto.hairs.HairCard;
 import com.example.beapp.api.dto.hairs.HairDetailResponse;
 import com.example.beapp.api.dto.hairs.HairLikeResponse;
 import com.example.beapp.api.dto.hairs.HairListResponse;
-import com.example.beapp.api.dto.hairs.HairRecommendResponse;
 import com.example.beapp.api.dto.home.CategoryListResponse;
 import com.example.beapp.common.exception.ApiException;
 import com.example.beapp.common.exception.ErrorCode;
@@ -44,28 +41,25 @@ public class HairCatalogService {
     private final HairLikeJpaRepository hairLikeJpaRepository;
     private final HistoryJpaRepository historyJpaRepository;
     private final UserJpaRepository userJpaRepository;
-    private final HairAssetRecommendationService hairAssetRecommendationService;
+    private final HairStaticUrlResolver hairStaticUrlResolver;
 
     public HairCatalogService(
             HairJpaRepository hairJpaRepository,
             HairLikeJpaRepository hairLikeJpaRepository,
             HistoryJpaRepository historyJpaRepository,
             UserJpaRepository userJpaRepository,
-            HairAssetRecommendationService hairAssetRecommendationService
+            HairStaticUrlResolver hairStaticUrlResolver
     ) {
         this.hairJpaRepository = hairJpaRepository;
         this.hairLikeJpaRepository = hairLikeJpaRepository;
         this.historyJpaRepository = historyJpaRepository;
         this.userJpaRepository = userJpaRepository;
-        this.hairAssetRecommendationService = hairAssetRecommendationService;
+        this.hairStaticUrlResolver = hairStaticUrlResolver;
     }
 
     @Transactional(readOnly = true)
-    public List<HairCard> getCustomRankCards(String userId, int size) {
-        List<HairEntity> candidates = hairJpaRepository.findByActiveTrue(PageRequest.of(
-                0,
-                Math.max(20, Math.max(1, size) * 4),
-                popularSort())).getContent();
+    public List<HairCard> getCustomRankCards(String userId) {
+        List<HairEntity> candidates = hairJpaRepository.findByActiveTrue(popularSort());
         Set<Long> likedHairIds = resolveLikedHairIds(userId, candidates);
         Map<String, Integer> preferenceWeights = resolveCategoryPreferenceWeights(userId);
 
@@ -77,14 +71,13 @@ public class HairCatalogService {
                         .thenComparing(HairEntity::getViewCount, Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(HairEntity::getCreatedAt, Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(HairEntity::getId))
-                .limit(Math.max(1, size))
                 .map(hair -> toHairCard(hair, likedHairIds.contains(hair.getId())))
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public List<HairCard> getBestRankCards(String userId, int size) {
-        List<HairEntity> hairs = hairJpaRepository.findByActiveTrue(PageRequest.of(0, Math.max(1, size), popularSort())).getContent();
+    public List<HairCard> getBestRankCards(String userId) {
+        List<HairEntity> hairs = hairJpaRepository.findByActiveTrue(popularSort());
         Set<Long> likedHairIds = resolveLikedHairIds(userId, hairs);
         return hairs.stream()
                 .map(hair -> toHairCard(hair, likedHairIds.contains(hair.getId())))
@@ -92,8 +85,8 @@ public class HairCatalogService {
     }
 
     @Transactional(readOnly = true)
-    public List<HairCard> getLatestRankCards(String userId, int size) {
-        List<HairEntity> hairs = hairJpaRepository.findByActiveTrue(PageRequest.of(0, Math.max(1, size), latestSort())).getContent();
+    public List<HairCard> getLatestRankCards(String userId) {
+        List<HairEntity> hairs = hairJpaRepository.findByActiveTrue(latestSort());
         Set<Long> likedHairIds = resolveLikedHairIds(userId, hairs);
         return hairs.stream()
                 .map(hair -> toHairCard(hair, likedHairIds.contains(hair.getId())))
@@ -102,9 +95,9 @@ public class HairCatalogService {
 
     @Transactional(readOnly = true)
     public List<CategoryListResponse.CategoryItem> getCategoryItems() {
-        List<HairEntity> hairs = hairJpaRepository.findByActiveTrue(PageRequest.of(0, 500, popularSort())).getContent();
+        List<HairEntity> hairs = hairJpaRepository.findByActiveTrue(popularSort());
         LinkedHashMap<String, CategoryListResponse.CategoryItem> items = new LinkedHashMap<>();
-        String allPreviewImage = hairs.isEmpty() ? null : hairs.get(0).getPreviewImageUrl();
+        String allPreviewImage = hairs.isEmpty() ? null : hairStaticUrlResolver.resolvePreviewImageUrl(hairs.get(0));
         items.put("all", new CategoryListResponse.CategoryItem("all", "전체", allPreviewImage));
 
         for (HairEntity hair : hairs) {
@@ -116,34 +109,38 @@ public class HairCatalogService {
                     new CategoryListResponse.CategoryItem(
                             hair.getCategory(),
                             hair.getCategory(),
-                            hair.getPreviewImageUrl()));
+                            hairStaticUrlResolver.resolvePreviewImageUrl(hair)));
         }
         return new ArrayList<>(items.values());
     }
 
     @Transactional(readOnly = true)
-    public List<HairCard> getCategoryCards(String userId, String categoryId, int size) {
-        Pageable pageable = PageRequest.of(0, Math.max(1, size), latestSort());
-        Page<HairEntity> page = isAllCategory(categoryId)
-                ? hairJpaRepository.findByActiveTrue(pageable)
-                : hairJpaRepository.findByActiveTrueAndCategoryIgnoreCase(categoryId, pageable);
-        Set<Long> likedHairIds = resolveLikedHairIds(userId, page.getContent());
-        return page.getContent().stream()
+    public List<HairCard> getCategoryCards(String userId, String categoryId) {
+        List<HairEntity> hairs = isAllCategory(categoryId)
+                ? hairJpaRepository.findByActiveTrue(latestSort())
+                : hairJpaRepository.findByActiveTrueAndCategoryIgnoreCase(categoryId, latestSort());
+        Set<Long> likedHairIds = resolveLikedHairIds(userId, hairs);
+        return hairs.stream()
                 .map(hair -> toHairCard(hair, likedHairIds.contains(hair.getId())))
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public HairListResponse getHairList(String userId, int page, int size, String category, String sort) {
-        Pageable pageable = PageRequest.of(Math.max(0, page), Math.max(1, size), resolveListSort(sort));
-        Page<HairEntity> result = StringUtils.hasText(category)
-                ? hairJpaRepository.findByActiveTrueAndCategoryIgnoreCase(category, pageable)
-                : hairJpaRepository.findByActiveTrue(pageable);
-        Set<Long> likedHairIds = resolveLikedHairIds(userId, result.getContent());
-        List<HairCard> hairList = result.getContent().stream()
+    public HairListResponse getHairList(String userId, String category, String sort) {
+        List<HairEntity> hairs = StringUtils.hasText(category)
+                ? hairJpaRepository.findByActiveTrueAndCategoryIgnoreCase(category, resolveListSort(sort))
+                : hairJpaRepository.findByActiveTrue(resolveListSort(sort));
+        Set<Long> likedHairIds = resolveLikedHairIds(userId, hairs);
+        List<HairCard> hairList = hairs.stream()
                 .map(hair -> toHairCard(hair, likedHairIds.contains(hair.getId())))
                 .toList();
-        return HairListResponse.ok(result.getTotalElements(), hairList);
+        return HairListResponse.ok(hairList.size(), hairList);
+    }
+
+    @Transactional(readOnly = true)
+    public HairListResponse getAppliedList(String userId) {
+        List<HairCard> items = buildRecentAppliedCards(userId, 0);
+        return HairListResponse.ok(items.size(), items);
     }
 
     @Transactional(readOnly = true)
@@ -155,33 +152,12 @@ public class HairCatalogService {
                 hair.getName(),
                 hair.getSlug(),
                 hair.getCategory(),
-                hair.getPreviewImageUrl(),
+                hairStaticUrlResolver.resolvePreviewImageUrl(hair),
                 safeCount(hair.getLikeCount()),
                 safeCount(hair.getViewCount()),
                 latestViewedAt(hair),
                 liked,
-                hair.getDescription(),
-                hair.getDatasetCode(),
-                hair.getDatasetRootUrl(),
-                hair.getAssetIndexUrl(),
-                hair.getRepresentativeAssetId());
-    }
-
-    @Transactional(readOnly = true)
-    public HairRecommendResponse recommend(Long hairId, Integer yaw1deg, Integer pitch1deg, Integer roll1deg) {
-        HairEntity hair = hairId == null
-                ? hairJpaRepository.findByActiveTrue(PageRequest.of(0, 1, Sort.by(Sort.Order.asc("id"))))
-                        .stream()
-                        .findFirst()
-                        .orElseThrow(() -> new ApiException(ErrorCode.HAIR_NOT_FOUND))
-                : getRequiredHair(hairId);
-        return HairRecommendResponse.ok(
-                hair.getId().intValue(),
-                hair.getName(),
-                hair.getDatasetCode(),
-                hair.getDatasetRootUrl(),
-                hair.getAssetIndexUrl(),
-                hairAssetRecommendationService.recommend(hair, yaw1deg, pitch1deg, roll1deg));
+                hair.getDescription());
     }
 
     @Transactional
@@ -221,38 +197,17 @@ public class HairCatalogService {
     }
 
     @Transactional(readOnly = true)
-    public List<HairCard> getLikeCards(String userId, int page, int size, boolean onlyActive) {
+    public List<HairCard> getLikeCards(String userId) {
         List<HairLikeEntity> likes = hairLikeJpaRepository.findAllByUserIdWithHairOrderByCreatedAtDesc(userId);
-        List<HairCard> items = likes.stream()
-                .filter(hairLike -> !onlyActive || Boolean.TRUE.equals(hairLike.getHair().getActive()))
+        return likes.stream()
                 .map(hairLike -> toHairCard(hairLike.getHair(), true))
                 .toList();
-        return paginate(items, page, size);
-    }
-
-    @Transactional(readOnly = true)
-    public List<HairCard> getRecentAppliedCards(String userId, int minViewSec, int page, int size) {
-        List<HistoryEntity> histories = historyJpaRepository.findRecentByUserIdWithHair(userId, minViewSec);
-        LinkedHashMap<Long, HistoryEntity> deduplicated = new LinkedHashMap<>();
-        for (HistoryEntity history : histories) {
-            deduplicated.putIfAbsent(history.getHair().getId(), history);
-        }
-
-        List<HairEntity> hairs = deduplicated.values().stream()
-                .map(HistoryEntity::getHair)
-                .toList();
-        Set<Long> likedHairIds = resolveLikedHairIds(userId, hairs);
-
-        List<HairCard> items = deduplicated.values().stream()
-                .map(history -> toHairCard(history.getHair(), likedHairIds.contains(history.getHair().getId())))
-                .toList();
-        return paginate(items, page, size);
     }
 
     private HairCard toHairCard(HairEntity hair, boolean liked) {
         return new HairCard(
                 hair.getId().intValue(),
-                hair.getPreviewImageUrl(),
+                hairStaticUrlResolver.resolvePreviewImageUrl(hair),
                 liked,
                 buildHookText(hair),
                 hair.getName(),
@@ -358,11 +313,21 @@ public class HairCatalogService {
         return value == null ? 0 : value;
     }
 
-    private <T> List<T> paginate(List<T> values, int page, int size) {
-        int safePage = Math.max(0, page);
-        int safeSize = Math.max(1, size);
-        int fromIndex = Math.min(safePage * safeSize, values.size());
-        int toIndex = Math.min(fromIndex + safeSize, values.size());
-        return new ArrayList<>(values.subList(fromIndex, toIndex));
+    private List<HairCard> buildRecentAppliedCards(String userId, int minViewSec) {
+        List<HistoryEntity> histories = historyJpaRepository.findRecentByUserIdWithHair(userId, minViewSec);
+        LinkedHashMap<Long, HistoryEntity> deduplicated = new LinkedHashMap<>();
+        for (HistoryEntity history : histories) {
+            deduplicated.putIfAbsent(history.getHair().getId(), history);
+        }
+
+        List<HairEntity> hairs = deduplicated.values().stream()
+                .map(HistoryEntity::getHair)
+                .toList();
+        Set<Long> likedHairIds = resolveLikedHairIds(userId, hairs);
+
+        return deduplicated.values().stream()
+                .map(history -> toHairCard(history.getHair(), likedHairIds.contains(history.getHair().getId())))
+                .toList();
     }
+
 }

@@ -47,6 +47,7 @@ export function HairCameraView({
   const router = useRouter()
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const hasHandledInitialSelectionRef = useRef(false)
+  const finishTimerRef = useRef<number | null>(null)
 
   const [selectedHairId, setSelectedHairId] = useState(0)
   const [pendingHairId, setPendingHairId] = useState<number | null>(null)
@@ -251,6 +252,29 @@ export function HairCameraView({
     (hairRtc.appliedHairId === pendingHairId ||
       (hairRtc.isRenderReady && remoteDisplayReady))
 
+  useEffect(() => {
+    if (finishTimerRef.current != null) {
+      window.clearTimeout(finishTimerRef.current)
+      finishTimerRef.current = null
+    }
+
+    if (!rtcApplyReady) {
+      return
+    }
+
+    finishTimerRef.current = window.setTimeout(() => {
+      finishTimerRef.current = null
+      handleModalFinish()
+    }, 600)
+
+    return () => {
+      if (finishTimerRef.current != null) {
+        window.clearTimeout(finishTimerRef.current)
+        finishTimerRef.current = null
+      }
+    }
+  }, [handleModalFinish, rtcApplyReady])
+
   const resolutionOptions: CameraSettingOption[] = [
     {
       value: `${RTC_STAGE_WIDTH}x${RTC_STAGE_HEIGHT}`,
@@ -313,8 +337,9 @@ export function HairCameraView({
           />
 
           {modalOpen ? (
-            <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/20 px-4">
+            <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-black/20 px-4">
               <ApplyStyleModal
+                key={pendingHairId ?? 'pending-hair'}
                 open={modalOpen}
                 completed={rtcApplyReady}
                 onFinish={handleModalFinish}

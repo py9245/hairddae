@@ -1,6 +1,8 @@
 import { Link } from '@tanstack/react-router'
-import { Camera, Check, Heart, Layers, Share2, Sparkles } from 'lucide-react'
+import { Camera, Check, Layers, Sparkles } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+
+import { usePwaInstall } from '@/hooks/use-pwa-install'
 
 // ─── Cursor ───────────────────────────────────────────────────────────────────
 
@@ -240,7 +242,6 @@ type OnboardingStep = {
   title: string
   description: string
   color: string
-  screen: 'signup' | 'explore' | 'camera' | 'result'
 }
 
 const ONBOARDING: OnboardingStep[] = [
@@ -250,7 +251,6 @@ const ONBOARDING: OnboardingStep[] = [
     description:
       '이메일 하나로 30초 만에 가입 완료. 복잡한 절차 없이 바로 시작할 수 있어요.',
     color: 'from-pink-50 to-rose-100',
-    screen: 'signup',
   },
   {
     step: '02',
@@ -258,7 +258,6 @@ const ONBOARDING: OnboardingStep[] = [
     description:
       '숏컷·미디엄·롱까지 수백 가지 스타일을 카테고리별로 자유롭게 둘러보세요.',
     color: 'from-fuchsia-50 to-pink-100',
-    screen: 'explore',
   },
   {
     step: '03',
@@ -266,7 +265,6 @@ const ONBOARDING: OnboardingStep[] = [
     description:
       '카메라를 켜면 AI가 실시간으로 내 얼굴에 선택한 스타일을 입혀드려요.',
     color: 'from-rose-50 to-pink-100',
-    screen: 'camera',
   },
   {
     step: '04',
@@ -274,9 +272,10 @@ const ONBOARDING: OnboardingStep[] = [
     description:
       '마음에 든 스타일을 저장하고, 친구들에게 공유해 의견을 들어보세요.',
     color: 'from-pink-50 to-fuchsia-100',
-    screen: 'result',
   },
 ]
+
+const LANDING_APP_PREVIEW = '/component/1.jpg'
 
 type TeamMember = {
   name: string
@@ -555,199 +554,22 @@ function FeatureTabs() {
   )
 }
 
-// ─── Phone Mockup Screens ─────────────────────────────────────────────────────
+// ─── Phone Preview ────────────────────────────────────────────────────────────
 
-function PhoneScreen({ screen }: { screen: OnboardingStep['screen'] }) {
-  if (screen === 'signup') {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 bg-white px-5 pb-6 pt-10">
-        <div className="flex size-12 items-center justify-center rounded-full bg-primary-300 text-lg font-bold text-white">
-          헤
-        </div>
-        <p className="text-center text-[11px] font-bold text-text-dark">
-          헤어때에 오신 것을 환영해요
-        </p>
-        <p className="text-[9px] text-text-warm-300">
-          이메일로 빠르게 시작하세요
-        </p>
-        <div className="mt-2 w-full space-y-2">
-          <div className="flex h-8 w-full items-center rounded-xl bg-neutral-100 px-3">
-            <div className="h-1.5 w-20 rounded-full bg-neutral-300" />
-          </div>
-          <div className="flex h-8 w-full items-center rounded-xl bg-neutral-100 px-3">
-            <div className="h-1.5 w-16 rounded-full bg-neutral-300" />
-          </div>
-        </div>
-        <div className="mt-1 flex h-9 w-full items-center justify-center rounded-xl bg-primary-300">
-          <div className="h-1.5 w-16 rounded-full bg-white/70" />
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="h-px w-12 bg-neutral-200" />
-          <span className="text-[8px] text-neutral-400">또는</span>
-          <div className="h-px w-12 bg-neutral-200" />
-        </div>
-        <div className="flex h-8 w-full items-center justify-center gap-1.5 rounded-xl border border-neutral-200">
-          <div className="size-3 rounded-full bg-neutral-300" />
-          <div className="h-1.5 w-14 rounded-full bg-neutral-300" />
-        </div>
-      </div>
-    )
-  }
-
-  if (screen === 'explore') {
-    return (
-      <div className="flex h-full flex-col bg-white">
-        <div className="flex items-center gap-2 px-3 pb-2 pt-8">
-          <div className="h-7 flex-1 rounded-full bg-neutral-100" />
-          <div className="size-7 rounded-full bg-neutral-100" />
-        </div>
-        <div className="flex gap-1.5 overflow-x-hidden px-3 pb-2">
-          {[
-            { id: 'active', className: 'bg-primary-300' },
-            { id: 'inactive-1', className: 'bg-neutral-200' },
-            { id: 'inactive-2', className: 'bg-neutral-200' },
-            { id: 'inactive-3', className: 'bg-neutral-200' },
-          ].map(({ id, className }) => (
-            <div
-              key={id}
-              className={`h-5 shrink-0 rounded-full px-3 text-[7px] ${className}`}
-            />
-          ))}
-        </div>
-        <div className="grid flex-1 grid-cols-2 gap-2 overflow-hidden px-3 pb-3">
-          {[
-            'bg-gradient-to-br from-pink-100 to-rose-200',
-            'bg-gradient-to-br from-fuchsia-100 to-pink-200',
-            'bg-gradient-to-br from-rose-100 to-pink-150',
-            'bg-gradient-to-br from-pink-100 to-fuchsia-150',
-          ].map((bg) => (
-            <div
-              key={bg}
-              className={`relative overflow-hidden rounded-xl ${bg}`}
-            >
-              <div className="absolute bottom-1.5 left-1.5 right-1.5">
-                <div className="h-1.5 w-10 rounded-full bg-white/70" />
-                <div className="mt-0.5 h-1 w-7 rounded-full bg-white/50" />
-              </div>
-              <div className="absolute right-1.5 top-1.5 size-4 rounded-full bg-white/50 flex items-center justify-center">
-                <Heart
-                  className="size-2 text-primary-300"
-                  fill="currentColor"
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  if (screen === 'camera') {
-    return (
-      <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-gradient-to-b from-neutral-800 to-neutral-900">
-        {/* grid overlay */}
-        <div
-          className="pointer-events-none absolute inset-0 opacity-20"
-          style={{
-            backgroundImage:
-              'linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)',
-            backgroundSize: '20px 20px',
-          }}
-        />
-        {/* face + hair */}
-        <div className="relative flex flex-col items-center">
-          {/* hair */}
-          <div
-            className="relative z-10"
-            style={{
-              width: 80,
-              height: 44,
-              borderRadius: '50% 50% 0 0',
-              background: 'linear-gradient(135deg, #f9a8d4, #ec4899)',
-              marginBottom: -8,
-              opacity: 0.85,
-            }}
-          />
-          {/* face */}
-          <div
-            style={{
-              width: 68,
-              height: 80,
-              borderRadius: '50%',
-              background: 'linear-gradient(160deg, #fde68a, #fcd34d)',
-              position: 'relative',
-              zIndex: 5,
-            }}
-          >
-            <div className="absolute left-1/2 top-[35%] flex -translate-x-1/2 gap-4">
-              <div className="size-2 rounded-full bg-neutral-700/60" />
-              <div className="size-2 rounded-full bg-neutral-700/60" />
-            </div>
-            <div className="absolute bottom-[22%] left-1/2 h-1.5 w-6 -translate-x-1/2 rounded-full bg-rose-300/60" />
-          </div>
-        </div>
-        {/* corner brackets */}
-        <div className="pointer-events-none absolute inset-6">
-          <div className="absolute left-0 top-0 h-5 w-5 rounded-tl-lg border-l-2 border-t-2 border-white/60" />
-          <div className="absolute right-0 top-0 h-5 w-5 rounded-tr-lg border-r-2 border-t-2 border-white/60" />
-          <div className="absolute bottom-0 left-0 h-5 w-5 rounded-bl-lg border-b-2 border-l-2 border-white/60" />
-          <div className="absolute bottom-0 right-0 h-5 w-5 rounded-br-lg border-b-2 border-r-2 border-white/60" />
-        </div>
-        {/* AR label */}
-        <div className="absolute left-1/2 top-8 -translate-x-1/2 rounded-full bg-primary-300/80 px-2.5 py-0.5 text-[8px] font-bold text-white">
-          AI 실시간 적용 중
-        </div>
-        {/* shutter */}
-        <div className="absolute bottom-5 left-1/2 -translate-x-1/2 size-10 rounded-full border-4 border-white/80 bg-white/20" />
-      </div>
-    )
-  }
-
-  // result
+function AppPreviewPhone() {
   return (
-    <div className="flex h-full flex-col bg-white">
-      <div className="relative flex-1 overflow-hidden bg-gradient-to-b from-primary-50 to-primary-100">
-        <div className="flex h-full items-center justify-center">
-          <div className="relative flex flex-col items-center">
-            <div
-              style={{
-                width: 72,
-                height: 40,
-                borderRadius: '50% 50% 0 0',
-                background: 'linear-gradient(135deg, #f9a8d4, #ec4899)',
-                marginBottom: -6,
-              }}
-            />
-            <div
-              style={{
-                width: 60,
-                height: 72,
-                borderRadius: '50%',
-                background: 'linear-gradient(160deg, #fde68a, #fcd34d)',
-              }}
-            />
-          </div>
-        </div>
-        <div className="absolute right-2.5 top-3 rounded-full bg-white px-2 py-0.5 shadow-sm">
-          <span className="text-[7px] font-bold text-primary-300">
-            ✨ AI 분석 완료
-          </span>
-        </div>
-      </div>
-      <div className="space-y-2 p-3">
-        <div className="flex h-1.5 w-24 rounded-full bg-neutral-200" />
-        <div className="flex h-1 w-16 rounded-full bg-neutral-100" />
-        <div className="mt-2 flex gap-2">
-          <div className="flex h-9 flex-1 items-center justify-center rounded-xl bg-primary-300">
-            <div className="h-1.5 w-14 rounded-full bg-white/70" />
-          </div>
-          <div className="flex size-9 items-center justify-center rounded-xl bg-primary-100">
-            <Heart className="size-3.5 text-primary-300" />
-          </div>
-          <div className="flex size-9 items-center justify-center rounded-xl bg-neutral-100">
-            <Share2 className="size-3.5 text-neutral-400" />
-          </div>
-        </div>
+    <div className="relative h-full w-full bg-neutral-100">
+      <img
+        src={LANDING_APP_PREVIEW}
+        alt="헤어때 앱 미리보기"
+        className="h-full w-full object-cover object-top"
+        loading="lazy"
+      />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/35 to-transparent" />
+      <div className="absolute left-1/2 top-10 -translate-x-1/2 rounded-full bg-white/92 px-3 py-1 shadow-sm">
+        <span className="text-[9px] font-bold text-primary-300">
+          PWA 설치 지원
+        </span>
       </div>
     </div>
   )
@@ -760,18 +582,14 @@ function OnboardingSection() {
   const current = ONBOARDING[step]
 
   return (
-    <section
-      ref={outerRef}
-      className="relative"
-      style={{ height: `${ONBOARDING.length * 100}vh` }}
-    >
-      <div className="sticky top-0 flex h-screen items-center overflow-hidden bg-white px-6">
+    <section ref={outerRef} className="relative md:h-[400vh]">
+      <div className="flex min-h-screen items-start overflow-visible bg-white px-6 py-14 md:sticky md:top-0 md:h-screen md:items-center md:overflow-hidden md:py-0">
         {/* bg gradient follows step */}
         <div
           className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${current.color} opacity-30 transition-all duration-700`}
         />
 
-        <div className="relative mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-12 md:grid-cols-2">
+        <div className="relative mx-auto grid w-full max-w-6xl grid-cols-1 items-start gap-10 md:grid-cols-2 md:items-center md:gap-12">
           {/* 텍스트 영역 */}
           <div className="order-2 md:order-1">
             {/* 스텝 도트 */}
@@ -854,25 +672,23 @@ function OnboardingSection() {
             >
               {/* 배경 blob */}
               <div
-                className="absolute -inset-8 rounded-full opacity-40 blur-3xl transition-all duration-700"
+                className="absolute -inset-5 rounded-full opacity-40 blur-3xl transition-all duration-700 md:-inset-8"
                 style={{
                   background: 'linear-gradient(135deg, #fbcfe8, #f9a8d4)',
                 }}
               />
               {/* phone frame */}
               <div
-                className="relative overflow-hidden rounded-[44px] bg-neutral-900 shadow-2xl"
+                className="relative h-[430px] w-[210px] overflow-hidden rounded-[38px] bg-neutral-900 shadow-2xl sm:h-[470px] sm:w-[230px] md:h-[500px] md:w-[240px] md:rounded-[44px]"
                 style={{
-                  width: 240,
-                  height: 500,
                   boxShadow:
                     '0 40px 80px -20px rgba(236,72,153,0.35), 0 0 0 1px rgba(255,255,255,0.1)',
                 }}
               >
                 {/* dynamic island */}
-                <div className="absolute left-1/2 top-3 z-20 h-6 w-20 -translate-x-1/2 rounded-full bg-neutral-900" />
+                <div className="absolute left-1/2 top-3 z-20 h-5 w-[72px] -translate-x-1/2 rounded-full bg-neutral-900 md:h-6 md:w-20" />
                 {/* status bar */}
-                <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between px-5 pt-2">
+                <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between px-4 pt-2 md:px-5">
                   <div className="h-1.5 w-8 rounded-full bg-white/20" />
                   <div className="flex gap-1">
                     <div className="h-1.5 w-4 rounded-full bg-white/20" />
@@ -881,25 +697,18 @@ function OnboardingSection() {
                 </div>
                 {/* screen */}
                 <div className="absolute inset-0 overflow-hidden rounded-[44px]">
-                  <div
-                    key={step}
-                    className="h-full w-full"
-                    style={{
-                      animation:
-                        'screenSlideIn 0.45s cubic-bezier(0.34,1.56,0.64,1) both',
-                    }}
-                  >
-                    <PhoneScreen screen={current.screen} />
+                  <div className="h-full w-full">
+                    <AppPreviewPhone />
                   </div>
                 </div>
                 {/* home indicator */}
-                <div className="absolute bottom-2 left-1/2 h-1 w-24 -translate-x-1/2 rounded-full bg-white/20" />
+                <div className="absolute bottom-2 left-1/2 h-1 w-20 -translate-x-1/2 rounded-full bg-white/20 md:w-24" />
               </div>
 
               {/* side button */}
-              <div className="absolute -right-1 top-28 h-16 w-1.5 rounded-full bg-neutral-700" />
-              <div className="absolute -left-1 top-20 h-10 w-1.5 rounded-full bg-neutral-700" />
-              <div className="absolute -left-1 top-32 h-10 w-1.5 rounded-full bg-neutral-700" />
+              <div className="absolute -right-1 top-24 h-14 w-1.5 rounded-full bg-neutral-700 md:top-28 md:h-16" />
+              <div className="absolute -left-1 top-[4.5rem] h-9 w-1.5 rounded-full bg-neutral-700 md:top-20 md:h-10" />
+              <div className="absolute -left-1 top-28 h-9 w-1.5 rounded-full bg-neutral-700 md:top-32 md:h-10" />
             </div>
           </div>
         </div>
@@ -907,7 +716,7 @@ function OnboardingSection() {
         {/* scroll hint (첫 번째 스텝에서만) */}
         {step === 0 && (
           <div
-            className="absolute bottom-8 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 text-text-warm-300"
+            className="absolute bottom-8 left-1/2 hidden -translate-x-1/2 flex-col items-center gap-1 text-text-warm-300 md:flex"
             style={{ animation: 'scrollHint 2s ease-in-out infinite' }}
           >
             <span className="text-xs font-medium">스크롤하여 계속</span>
@@ -995,6 +804,19 @@ function TeamSection() {
 
 export default function Landing() {
   const scrolled = useScrolled()
+  const pwaInstall = usePwaInstall()
+  const showInstallPrimary =
+    pwaInstall.showInstallPrompt || pwaInstall.showIosInstallHint
+  const heroPrimaryLabel = pwaInstall.showInstallPrompt
+    ? '앱 설치하기'
+    : pwaInstall.showIosInstallHint
+      ? '홈 화면에 추가'
+      : '무료로 시작하기'
+  const heroSupportCopy = pwaInstall.showInstallPrompt
+    ? '설치 후 홈 화면에서 더 빠르게 헤어때를 실행할 수 있어요.'
+    : pwaInstall.showIosInstallHint
+      ? 'iPhone Safari에서는 공유 메뉴에서 홈 화면에 추가를 선택해 주세요.'
+      : '설치 지원이 없는 환경에서는 웹에서 바로 시작할 수 있어요.'
 
   // hero mouse spotlight
   const [mousePos, setMousePos] = useState({ x: 50, y: 50 })
@@ -1120,12 +942,6 @@ export default function Landing() {
             >
               로그인
             </Link>
-            <Link
-              to="/auth/signup"
-              className="rounded-full bg-primary-300 px-5 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-primary-hover hover:shadow-[var(--shadow-pink-sm)]"
-            >
-              시작하기
-            </Link>
           </div>
         </div>
       </header>
@@ -1193,27 +1009,56 @@ export default function Landing() {
             className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row"
             style={{ animation: 'fadeSlideUp 0.6s ease 0.3s both' }}
           >
-            <Link
-              to="/auth/signup"
-              className="group relative w-full overflow-hidden rounded-full bg-primary-300 px-8 py-4 text-base font-bold text-white shadow-[var(--shadow-pink-md)] transition-all hover:shadow-[var(--shadow-pink-sm)] sm:w-auto"
-            >
-              <span className="relative z-10">무료로 시작하기</span>
-              <span className="absolute inset-0 -translate-x-full bg-primary-hover transition-transform duration-300 group-hover:translate-x-0" />
-            </Link>
-            <Link
-              to="/auth/login"
-              className="w-full rounded-full border border-primary-200 bg-white px-8 py-4 text-base font-semibold text-primary-300 transition-colors hover:bg-primary-50 sm:w-auto"
-            >
-              로그인하기
-            </Link>
+            {pwaInstall.showInstallPrompt ? (
+              <button
+                type="button"
+                className="group relative w-full overflow-hidden rounded-full bg-primary-300 px-8 py-4 text-base font-bold text-white shadow-[var(--shadow-pink-md)] transition-all hover:shadow-[var(--shadow-pink-sm)] sm:w-auto"
+                onClick={() => {
+                  void (async () => {
+                    const choice = await pwaInstall.promptInstall()
+                    if (!choice || choice.outcome !== 'accepted') {
+                      pwaInstall.dismissInstallPrompt()
+                    }
+                  })()
+                }}
+              >
+                <span className="relative z-10">{heroPrimaryLabel}</span>
+                <span className="absolute inset-0 -translate-x-full bg-primary-hover transition-transform duration-300 group-hover:translate-x-0" />
+              </button>
+            ) : pwaInstall.showIosInstallHint ? (
+              <a
+                href="#pwa-install-guide"
+                className="group relative w-full overflow-hidden rounded-full bg-primary-300 px-8 py-4 text-center text-base font-bold text-white shadow-[var(--shadow-pink-md)] transition-all hover:shadow-[var(--shadow-pink-sm)] sm:w-auto"
+              >
+                <span className="relative z-10">{heroPrimaryLabel}</span>
+                <span className="absolute inset-0 -translate-x-full bg-primary-hover transition-transform duration-300 group-hover:translate-x-0" />
+              </a>
+            ) : (
+              <Link
+                to="/auth/signup"
+                className="group relative w-full overflow-hidden rounded-full bg-primary-300 px-8 py-4 text-base font-bold text-white shadow-[var(--shadow-pink-md)] transition-all hover:shadow-[var(--shadow-pink-sm)] sm:w-auto"
+              >
+                <span className="relative z-10">{heroPrimaryLabel}</span>
+                <span className="absolute inset-0 -translate-x-full bg-primary-hover transition-transform duration-300 group-hover:translate-x-0" />
+              </Link>
+            )}
+            {showInstallPrimary ? (
+              <Link
+                to="/auth/signup"
+                className="w-full rounded-full border border-primary-200 bg-white px-8 py-4 text-center text-base font-semibold text-primary-300 transition-colors hover:bg-primary-50 sm:w-auto"
+              >
+                웹에서 바로 시작하기
+              </Link>
+            ) : null}
           </div>
 
-          <p
-            className="mt-4 text-sm text-text-warm-300"
+          <div
+            id="pwa-install-guide"
+            className="mx-auto mt-4 max-w-2xl rounded-full bg-white/72 px-5 py-3 text-sm text-text-warm-300 shadow-[0_16px_40px_rgba(249,168,212,0.18)] backdrop-blur"
             style={{ animation: 'fadeSlideUp 0.6s ease 0.4s both' }}
           >
-            회원가입 무료 · 별도 앱 설치 불필요
-          </p>
+            {heroSupportCopy}
+          </div>
         </div>
       </section>
 
@@ -1242,29 +1087,68 @@ export default function Landing() {
 
         <RevealBox className="relative mx-auto max-w-2xl text-center">
           <h2 className="text-3xl font-extrabold tracking-[-0.04em] text-white md:text-5xl">
-            지금 바로 헤어때를
+            {showInstallPrimary ? '설치하고 더 빠르게' : '지금 바로 헤어때를'}
             <br />
             시작해보세요
           </h2>
           <p className="mt-4 text-base text-white/80 md:text-lg">
-            AI가 추천하는 나만의 헤어스타일을 찾아보세요
+            {showInstallPrimary
+              ? '홈 화면에서 바로 열고, 앱처럼 몰입감 있게 헤어때를 사용해보세요.'
+              : 'AI가 추천하는 나만의 헤어스타일을 웹에서 바로 찾아보세요.'}
           </p>
 
-          <div className="mt-10 flex flex-col items-center justify-center gap-4 sm:flex-row">
-            <Link
-              to="/auth/signup"
-              className="group relative w-full overflow-hidden rounded-full bg-white px-10 py-4 text-base font-bold text-primary-300 shadow-md transition-all hover:shadow-lg sm:w-auto"
-            >
-              <span className="relative z-10">무료 회원가입</span>
-              <span className="absolute inset-0 -translate-x-full bg-primary-50 transition-transform duration-300 group-hover:translate-x-0" />
-            </Link>
+          <div className="mt-10 flex justify-center">
+            {pwaInstall.showInstallPrompt ? (
+              <button
+                type="button"
+                className="group relative w-full overflow-hidden rounded-full bg-white px-10 py-4 text-base font-bold text-primary-300 shadow-md transition-all hover:shadow-lg sm:w-auto"
+                onClick={() => {
+                  void (async () => {
+                    const choice = await pwaInstall.promptInstall()
+                    if (!choice || choice.outcome !== 'accepted') {
+                      pwaInstall.dismissInstallPrompt()
+                    }
+                  })()
+                }}
+              >
+                <span className="relative z-10">앱 설치하기</span>
+                <span className="absolute inset-0 -translate-x-full bg-primary-50 transition-transform duration-300 group-hover:translate-x-0" />
+              </button>
+            ) : pwaInstall.showIosInstallHint ? (
+              <a
+                href="#pwa-install-guide"
+                className="group relative w-full overflow-hidden rounded-full bg-white px-10 py-4 text-center text-base font-bold text-primary-300 shadow-md transition-all hover:shadow-lg sm:w-auto"
+              >
+                <span className="relative z-10">홈 화면에 추가</span>
+                <span className="absolute inset-0 -translate-x-full bg-primary-50 transition-transform duration-300 group-hover:translate-x-0" />
+              </a>
+            ) : (
+              <Link
+                to="/auth/signup"
+                className="group relative w-full overflow-hidden rounded-full bg-white px-10 py-4 text-base font-bold text-primary-300 shadow-md transition-all hover:shadow-lg sm:w-auto"
+              >
+                <span className="relative z-10">무료로 시작하기</span>
+                <span className="absolute inset-0 -translate-x-full bg-primary-50 transition-transform duration-300 group-hover:translate-x-0" />
+              </Link>
+            )}
+          </div>
+          <p className="mt-5 text-sm text-white/80">
+            계정이 있다면{' '}
             <Link
               to="/auth/login"
-              className="w-full rounded-full border-2 border-white/70 px-10 py-4 text-base font-semibold text-white transition-all hover:bg-white/10 sm:w-auto"
+              className="font-semibold text-white underline underline-offset-4"
             >
               로그인
             </Link>
-          </div>
+            , 설치 대신 웹에서 시작하려면{' '}
+            <Link
+              to="/auth/signup"
+              className="font-semibold text-white underline underline-offset-4"
+            >
+              회원가입
+            </Link>
+            하세요.
+          </p>
         </RevealBox>
       </section>
 

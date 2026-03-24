@@ -2,95 +2,21 @@ import { Download, RefreshCw, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { usePwaInstall } from '@/hooks/use-pwa-install'
 import { applyPwaUpdate, PWA_UPDATE_READY_EVENT } from '@/lib/pwa'
 
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>
-  userChoice: Promise<{
-    outcome: 'accepted' | 'dismissed'
-    platform: string
-  }>
-}
-
-const INSTALL_DISMISS_KEY = 'pwa-install-dismissed'
-const IOS_HINT_DISMISS_KEY = 'pwa-ios-hint-dismissed'
-
-function isStandaloneMode() {
-  if (typeof window === 'undefined') {
-    return false
-  }
-
-  const navigatorWithStandalone = navigator as Navigator & {
-    standalone?: boolean
-  }
-
-  return (
-    window.matchMedia('(display-mode: standalone)').matches ||
-    Boolean(navigatorWithStandalone.standalone)
-  )
-}
-
-function isIosSafari() {
-  if (typeof window === 'undefined') {
-    return false
-  }
-
-  const userAgent = window.navigator.userAgent.toLowerCase()
-  const isIos = /iphone|ipad|ipod/.test(userAgent)
-  const isSafari =
-    /safari/.test(userAgent) && !/crios|fxios|edgios/.test(userAgent)
-
-  return isIos && isSafari
-}
-
 export function PwaBanner() {
-  const [installPrompt, setInstallPrompt] =
-    useState<BeforeInstallPromptEvent | null>(null)
+  const pwaInstall = usePwaInstall()
   const [updateReady, setUpdateReady] = useState(false)
-  const [isInstalled, setIsInstalled] = useState(() => isStandaloneMode())
-  const [installDismissed, setInstallDismissed] = useState(() => {
-    if (typeof window === 'undefined') {
-      return false
-    }
-
-    return window.localStorage.getItem(INSTALL_DISMISS_KEY) === '1'
-  })
-  const [iosHintDismissed, setIosHintDismissed] = useState(() => {
-    if (typeof window === 'undefined') {
-      return false
-    }
-
-    return window.localStorage.getItem(IOS_HINT_DISMISS_KEY) === '1'
-  })
 
   useEffect(() => {
-    const handleBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault()
-      setInstallPrompt(event as BeforeInstallPromptEvent)
-      setInstallDismissed(false)
-    }
-
-    const handleAppInstalled = () => {
-      setInstallPrompt(null)
-      setIsInstalled(true)
-      setInstallDismissed(true)
-      window.localStorage.setItem(INSTALL_DISMISS_KEY, '1')
-    }
-
     const handleUpdateReady = () => {
       setUpdateReady(true)
     }
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt)
-    window.addEventListener('appinstalled', handleAppInstalled)
     window.addEventListener(PWA_UPDATE_READY_EVENT, handleUpdateReady)
 
     return () => {
-      window.removeEventListener(
-        'beforeinstallprompt',
-        handleBeforeInstallPrompt,
-      )
-      window.removeEventListener('appinstalled', handleAppInstalled)
       window.removeEventListener(PWA_UPDATE_READY_EVENT, handleUpdateReady)
     }
   }, [])
@@ -124,12 +50,11 @@ export function PwaBanner() {
     }
   }, [])
 
-  const showInstallBanner =
-    !isInstalled && !installDismissed && installPrompt !== null
-  const showIosHint =
-    !isInstalled && !iosHintDismissed && !installPrompt && isIosSafari()
-
-  if (!updateReady && !showInstallBanner && !showIosHint) {
+  if (
+    !updateReady &&
+    !pwaInstall.showInstallPrompt &&
+    !pwaInstall.showIosInstallHint
+  ) {
     return null
   }
 
@@ -161,7 +86,7 @@ export function PwaBanner() {
               업데이트
             </Button>
           </div>
-        ) : showInstallBanner ? (
+        ) : pwaInstall.showInstallPrompt ? (
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary-100 text-primary-300">
               <Download className="size-5" />
@@ -180,18 +105,11 @@ export function PwaBanner() {
               size="sm"
               className="rounded-full px-4"
               onClick={() => {
-                if (!installPrompt) {
-                  return
-                }
-
                 void (async () => {
-                  await installPrompt.prompt()
-                  const choice = await installPrompt.userChoice
-                  if (choice.outcome !== 'accepted') {
-                    setInstallDismissed(true)
-                    window.localStorage.setItem(INSTALL_DISMISS_KEY, '1')
+                  const choice = await pwaInstall.promptInstall()
+                  if (!choice || choice.outcome !== 'accepted') {
+                    pwaInstall.dismissInstallPrompt()
                   }
-                  setInstallPrompt(null)
                 })()
               }}
             >
@@ -201,8 +119,7 @@ export function PwaBanner() {
               type="button"
               className="inline-flex h-9 w-9 items-center justify-center rounded-full text-text-warm-200 transition hover:bg-neutral-100 hover:text-text-warm-500"
               onClick={() => {
-                setInstallDismissed(true)
-                window.localStorage.setItem(INSTALL_DISMISS_KEY, '1')
+                pwaInstall.dismissInstallPrompt()
               }}
               aria-label="설치 배너 닫기"
             >
@@ -228,8 +145,7 @@ export function PwaBanner() {
               type="button"
               className="inline-flex h-9 w-9 items-center justify-center rounded-full text-text-warm-200 transition hover:bg-neutral-100 hover:text-text-warm-500"
               onClick={() => {
-                setIosHintDismissed(true)
-                window.localStorage.setItem(IOS_HINT_DISMISS_KEY, '1')
+                pwaInstall.dismissIosInstallHint()
               }}
               aria-label="iOS 설치 안내 닫기"
             >

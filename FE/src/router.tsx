@@ -4,6 +4,7 @@ import {
   createRouter,
   Outlet,
   redirect,
+  useRouterState,
 } from '@tanstack/react-router'
 import type { ReactElement } from 'react'
 import { z } from 'zod'
@@ -140,6 +141,10 @@ function createProtectedRoute<
 }
 
 function RootLayout() {
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
+
   return (
     <div className="app-frame-shell flex items-center justify-center gap-10">
       <Adsense />
@@ -147,7 +152,7 @@ function RootLayout() {
         <div className="app-frame-content">
           <Outlet />
         </div>
-        <PwaBanner />
+        {pathname === '/landing' ? null : <PwaBanner />}
         <BottomNav />
       </div>
     </div>

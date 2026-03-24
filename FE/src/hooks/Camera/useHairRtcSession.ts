@@ -62,6 +62,7 @@ const ICE_GATHERING_TIMEOUT_MS = 1500
 const HEARTBEAT_INTERVAL_MS = 5000
 const STATS_POLL_INTERVAL_MS = 1000
 const RTC_SESSION_VERSION = 1
+const RTC_DC_LOG_PREFIX = '[hair-rtc:datachannel]'
 
 async function configureRtcSender(sender: RTCRtpSender) {
   const track = sender.track
@@ -229,6 +230,7 @@ export function useHairRtcSession({
     if (!dataChannel || dataChannel.readyState !== 'open') {
       return
     }
+    console.info(`${RTC_DC_LOG_PREFIX} send`, message)
     dataChannel.send(JSON.stringify(message))
   }, [])
 
@@ -661,12 +663,13 @@ export function useHairRtcSession({
 
         dataChannel.addEventListener('message', (event) => {
           try {
-            const message = safeParseInferenceControlMessage(
-              JSON.parse(String(event.data)) as unknown,
-            )
+            const rawPayload = JSON.parse(String(event.data)) as unknown
+            const message = safeParseInferenceControlMessage(rawPayload)
             if (!message) {
+              console.warn(`${RTC_DC_LOG_PREFIX} recv parse-failed`, rawPayload)
               return
             }
+            console.info(`${RTC_DC_LOG_PREFIX} recv`, message)
 
             if (message.type === 'connected') {
               channelReadyRef.current = true

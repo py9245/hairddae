@@ -353,33 +353,39 @@ function TiltCard({
     transition: 'transform 0.5s ease',
   })
 
-  const onMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  useEffect(() => {
     const el = ref.current
     if (!el) return
-    const rect = el.getBoundingClientRect()
-    const x = (e.clientX - rect.left - rect.width / 2) / (rect.width / 2)
-    const y = (e.clientY - rect.top - rect.height / 2) / (rect.height / 2)
-    setStyle({
-      transform: `perspective(900px) rotateY(${x * strength}deg) rotateX(${-y * strength}deg) translateZ(6px)`,
-      transition: 'transform 0.1s ease',
-    })
-  }
 
-  const onMouseLeave = () => {
-    setStyle({
-      transform: 'perspective(900px) rotateY(0deg) rotateX(0deg) translateZ(0)',
-      transition: 'transform 0.5s ease',
-    })
-  }
+    const handleMouseMove = (e: MouseEvent) => {
+      const rect = el.getBoundingClientRect()
+      const x = (e.clientX - rect.left - rect.width / 2) / (rect.width / 2)
+      const y = (e.clientY - rect.top - rect.height / 2) / (rect.height / 2)
+      setStyle({
+        transform: `perspective(900px) rotateY(${x * strength}deg) rotateX(${-y * strength}deg) translateZ(6px)`,
+        transition: 'transform 0.1s ease',
+      })
+    }
+
+    const handleMouseLeave = () => {
+      setStyle({
+        transform:
+          'perspective(900px) rotateY(0deg) rotateX(0deg) translateZ(0)',
+        transition: 'transform 0.5s ease',
+      })
+    }
+
+    el.addEventListener('mousemove', handleMouseMove)
+    el.addEventListener('mouseleave', handleMouseLeave)
+
+    return () => {
+      el.removeEventListener('mousemove', handleMouseMove)
+      el.removeEventListener('mouseleave', handleMouseLeave)
+    }
+  }, [strength])
 
   return (
-    <div
-      ref={ref}
-      className={className}
-      style={style}
-      onMouseMove={onMouseMove}
-      onMouseLeave={onMouseLeave}
-    >
+    <div ref={ref} className={className} style={style}>
       {children}
     </div>
   )
@@ -597,14 +603,14 @@ function PhoneScreen({ screen }: { screen: OnboardingStep['screen'] }) {
         </div>
         <div className="flex gap-1.5 overflow-x-hidden px-3 pb-2">
           {[
-            'bg-primary-300',
-            'bg-neutral-200',
-            'bg-neutral-200',
-            'bg-neutral-200',
-          ].map((c, i) => (
+            { id: 'active', className: 'bg-primary-300' },
+            { id: 'inactive-1', className: 'bg-neutral-200' },
+            { id: 'inactive-2', className: 'bg-neutral-200' },
+            { id: 'inactive-3', className: 'bg-neutral-200' },
+          ].map(({ id, className }) => (
             <div
-              key={i}
-              className={`h-5 shrink-0 rounded-full px-3 text-[7px] ${c}`}
+              key={id}
+              className={`h-5 shrink-0 rounded-full px-3 text-[7px] ${className}`}
             />
           ))}
         </div>
@@ -614,9 +620,9 @@ function PhoneScreen({ screen }: { screen: OnboardingStep['screen'] }) {
             'bg-gradient-to-br from-fuchsia-100 to-pink-200',
             'bg-gradient-to-br from-rose-100 to-pink-150',
             'bg-gradient-to-br from-pink-100 to-fuchsia-150',
-          ].map((bg, i) => (
+          ].map((bg) => (
             <div
-              key={i}
+              key={bg}
               className={`relative overflow-hidden rounded-xl ${bg}`}
             >
               <div className="absolute bottom-1.5 left-1.5 right-1.5">
@@ -770,9 +776,9 @@ function OnboardingSection() {
           <div className="order-2 md:order-1">
             {/* 스텝 도트 */}
             <div className="mb-8 flex gap-2">
-              {ONBOARDING.map((_, i) => (
+              {ONBOARDING.map((item, i) => (
                 <div
-                  key={i}
+                  key={item.step}
                   className="h-1.5 rounded-full transition-all duration-500"
                   style={{
                     width: i === step ? 28 : 8,
@@ -994,13 +1000,24 @@ export default function Landing() {
   const [mousePos, setMousePos] = useState({ x: 50, y: 50 })
   const heroRef = useRef<HTMLElement>(null)
 
-  const handleHeroMouseMove = (e: React.MouseEvent<HTMLElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    setMousePos({
-      x: ((e.clientX - rect.left) / rect.width) * 100,
-      y: ((e.clientY - rect.top) / rect.height) * 100,
-    })
-  }
+  useEffect(() => {
+    const el = heroRef.current
+    if (!el) return
+
+    const handleHeroMouseMove = (e: MouseEvent) => {
+      const rect = el.getBoundingClientRect()
+      setMousePos({
+        x: ((e.clientX - rect.left) / rect.width) * 100,
+        y: ((e.clientY - rect.top) / rect.height) * 100,
+      })
+    }
+
+    el.addEventListener('mousemove', handleHeroMouseMove)
+
+    return () => {
+      el.removeEventListener('mousemove', handleHeroMouseMove)
+    }
+  }, [])
 
   // 타이핑 순환 텍스트
   const [hairIndex, setHairIndex] = useState(0)
@@ -1116,7 +1133,6 @@ export default function Landing() {
       {/* ── 히어로 ── */}
       <section
         ref={heroRef}
-        onMouseMove={handleHeroMouseMove}
         className="relative overflow-hidden bg-gradient-to-br from-primary-50 via-white to-primary-100 px-6 py-24 md:py-36"
       >
         {/* mouse spotlight */}

@@ -1,4 +1,4 @@
-import { buildApiUrl } from '@/lib/api'
+import { apiFetch } from '@/lib/api'
 
 export type HairClickResponse = {
   code: number
@@ -11,12 +11,11 @@ export async function postHairClick(
   hairId: number,
   viewSec = 0,
 ): Promise<HairClickResponse> {
-  const response = await fetch(buildApiUrl('/home/hairclick/'), {
+  const response = await apiFetch('/home/hairclick/', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    credentials: 'include',
     body: JSON.stringify({
       hair_id: hairId,
       view_sec: viewSec,

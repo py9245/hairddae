@@ -1,4 +1,4 @@
-import { buildApiUrl } from './api'
+import { apiFetch } from './api'
 import { postHairClick } from './hair-click'
 
 export type MyPageHairItem = {
@@ -30,9 +30,8 @@ export type AppliedListResponse = {
 }
 
 export async function getLikeList(): Promise<LikeListResponse> {
-  const res = await fetch(buildApiUrl('/mypage/likelist'), {
+  const res = await apiFetch('/mypage/likelist', {
     method: 'GET',
-    credentials: 'include',
   })
 
   if (!res.ok) {
@@ -44,9 +43,8 @@ export async function getLikeList(): Promise<LikeListResponse> {
 }
 
 export async function getAppliedList(): Promise<AppliedListResponse> {
-  const res = await fetch(buildApiUrl('/mypage/appliedlist/'), {
+  const res = await apiFetch('/mypage/appliedlist/', {
     method: 'GET',
-    credentials: 'include',
   })
 
   if (!res.ok) {

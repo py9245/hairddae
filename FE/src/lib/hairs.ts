@@ -1,4 +1,4 @@
-import { buildApiUrl } from '@/lib/api'
+import { apiFetch } from '@/lib/api'
 
 export type HairLikeResponse = {
   code: number
@@ -12,9 +12,8 @@ async function requestHairLike(
   hairId: number,
   method: 'POST' | 'DELETE',
 ): Promise<HairLikeResponse> {
-  const res = await fetch(buildApiUrl(`/hairs/${hairId}/like/`), {
+  const res = await apiFetch(`/hairs/${hairId}/like/`, {
     method,
-    credentials: 'include',
   })
 
   if (!res.ok) {

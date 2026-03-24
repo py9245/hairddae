@@ -25,6 +25,8 @@ export default function SignUp() {
     handleSubmit,
   } = useSignUpForm()
   const userIdLength = values.userId.length
+  const passwordLength = values.password.length
+  const passwordConfirmLength = values.passwordConfirm.length
 
   useEffect(() => {
     if (!isSignUpComplete) {
@@ -126,7 +128,7 @@ export default function SignUp() {
                 id="password"
                 type={showPassword ? 'text' : 'password'}
                 value={values.password}
-                maxLength={16}
+                maxLength={20}
                 onChange={(e) => handleChange('password', e.target.value)}
                 onBlur={() => handleBlur('password')}
                 placeholder="비밀번호 입력"
@@ -152,6 +154,9 @@ export default function SignUp() {
             {errors.password && (
               <p className="mt-2 text-sm text-error">{errors.password}</p>
             )}
+            <span className="ml-auto block text-right text-sm text-gray-400">
+              {passwordLength}/20자
+            </span>
           </div>
 
           <div>
@@ -165,7 +170,7 @@ export default function SignUp() {
               <input
                 id="passwordConfirm"
                 type={showPasswordConfirm ? 'text' : 'password'}
-                maxLength={16}
+                maxLength={20}
                 value={values.passwordConfirm}
                 onChange={(e) =>
                   handleChange('passwordConfirm', e.target.value)
@@ -200,6 +205,9 @@ export default function SignUp() {
                 {errors.passwordConfirm}
               </p>
             )}
+            <span className="ml-auto block text-right text-sm text-gray-400">
+              {passwordConfirmLength}/20자
+            </span>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

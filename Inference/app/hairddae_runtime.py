@@ -1667,6 +1667,8 @@ class HairOverlayRuntime:
     ) -> list[tuple[dict[str, Any], float]]:
         user_pose = user_row["pose"]
         motion = user_row.get("_motion", {})
+        if self.lightweight_overlay_only:
+            return [(primary_asset, 1.0)]
         if motion.get("fast"):
             return [(primary_asset, 1.0)]
         if self._asset_render_cost_ratio(primary_asset) >= self.render_cost_blend_disable_ratio:

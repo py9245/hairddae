@@ -110,6 +110,8 @@ def _masked_mean_luma(image_bgr: np.ndarray, mask: np.ndarray | None) -> float |
         return None
     if mask.ndim != 2 or mask.size == 0:
         return None
+    if mask.shape[:2] != image_bgr.shape[:2]:
+        return None
     tone_mask = np.where(mask >= 24, np.uint8(255), np.uint8(0))
     active_pixels = int(np.count_nonzero(tone_mask))
     if active_pixels < max(32, int(round(mask.size * 0.006))):
@@ -754,12 +756,65 @@ def estimate_transform(src_anchors: dict[str, Any], dst_anchors: dict[str, Any])
     return cv2.getAffineTransform(src_pts[:3], dst_pts[:3])
 
 
+def _synthesize_full_frame_from_hair_rgba(
+    hair_rgba: np.ndarray,
+    *,
+    bbox: dict[str, Any] | None,
+    image_size: dict[str, Any] | None,
+    path_key: str,
+) -> np.ndarray | None:
+    if hair_rgba.ndim != 3:
+        return None
+    if path_key == "image_path" and hair_rgba.shape[2] < 3:
+        return None
+    if path_key == "alpha_path" and hair_rgba.shape[2] < 4:
+        return None
+    if not isinstance(bbox, dict) or not isinstance(image_size, dict):
+        return None
+
+    canvas_width = int(image_size.get("width") or 0)
+    canvas_height = int(image_size.get("height") or 0)
+    bbox_x = int(bbox.get("x") or 0)
+    bbox_y = int(bbox.get("y") or 0)
+    bbox_w = int(bbox.get("w") or 0)
+    bbox_h = int(bbox.get("h") or 0)
+    if canvas_width <= 0 or canvas_height <= 0 or bbox_w <= 0 or bbox_h <= 0:
+        return None
+
+    if path_key == "image_path":
+        crop = hair_rgba[:, :, :3]
+        if crop.shape[:2] != (bbox_h, bbox_w):
+            crop = cv2.resize(crop, (bbox_w, bbox_h), interpolation=cv2.INTER_LINEAR)
+        canvas = np.zeros((canvas_height, canvas_width, 3), dtype=np.uint8)
+    else:
+        crop = hair_rgba[:, :, 3]
+        if crop.shape[:2] != (bbox_h, bbox_w):
+            crop = cv2.resize(crop, (bbox_w, bbox_h), interpolation=cv2.INTER_LINEAR)
+        canvas = np.zeros((canvas_height, canvas_width), dtype=np.uint8)
+
+    dst_x0 = max(0, bbox_x)
+    dst_y0 = max(0, bbox_y)
+    dst_x1 = min(canvas_width, bbox_x + bbox_w)
+    dst_y1 = min(canvas_height, bbox_y + bbox_h)
+    if dst_x1 <= dst_x0 or dst_y1 <= dst_y0:
+        return None
+
+    src_x0 = dst_x0 - bbox_x
+    src_y0 = dst_y0 - bbox_y
+    src_x1 = src_x0 + (dst_x1 - dst_x0)
+    src_y1 = src_y0 + (dst_y1 - dst_y0)
+    canvas[dst_y0:dst_y1, dst_x0:dst_x1] = crop[src_y0:src_y1, src_x0:src_x1]
+    return canvas
+
+
 @lru_cache(maxsize=512)
 def load_asset_bundle(asset_root_str: str, metadata_path_str: str) -> dict[str, Any]:
     asset_root = Path(asset_root_str)
     metadata = read_json(resolve_asset_path(asset_root, metadata_path_str))
     anchors = read_json(resolve_asset_path(asset_root, metadata["anchors_path"]))["anchors"]
     hair_rgba_path = metadata.get("hair_rgba_path")
+    hair_rgba_bbox = metadata.get("hair_rgba_bbox")
+    image_size = metadata.get("image_size")
     cached_hair_rgba: Any | None = None
 
     def load_required_image(path_key: str, flags: int) -> Any:
@@ -778,6 +833,14 @@ def load_asset_bundle(asset_root_str: str, metadata_path_str: str) -> dict[str, 
             if cached_hair_rgba is None and hair_rgba_resolved.is_file():
                 cached_hair_rgba = cv2.imread(str(hair_rgba_resolved), cv2.IMREAD_UNCHANGED)
             if cached_hair_rgba is not None and getattr(cached_hair_rgba, "ndim", 0) == 3:
+                synthesized_full_frame = _synthesize_full_frame_from_hair_rgba(
+                    cached_hair_rgba,
+                    bbox=hair_rgba_bbox,
+                    image_size=image_size,
+                    path_key=path_key,
+                )
+                if synthesized_full_frame is not None:
+                    return synthesized_full_frame
                 if path_key == "image_path" and cached_hair_rgba.shape[2] >= 3:
                     return cached_hair_rgba[:, :, :3].copy()
                 if path_key == "alpha_path" and cached_hair_rgba.shape[2] >= 4:
@@ -802,10 +865,6 @@ def load_asset_bundle(asset_root_str: str, metadata_path_str: str) -> dict[str, 
     protect_face_mask = load_required_image("protect_face_mask_path", cv2.IMREAD_GRAYSCALE)
     hair_bbox = hair_bbox_from_mask(hair_mask)
     crop_box = expanded_hair_crop(hair_bbox, image.shape[1], image.shape[0])
-    mesh_source_points = build_mesh_source_points(anchors, crop_box)
-    mesh_triangles = build_mesh_triangles(mesh_source_points, crop_box[2] - crop_box[0], crop_box[3] - crop_box[1])
-    mesh_v2_source_points = build_dense_mesh_source_points(anchors, crop_box)
-    mesh_v2_triangles = build_mesh_triangles(mesh_v2_source_points, crop_box[2] - crop_box[0], crop_box[3] - crop_box[1])
     hair_luma = _masked_mean_luma(image, hair_mask)
     return {
         "metadata": metadata,
@@ -822,11 +881,34 @@ def load_asset_bundle(asset_root_str: str, metadata_path_str: str) -> dict[str, 
         "hair_bbox": hair_bbox,
         "hair_luma": hair_luma,
         "crop_box": crop_box,
-        "mesh_source_points": mesh_source_points,
-        "mesh_triangles": mesh_triangles,
-        "mesh_v2_source_points": mesh_v2_source_points,
-        "mesh_v2_triangles": mesh_v2_triangles,
     }
+
+
+def _ensure_asset_bundle_mesh_geometry(
+    asset_bundle: dict[str, Any],
+    mesh_key: str,
+) -> tuple[list[tuple[float, float]], list[tuple[int, int, int]]]:
+    crop_box = asset_bundle["crop_box"]
+    crop_width = crop_box[2] - crop_box[0]
+    crop_height = crop_box[3] - crop_box[1]
+    if mesh_key == "mesh_v2":
+        source_points = asset_bundle.get("mesh_v2_source_points")
+        mesh_triangles = asset_bundle.get("mesh_v2_triangles")
+        if source_points is None or mesh_triangles is None:
+            source_points = build_dense_mesh_source_points(asset_bundle["anchors"], crop_box)
+            mesh_triangles = build_mesh_triangles(source_points, crop_width, crop_height)
+            asset_bundle["mesh_v2_source_points"] = source_points
+            asset_bundle["mesh_v2_triangles"] = mesh_triangles
+        return source_points, mesh_triangles
+
+    source_points = asset_bundle.get("mesh_source_points")
+    mesh_triangles = asset_bundle.get("mesh_triangles")
+    if source_points is None or mesh_triangles is None:
+        source_points = build_mesh_source_points(asset_bundle["anchors"], crop_box)
+        mesh_triangles = build_mesh_triangles(source_points, crop_width, crop_height)
+        asset_bundle["mesh_source_points"] = source_points
+        asset_bundle["mesh_triangles"] = mesh_triangles
+    return source_points, mesh_triangles
 
 
 @lru_cache(maxsize=2048)
@@ -2038,8 +2120,7 @@ def build_mesh_overlay_layer(
 ) -> dict[str, Any] | None:
     dense_mesh_renderer = renderer_name in {"mesh_v2", "mesh_v3", "mesh_v4"}
     mesh_key = "mesh_v2" if dense_mesh_renderer else "mesh"
-    source_points = asset_bundle[f"{mesh_key}_source_points"] if mesh_key == "mesh_v2" else asset_bundle["mesh_source_points"]
-    mesh_triangles = asset_bundle[f"{mesh_key}_triangles"] if mesh_key == "mesh_v2" else asset_bundle["mesh_triangles"]
+    source_points, mesh_triangles = _ensure_asset_bundle_mesh_geometry(asset_bundle, mesh_key)
     if not mesh_triangles:
         return build_legacy_overlay_layer(
             user_row,

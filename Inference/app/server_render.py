@@ -33,12 +33,12 @@ def _apply_rgba_rgb_gain(image: Image.Image, rgb_gain: float) -> Image.Image:
     return Image.fromarray(adjusted, mode="RGBA")
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=256)
 def _load_rgba_image(path: str) -> Image.Image:
     return Image.open(path).convert("RGBA")
 
 
-@lru_cache(maxsize=64)
+@lru_cache(maxsize=256)
 def _load_mask_image(path: str) -> Image.Image:
     return Image.open(path).convert("L")
 

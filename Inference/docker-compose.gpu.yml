@@ -1,6 +1,6 @@
 services:
   inference:
-    image: ${INFERENCE_RUNTIME_IMAGE:-inference-app:rtc-debug-20260324-003326}
+    image: ${INFERENCE_RUNTIME_IMAGE:-inference-app:rtc-gpu-runtime}
     container_name: inference-server
     restart: unless-stopped
     working_dir: /app
@@ -31,8 +31,4 @@ services:
     network_mode: host
     volumes:
       - .:/app
-      - inference_venv:/app/.venv
       - ../static:/srv/static:ro
-
-volumes:
-  inference_venv:

@@ -453,6 +453,32 @@ def test_build_blend_assets_disables_blend_for_large_render_cost() -> None:
     assert weighted_assets == [(primary_asset, 1.0)]
 
 
+def test_build_blend_assets_disables_blend_in_lightweight_overlay_mode() -> None:
+    runtime = build_runtime_stub()
+    runtime.lightweight_overlay_only = True
+    primary_asset = {
+        "asset_id": "asset-a",
+        "yaw_1deg": 0,
+        "pitch_1deg": 0,
+        "roll_1deg": 0,
+    }
+    neighbor_asset = {
+        "asset_id": "asset-b",
+        "yaw_1deg": 1,
+        "pitch_1deg": 0,
+        "roll_1deg": 0,
+    }
+
+    weighted_assets = runtime._build_blend_assets(
+        {"pose": {"yaw_1deg": 0, "pitch_1deg": 0, "roll_1deg": 0}, "_motion": {"fast": False}},
+        [(primary_asset, 1.0), (neighbor_asset, 1.5)],
+        primary_asset,
+        "stable",
+    )
+
+    assert weighted_assets == [(primary_asset, 1.0)]
+
+
 def test_resolve_compose_mode_prefers_bundle_render_for_large_latency_asset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

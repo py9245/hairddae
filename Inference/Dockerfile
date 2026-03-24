@@ -122,3 +122,38 @@ COPY scripts ./scripts
 EXPOSE 8090
 
 CMD ["/app/.venv/bin/python", "-m", "uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8090"]
+
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04 AS runtime-bindmount
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        libavcodec58 \
+        libavformat58 \
+        libavutil56 \
+        libegl1 \
+        libgl1 \
+        libgles2 \
+        libglib2.0-0 \
+        libgomp1 \
+        libjpeg8 \
+        libpng16-16 \
+        libswscale5 \
+        libtiff5 \
+        libwebp7 \
+        libwebpdemux2 \
+        libwebpmux3 \
+        python3 \
+        python3-pip \
+        python3-venv \
+        python-is-python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+CMD ["/app/.venv/bin/python", "-m", "uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8090"]

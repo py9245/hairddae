@@ -82,3 +82,72 @@ def test_load_asset_bundle_uses_hair_rgba_when_rgb_is_missing(
     assert bundle["image"].shape == (2, 2, 3)
     assert bundle["alpha"].shape == (2, 2)
     assert int(bundle["alpha"][0, 0]) == 200
+
+
+def test_load_asset_bundle_synthesizes_full_frame_rgb_when_bbox_metadata_exists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path
+    metadata_path = root / "metadata" / "sample.json"
+    anchors_path = root / "anchors" / "sample.json"
+    hair_rgba_path = root / "hair_rgba" / "sample.png"
+
+    rgba = np.zeros((6, 8, 4), dtype=np.uint8)
+    rgba[:, :, 0] = 10
+    rgba[:, :, 1] = 20
+    rgba[:, :, 2] = 30
+    rgba[:, :, 3] = 200
+    write_png(hair_rgba_path, rgba)
+
+    hair_mask = np.zeros((10, 12), dtype=np.uint8)
+    hair_mask[1:7, 2:10] = 255
+    write_png(root / "masks/hair/sample.png", hair_mask)
+    for relative_path in (
+        "masks/face/sample.png",
+        "masks/forehead/sample.png",
+        "masks/ear_left/sample.png",
+        "masks/ear_right/sample.png",
+        "masks/neck_shoulder/sample.png",
+        "masks/protect_face/sample.png",
+    ):
+        write_png(root / relative_path, np.zeros((10, 12), dtype=np.uint8))
+
+    anchors_path.parent.mkdir(parents=True, exist_ok=True)
+    anchors_path.write_text(json.dumps({"anchors": {}}), encoding="utf-8")
+
+    metadata_path.parent.mkdir(parents=True, exist_ok=True)
+    metadata_path.write_text(
+        json.dumps(
+            {
+                "anchors_path": "anchors/sample.json",
+                "image_path": "rgb/missing.png",
+                "alpha_path": "alpha/missing.png",
+                "hair_mask_path": "masks/hair/sample.png",
+                "face_mask_path": "masks/face/sample.png",
+                "forehead_mask_path": "masks/forehead/sample.png",
+                "ear_mask_left_path": "masks/ear_left/sample.png",
+                "ear_mask_right_path": "masks/ear_right/sample.png",
+                "neck_shoulder_mask_path": "masks/neck_shoulder/sample.png",
+                "protect_face_mask_path": "masks/protect_face/sample.png",
+                "hair_rgba_path": "hair_rgba/sample.png",
+                "hair_rgba_bbox": {"x": 2, "y": 1, "w": 8, "h": 6},
+                "image_size": {"width": 12, "height": 10},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(overlay_module, "hair_bbox_from_mask", lambda mask: (2, 1, 8, 6))
+    monkeypatch.setattr(overlay_module, "expanded_hair_crop", lambda hair_bbox, width, height: (2, 1, 10, 7))
+    monkeypatch.setattr(overlay_module, "build_mesh_source_points", lambda anchors, crop_box: [])
+    monkeypatch.setattr(overlay_module, "build_dense_mesh_source_points", lambda anchors, crop_box: [])
+    monkeypatch.setattr(overlay_module, "build_mesh_triangles", lambda points, width, height: [])
+
+    bundle = overlay_module.load_asset_bundle(str(root), "metadata/sample.json")
+
+    assert bundle["image"].shape == (10, 12, 3)
+    assert bundle["alpha"].shape == (10, 12)
+    assert np.array_equal(bundle["image"][1:7, 2:10], rgba[:, :, :3])
+    assert int(bundle["alpha"][1, 2]) == 200
+    assert bundle["hair_luma"] is not None

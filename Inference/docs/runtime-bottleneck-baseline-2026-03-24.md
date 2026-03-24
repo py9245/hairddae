@@ -2,7 +2,7 @@
 
 ## 목적
 
-최근 `inference-server` 로그를 기준으로 `0001`, `0004`, `0010` 헤어의 병목 차이를 정리한다.
+최근 `inference-server` 로그를 기준으로 `0001`, `0004`, `0009`, `0010` 헤어의 병목 차이를 정리한다.
 
 이번 정리는 `MediaPipe` 구간을 주 원인 분석에서 제외하고, 아래 항목에 집중했다.
 
@@ -12,19 +12,40 @@
 - render failure 횟수
 - bundle fallback 횟수
 
+## 빠른 갱신 방법
+
+다음 두 명령으로 로그를 다시 수집하고, 같은 형식의 표를 바로 다시 뽑을 수 있다.
+
+```bash
+docker logs --since 20m inference-server > /tmp/inference-recent.log 2>&1
+python3 scripts/report_runtime_bottleneck_metrics.py --log-file /tmp/inference-recent.log
+```
+
+자동 출력 스크립트:
+
+- [report_runtime_bottleneck_metrics.py](/home/ubuntu/S14P21M101/Inference/scripts/report_runtime_bottleneck_metrics.py)
+
 ## 로그 기준
 
-- 로그 파일: `/tmp/inference-server-2h.log`
+- 기준 로그 1: `/tmp/inference-server-2h.log`
 - 수집 명령:
 
 ```bash
 docker logs --since 2h inference-server > /tmp/inference-server-2h.log 2>&1
 ```
 
+- 기준 로그 2: `/tmp/inference-recent.log`
+- 수집 명령:
+
+```bash
+docker logs --since 20m inference-server > /tmp/inference-recent.log 2>&1
+```
+
 ## 데이터셋 구분 기준
 
 - `0001`: `base_pose_bank__`
 - `0004`: `shorthair_short_hair_pose_full_final__`
+- `0009`: `base_pose_bank_H_bundlehair_0001__`
 - `0010`: `H_shortperm_0001_pose_bank__`
 
 ## 지표 정의
@@ -32,16 +53,47 @@ docker logs --since 2h inference-server > /tmp/inference-server-2h.log 2>&1
 - `steady-state`: `total < 1000ms` 인 구간
 - `non_mp`: `total - tracking - segmentation`
 - 이번 비교에서 핵심 병목은 사실상 `hair_overlay`
+- `p95`: nearest-rank 방식
+
+## 최신 스냅샷
+
+- 로그 파일: `/tmp/inference-recent.log`
+- 기준 시점: `missing rgb 복구 + lightweight overlay 경량화 + 서버 재시작` 이후
+- 해석 포인트:
+  - `0004`, `0009`는 현재 `overlay_error=0`, `fallback=0`
+  - `0010`은 대부분 `ok`지만 특정 자산에서 render failure `3회`, fallback `1회`가 남아 있다
+  - `failed to load image_path`, `failed to load alpha_path`는 현재 `0회`
 
 ## 한눈에 보기
 
 | 헤어 | 상태 | 핵심 병목 | 특징 |
 |---|---|---|---|
-| `0001` | 정상 | `hair_overlay` | 실패 없이 안정적 |
-| `0004` | 주의 | `hair_overlay` | 가끔 OpenCV render failure 후 fallback |
-| `0010` | 문제 큼 | `hair_overlay` + render failure/fallback churn | 실패와 fallback이 반복됨 |
+| `0001` | 정상 | `hair_overlay` | 가벼운 baseline |
+| `0004` | 정상 | `hair_overlay` | RGB 복구 후 안정화 |
+| `0009` | 정상 | `hair_overlay` | 최근 테스트 기준 가장 안정적 |
+| `0010` | 주의 | `hair_overlay` + 잔여 render failure | 대부분 정상, 일부 예외 남음 |
 
-## 핵심 수치
+## 최신 핵심 수치
+
+| 헤어 | perf 샘플 수 | steady total avg / p50 / p95 | steady overlay avg / p50 / p95 | attenuation p50 | parse p50 | render failure | fallback | 상태 |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| `0001` | 9 | `111.6 / 109.2 / 178.7 ms` | `42.2 / 31.6 / 76.9 ms` | `8.5 ms` | `0.0 ms` | `0` | `0` | `ok: 9` |
+| `0004` | 8 | `175.3 / 171.8 / 232.9 ms` | `122.2 / 135.3 / 154.7 ms` | `7.1 ms` | `0.0 ms` | `0` | `0` | `ok: 8` |
+| `0009` | 5 | `152.1 / 158.3 / 223.7 ms` | `95.5 / 112.5 / 128.4 ms` | `7.3 ms` | `0.0 ms` | `0` | `0` | `ok: 5` |
+| `0010` | 8 | `240.9 / 166.1 / 988.8 ms` | `85.8 / 119.3 / 138.2 ms` | `8.2 ms` | `0.0 ms` | `3` | `1` | `ok: 8` |
+
+## 잔여 이슈 카운트
+
+- `overlay_error`: `0`
+- `failed to load image_path`: `0`
+- `failed to load alpha_path`: `0`
+- `bundle_render_fallback`: `1`
+- `matrix_iterator.cpp` OpenCV assert: `3`
+- `rtc asset bundle build failed`: `3`
+
+## 히스토리 기준선
+
+아래 표는 이전 2시간 로그 기준의 초기 baseline이다. 최근 개선 전 수치와 비교할 때 참고한다.
 
 | 헤어 | perf 샘플 수 | steady total avg / p50 / p95 | steady overlay avg / p50 / p95 | attenuation p50 | parse p50 | render failure | fallback | 상태 |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
@@ -66,45 +118,40 @@ docker logs --since 2h inference-server > /tmp/inference-server-2h.log 2>&1
 
 ### 2. `0004`
 
-- 전반적으로는 정상에 가깝다.
-- 다만 한 번 OpenCV render failure가 나면서 fallback으로 내려간 구간이 있다.
-- 그 순간만 `degraded_ok`가 되었고, 이후 다시 `ok`로 회복된다.
-- 즉, `0004`는 "대체로 괜찮지만, 특정 렌더 경로가 약하다" 쪽이다.
+- `image_path` 누락 복구 이후 최근 로그에서는 render failure와 fallback이 없다.
+- 현재는 `mesh_v2` overlay 경로로 정상 동작한다.
+- 즉, `0004`는 지금 기준으로는 정상군에 넣어도 된다.
 
 대표 로그:
 
-- 실패/폴백 구간:
-  - [/tmp/inference-server-2h.log:1814](/tmp/inference-server-2h.log:1814)
-  - [/tmp/inference-server-2h.log:1816](/tmp/inference-server-2h.log:1816)
-  - [/tmp/inference-server-2h.log:1818](/tmp/inference-server-2h.log:1818)
-  - [/tmp/inference-server-2h.log:1820](/tmp/inference-server-2h.log:1820)
-- 회복 후 정상 구간:
-  - [/tmp/inference-server-2h.log:1841](/tmp/inference-server-2h.log:1841)
-  - [/tmp/inference-server-2h.log:1851](/tmp/inference-server-2h.log:1851)
+- 최근 정상 구간:
+  - [/tmp/inference-recent.log](/tmp/inference-recent.log)
 
-### 3. `0010`
+### 3. `0009`
 
-- 세 헤어 중 가장 문제가 크다.
-- MediaPipe가 아니라 렌더 경로가 주 원인이다.
-- OpenCV render failure가 반복적으로 발생한다.
-- 그 뒤 bundle fallback이 계속 붙으면서 `hair_overlay` 시간이 크게 튄다.
-- 그래서 `0010`은 같은 overlay 구간이어도 `0001`, `0004`보다 훨씬 무겁게 보인다.
+- 최근 테스트에서 정상 적용이 확인됐다.
+- 현재 steady 기준 `0004`보다 약간 가볍고, fallback도 없다.
+- 즉, `0009`는 현재 기준 안정권이다.
 
 대표 로그:
 
-- 실패 반복:
-  - [/tmp/inference-server-2h.log:2147](/tmp/inference-server-2h.log:2147)
-  - [/tmp/inference-server-2h.log:2156](/tmp/inference-server-2h.log:2156)
-  - [/tmp/inference-server-2h.log:2221](/tmp/inference-server-2h.log:2221)
-  - [/tmp/inference-server-2h.log:2295](/tmp/inference-server-2h.log:2295)
-- fallback 중심 degraded 구간:
-  - [/tmp/inference-server-2h.log:2154](/tmp/inference-server-2h.log:2154)
-  - [/tmp/inference-server-2h.log:2227](/tmp/inference-server-2h.log:2227)
-  - [/tmp/inference-server-2h.log:2301](/tmp/inference-server-2h.log:2301)
-  - [/tmp/inference-server-2h.log:2321](/tmp/inference-server-2h.log:2321)
-- 안정화되면 다시 정상 수치로 떨어지는 구간:
-  - [/tmp/inference-server-2h.log:2338](/tmp/inference-server-2h.log:2338)
-  - [/tmp/inference-server-2h.log:2350](/tmp/inference-server-2h.log:2350)
+- 최근 정상 구간:
+  - [/tmp/inference-recent.log](/tmp/inference-recent.log)
+
+### 4. `0010`
+
+- 이전 baseline에 비하면 크게 개선됐다.
+- 최근 steady 기준 `ok`로 지나가는 프레임이 대부분이다.
+- 다만 특정 자산에서 OpenCV assert `3회`, fallback `1회`가 남아 있다.
+- 즉, `0010`은 "대부분 정상이나 잔여 예외가 남은 상태"로 보는 게 맞다.
+
+대표 로그:
+
+- 최근 정상 구간:
+  - [/tmp/inference-recent.log](/tmp/inference-recent.log)
+- 잔여 예외 구간:
+  - `H_shortperm_0001_pose_bank__yaw+16_pitch-06_roll+00_frame009948`
+  - `H_shortperm_0001_pose_bank__yaw+15_pitch-05_roll+00_frame009946`
 
 ## 무엇이 병목이 아니었나
 
@@ -132,12 +179,12 @@ docker logs --since 2h inference-server > /tmp/inference-server-2h.log 2>&1
 
 현재 로그만 기준으로 잡으면 우선순위는 이렇다.
 
-1. `0010`의 render failure와 fallback 반복 원인 추적
-2. `0004`의 간헐적 render failure 재현 여부 확인
-3. `0001`은 정상 baseline으로 유지
+1. `0010`의 잔여 OpenCV assert 1건 계열 추적
+2. `select_hair` 전환 시 다른 데이터셋 `asset_id`가 섞이는 경고 정리
+3. `0001`, `0004`, `0009`는 정상 baseline으로 유지
 
 ## 최종 정리
 
 가장 중요한 한 줄 요약:
 
-`0001`은 정상, `0004`는 간헐적 실패, `0010`은 렌더 실패와 fallback 반복 때문에 overlay가 병목으로 커진 상태다.
+`0001`, `0004`, `0009`는 현재 정상권이고, `0010`도 대부분 정상으로 회복됐다. 지금 남은 핵심 과제는 `0010`의 잔여 render failure와 전환 순간 asset id mismatch 경고다.

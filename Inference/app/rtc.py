@@ -163,6 +163,20 @@ class RtcSessionState:
     last_tracking_user_row: dict[str, Any] | None = None
     last_tracking_landmarks_px: np.ndarray | None = None
     last_tracking_feature: FeatureMessageModel | None = None
+    control_message_count: int = 0
+    control_error_count: int = 0
+    control_message_total_bytes: int = 0
+    last_control_message_type: str | None = None
+    last_control_message_bytes: int = 0
+    last_control_message_client_ts_ms: int | None = None
+    last_control_message_server_ts_ms: int | None = None
+    last_control_message_latency_ms: float = 0.0
+    last_control_error_code: str | None = None
+    last_control_response_count: int = 0
+    data_channel_send_count: int = 0
+    last_channel_payload_type: str | None = None
+    last_channel_send_latency_ms: float = 0.0
+    last_channel_buffered_amount: int = 0
 
 
 @dataclass
@@ -223,6 +237,93 @@ def _control_error_payload(code: str, message: str) -> dict[str, object]:
         "code": code,
         "message": message,
     }
+
+
+def _raw_message_size_bytes(raw_message: str | bytes) -> int:
+    if isinstance(raw_message, bytes):
+        return len(raw_message)
+    return len(raw_message.encode("utf-8", errors="ignore"))
+
+
+def _extract_control_message_debug(raw_message: str | bytes) -> tuple[str | None, int | None]:
+    try:
+        decoded = raw_message.decode("utf-8") if isinstance(raw_message, bytes) else raw_message
+        parsed = json.loads(decoded)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None, None
+    if not isinstance(parsed, dict):
+        return None, None
+    message_type = _optional_str(parsed.get("type"))
+    client_ts_ms = None
+    ts_value = parsed.get("ts_ms")
+    if ts_value is not None:
+        try:
+            client_ts_ms = int(ts_value)
+        except (TypeError, ValueError):
+            client_ts_ms = None
+    return message_type, client_ts_ms
+
+
+def _channel_observability_payload(channel: Any | None) -> dict[str, object]:
+    if channel is None:
+        return {
+            "data_channel_ready_state": "missing",
+            "data_channel_buffered_amount": 0,
+            "data_channel_label": "",
+        }
+    payload: dict[str, object] = {
+        "data_channel_ready_state": str(getattr(channel, "readyState", "") or ""),
+        "data_channel_buffered_amount": int(getattr(channel, "bufferedAmount", 0) or 0),
+        "data_channel_label": str(getattr(channel, "label", "") or ""),
+    }
+    low_threshold = getattr(channel, "bufferedAmountLowThreshold", None)
+    if low_threshold is not None:
+        payload["data_channel_buffered_amount_low_threshold"] = int(low_threshold)
+    return payload
+
+
+def _augment_control_payload(
+    payload: dict[str, object],
+    *,
+    message_type: str | None,
+    message_bytes: int,
+    server_received_ts_ms: int,
+    processing_ms: float,
+    response_index: int,
+    response_count: int,
+    channel: Any | None,
+    client_ts_ms: int | None = None,
+) -> dict[str, object]:
+    enriched = dict(payload)
+    enriched["control_message_type"] = message_type or ""
+    enriched["control_message_bytes"] = int(message_bytes)
+    enriched["control_processing_ms"] = round(float(processing_ms), 3)
+    enriched["control_response_index"] = int(response_index)
+    enriched["control_response_count"] = int(response_count)
+    enriched["server_received_ts_ms"] = int(server_received_ts_ms)
+    enriched["server_sent_ts_ms"] = _now_ms()
+    if client_ts_ms is not None and enriched.get("client_ts_ms") is None:
+        enriched["client_ts_ms"] = int(client_ts_ms)
+    enriched.update(_channel_observability_payload(channel))
+    return enriched
+
+
+def _send_channel_json(
+    channel: Any | None,
+    state: RtcSessionState | None,
+    payload: dict[str, object],
+) -> bool:
+    if channel is None or getattr(channel, "readyState", None) != "open":
+        return False
+    send_started_at = time.perf_counter()
+    serialized = json.dumps(payload)
+    channel.send(serialized)
+    if state is not None:
+        state.data_channel_send_count += 1
+        state.last_channel_payload_type = str(payload.get("type") or "")
+        state.last_channel_send_latency_ms = round((time.perf_counter() - send_started_at) * 1000.0, 3)
+        state.last_channel_buffered_amount = int(getattr(channel, "bufferedAmount", 0) or 0)
+    return True
 
 
 def _optional_str(value: object) -> str | None:
@@ -941,7 +1042,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             self._source_ended = True
             self._frame_available.set()
 
-    async def _next_latest_frame(self) -> Any:
+    async def _next_latest_frame(self) -> BufferedVideoFrame:
         while True:
             if self._buffer:
                 latest = self._buffer.pop()
@@ -949,7 +1050,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 if dropped_pending > 0:
                     self._state.dropped_pending_count += dropped_pending
                 self._buffer.clear()
-                return latest.frame
+                return latest
 
             if self._source_ended:
                 raise MediaStreamError
@@ -964,15 +1065,14 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         super().stop()
 
     def _emit_channel_payload(self, payload: dict[str, object]) -> None:
-        channel = self._state.data_channel
-        if channel is None or getattr(channel, "readyState", None) != "open":
-            return
-        channel.send(json.dumps(payload))
+        _send_channel_json(self._state.data_channel, self._state, payload)
 
     async def recv(self) -> Any:
         frame_started_at = time.perf_counter()
-        frame = await self._next_latest_frame()
+        buffered_frame = await self._next_latest_frame()
+        frame = buffered_frame.frame
         next_seq = self._state.server_processed_seq + 1
+        frame_age_ms = round(max(0.0, time.monotonic() * 1000.0 - buffered_frame.received_at_ms), 3)
         decode_started_at = time.perf_counter()
         frame_bgr = frame.to_ndarray(format="bgr24")
         processing_source_bgr = cv2.flip(frame_bgr, 1) if self._mirrored_input() else frame_bgr
@@ -1126,8 +1226,8 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                     (
                         "rtc perf: seq=%s total=%.1f resize_in=%.1f tracking=%.1f "
                         "segmentation=%.1f attenuation=%.1f hair_total=%.1f hair_feature=%.1f hair_overlay=%.1f "
-                        "hair_parse=%.1f resize_out=%.1f process_size=%sx%s original_size=%sx%s "
-                        "process_max_dimension=%s attenuation=%s asset=%s renderer=%s profile=%s output=passthrough"
+                        "hair_parse=%.1f resize_out=%.1f frame_age=%.1f queue_depth=%s process_size=%sx%s original_size=%sx%s "
+                        "process_max_dimension=%s attenuation=%s asset=%s renderer=%s selection_mode=%s status=%s profile=%s output=passthrough"
                     ),
                     next_seq,
                     total_pipeline_latency_ms,
@@ -1140,6 +1240,8 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                     float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
                     float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
                     0.0,
+                    frame_age_ms,
+                    queue_depth,
                     processing_frame_bgr.shape[1],
                     processing_frame_bgr.shape[0],
                     original_size[0],
@@ -1148,7 +1250,32 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                     attenuation_status,
                     runtime_result.get("selected_asset_id"),
                     runtime_result.get("renderer_name"),
+                    runtime_result.get("selection_mode"),
+                    runtime_result.get("status"),
                     "latency" if prefer_latency else "balanced",
+                )
+                logger.info(
+                    (
+                        "rtc perf detail: seq=%s frame_age=%.1f queue_depth=%s dropped_total=%s "
+                        "control_last=%s control_ms=%.2f control_err=%s control_count=%s "
+                        "channel_state=%s buffered_amount=%s send_count=%s last_send=%.3f "
+                        "feature_ms=%.1f overlay_ms=%.1f user_parse_ms=%.1f"
+                    ),
+                    next_seq,
+                    frame_age_ms,
+                    queue_depth,
+                    self._state.dropped_pending_count,
+                    self._state.last_control_message_type,
+                    self._state.last_control_message_latency_ms,
+                    self._state.last_control_error_code,
+                    self._state.control_message_count,
+                    getattr(self._state.data_channel, "readyState", None),
+                    getattr(self._state.data_channel, "bufferedAmount", 0) if self._state.data_channel is not None else 0,
+                    self._state.data_channel_send_count,
+                    self._state.last_channel_send_latency_ms,
+                    float(runtime_result.get("feature_latency_ms", 0.0) or 0.0),
+                    float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
+                    float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
                 )
             self._maybe_emit_stats(
                 queue_depth=queue_depth,
@@ -1184,8 +1311,8 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 (
                     "rtc perf: seq=%s total=%.1f resize_in=%.1f tracking=%.1f "
                     "segmentation=%.1f attenuation=%.1f hair_total=%.1f hair_feature=%.1f hair_overlay=%.1f "
-                    "hair_parse=%.1f resize_out=%.1f process_size=%sx%s original_size=%sx%s "
-                    "process_max_dimension=%s attenuation=%s asset=%s renderer=%s profile=%s"
+                    "hair_parse=%.1f resize_out=%.1f frame_age=%.1f queue_depth=%s process_size=%sx%s original_size=%sx%s "
+                    "process_max_dimension=%s attenuation=%s asset=%s renderer=%s selection_mode=%s status=%s profile=%s"
                 ),
                 next_seq,
                 total_pipeline_latency_ms,
@@ -1198,6 +1325,8 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
                 float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
                 resize_out_latency_ms,
+                frame_age_ms,
+                queue_depth,
                 processing_frame_bgr.shape[1],
                 processing_frame_bgr.shape[0],
                 original_size[0],
@@ -1206,7 +1335,32 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 attenuation_status,
                 runtime_result.get("selected_asset_id"),
                 runtime_result.get("renderer_name"),
+                runtime_result.get("selection_mode"),
+                runtime_result.get("status"),
                 "latency" if prefer_latency else "balanced",
+            )
+            logger.info(
+                (
+                    "rtc perf detail: seq=%s frame_age=%.1f queue_depth=%s dropped_total=%s "
+                    "control_last=%s control_ms=%.2f control_err=%s control_count=%s "
+                    "channel_state=%s buffered_amount=%s send_count=%s last_send=%.3f "
+                    "feature_ms=%.1f overlay_ms=%.1f user_parse_ms=%.1f"
+                ),
+                next_seq,
+                frame_age_ms,
+                queue_depth,
+                self._state.dropped_pending_count,
+                self._state.last_control_message_type,
+                self._state.last_control_message_latency_ms,
+                self._state.last_control_error_code,
+                self._state.control_message_count,
+                getattr(self._state.data_channel, "readyState", None),
+                getattr(self._state.data_channel, "bufferedAmount", 0) if self._state.data_channel is not None else 0,
+                self._state.data_channel_send_count,
+                self._state.last_channel_send_latency_ms,
+                float(runtime_result.get("feature_latency_ms", 0.0) or 0.0),
+                float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
+                float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
             )
 
         self._maybe_emit_stats(
@@ -1390,15 +1544,15 @@ def attach_rtc_routes(app: FastAPI) -> None:
                     channel_label,
                 )
                 try:
-                    channel.send(
-                        json.dumps(
-                            _control_error_payload(
-                                "UNEXPECTED_CHANNEL_LABEL",
-                                (
-                                    f"expected control channel label "
-                                    f"{settings.rtc_control_channel_name}, got {channel_label}"
-                                ),
-                            )
+                    _send_channel_json(
+                        channel,
+                        session_state,
+                        _control_error_payload(
+                            "UNEXPECTED_CHANNEL_LABEL",
+                            (
+                                f"expected control channel label "
+                                f"{settings.rtc_control_channel_name}, got {channel_label}"
+                            ),
                         )
                     )
                 except Exception:  # pragma: no cover - browser interoperability
@@ -1409,6 +1563,16 @@ def attach_rtc_routes(app: FastAPI) -> None:
 
             @channel.on("message")
             def _on_message(message: str | bytes) -> None:
+                control_started_at = time.perf_counter()
+                server_received_ts_ms = _now_ms()
+                message_type, client_ts_ms = _extract_control_message_debug(message)
+                message_bytes = _raw_message_size_bytes(message)
+                session_state.control_message_count += 1
+                session_state.control_message_total_bytes += message_bytes
+                session_state.last_control_message_type = message_type
+                session_state.last_control_message_bytes = message_bytes
+                session_state.last_control_message_client_ts_ms = client_ts_ms
+                session_state.last_control_message_server_ts_ms = server_received_ts_ms
                 try:
                     payloads = _process_control_message(
                         message,
@@ -1418,47 +1582,119 @@ def attach_rtc_routes(app: FastAPI) -> None:
                         catalog=app.state.catalog,
                         hair_runtime_manager=app.state.hair_runtime_manager,
                     )
-                    for response_payload in payloads:
-                        channel.send(json.dumps(response_payload))
+                    processing_ms = round((time.perf_counter() - control_started_at) * 1000.0, 3)
+                    session_state.last_control_message_latency_ms = processing_ms
+                    session_state.last_control_error_code = None
+                    session_state.last_control_response_count = len(payloads)
+                    logger.info(
+                        "rtc control message handled: type=%s latency_ms=%.2f bytes=%s responses=%s buffered_amount=%s",
+                        message_type,
+                        processing_ms,
+                        message_bytes,
+                        len(payloads),
+                        getattr(channel, "bufferedAmount", 0),
+                    )
+                    for index, response_payload in enumerate(payloads, start=1):
+                        _send_channel_json(
+                            channel,
+                            session_state,
+                            _augment_control_payload(
+                                response_payload,
+                                message_type=message_type,
+                                message_bytes=message_bytes,
+                                server_received_ts_ms=server_received_ts_ms,
+                                processing_ms=processing_ms,
+                                response_index=index,
+                                response_count=len(payloads),
+                                channel=channel,
+                                client_ts_ms=client_ts_ms,
+                            ),
+                        )
                 except ControlMessageError as exc:
-                    logger.warning("rtc control message rejected: code=%s message=%s", exc.code, exc.message)
-                    channel.send(
-                        json.dumps(_control_error_payload(exc.code, exc.message))
+                    processing_ms = round((time.perf_counter() - control_started_at) * 1000.0, 3)
+                    session_state.control_error_count += 1
+                    session_state.last_control_message_latency_ms = processing_ms
+                    session_state.last_control_error_code = exc.code
+                    session_state.last_control_response_count = 1
+                    logger.warning(
+                        "rtc control message rejected: code=%s message=%s type=%s latency_ms=%.2f bytes=%s",
+                        exc.code,
+                        exc.message,
+                        message_type,
+                        processing_ms,
+                        message_bytes,
+                    )
+                    _send_channel_json(
+                        channel,
+                        session_state,
+                        _augment_control_payload(
+                            _control_error_payload(exc.code, exc.message),
+                            message_type=message_type,
+                            message_bytes=message_bytes,
+                            server_received_ts_ms=server_received_ts_ms,
+                            processing_ms=processing_ms,
+                            response_index=1,
+                            response_count=1,
+                            channel=channel,
+                            client_ts_ms=client_ts_ms,
+                        ),
                     )
                 except Exception as exc:  # pragma: no cover - browser interoperability
-                    logger.warning("rtc control message processing failed: %s", exc)
-                    channel.send(
-                        json.dumps(
+                    processing_ms = round((time.perf_counter() - control_started_at) * 1000.0, 3)
+                    session_state.control_error_count += 1
+                    session_state.last_control_message_latency_ms = processing_ms
+                    session_state.last_control_error_code = "CONTROL_MESSAGE_ERROR"
+                    session_state.last_control_response_count = 1
+                    logger.warning(
+                        "rtc control message processing failed: type=%s latency_ms=%.2f bytes=%s error=%s",
+                        message_type,
+                        processing_ms,
+                        message_bytes,
+                        exc,
+                    )
+                    _send_channel_json(
+                        channel,
+                        session_state,
+                        _augment_control_payload(
                             _control_error_payload(
                                 "CONTROL_MESSAGE_ERROR",
                                 str(exc),
-                            )
+                            ),
+                            message_type=message_type,
+                            message_bytes=message_bytes,
+                            server_received_ts_ms=server_received_ts_ms,
+                            processing_ms=processing_ms,
+                            response_index=1,
+                            response_count=1,
+                            channel=channel,
+                            client_ts_ms=client_ts_ms,
                         )
                     )
 
-            channel.send(
-                json.dumps(
-                    {
-                        "type": "connected",
-                        "apply_session_id": claims.apply_session_id,
-                        "node_id": settings.node_id,
-                        "control_channel": settings.rtc_control_channel_name,
-                        "feature_schema_version": settings.feature_schema_version,
-                        "transform_version": settings.transform_version,
-                        "hello_required": settings.rtc_require_hello,
-                        "hair_id": session_state.active_hair_id,
-                        "dataset_code": session_state.active_dataset_code,
-                        "representative_asset_id": session_state.active_representative_asset_id,
-                        "mirrored": session_state.mirrored,
-                        "expected_input_width": settings.rtc_input_width,
-                        "expected_input_height": settings.rtc_input_height,
-                        "expected_input_fps": settings.rtc_input_fps,
-                        "expected_output_width": settings.rtc_output_width,
-                        "expected_output_height": settings.rtc_output_height,
-                        "expected_output_fps": settings.rtc_output_fps,
-                        "expected_output_mirrored": settings.rtc_output_mirrored,
-                    }
-                )
+            _send_channel_json(
+                channel,
+                session_state,
+                {
+                    "type": "connected",
+                    "apply_session_id": claims.apply_session_id,
+                    "node_id": settings.node_id,
+                    "control_channel": settings.rtc_control_channel_name,
+                    "feature_schema_version": settings.feature_schema_version,
+                    "transform_version": settings.transform_version,
+                    "hello_required": settings.rtc_require_hello,
+                    "hair_id": session_state.active_hair_id,
+                    "dataset_code": session_state.active_dataset_code,
+                    "representative_asset_id": session_state.active_representative_asset_id,
+                    "mirrored": session_state.mirrored,
+                    "expected_input_width": settings.rtc_input_width,
+                    "expected_input_height": settings.rtc_input_height,
+                    "expected_input_fps": settings.rtc_input_fps,
+                    "expected_output_width": settings.rtc_output_width,
+                    "expected_output_height": settings.rtc_output_height,
+                    "expected_output_fps": settings.rtc_output_fps,
+                    "expected_output_mirrored": settings.rtc_output_mirrored,
+                    "server_ts_ms": _now_ms(),
+                },
             )
 
         @peer_connection.on("track")

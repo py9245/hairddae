@@ -12,7 +12,14 @@ pytest.importorskip("torch")
 pytest.importorskip("torchvision")
 
 from app.config import Settings
-from app.rtc import ControlMessageError, RtcSessionState, RtcServerTrackedRenderTrack, _process_control_message
+from app.rtc import (
+    ControlMessageError,
+    RtcSessionState,
+    RtcServerTrackedRenderTrack,
+    _augment_control_payload,
+    _process_control_message,
+    _send_channel_json,
+)
 from conftest import apply_test_env
 
 
@@ -52,6 +59,18 @@ class DummyRuntimeManager:
             "selected_asset_id": None,
             "status": "ok",
         }
+
+
+class DummyChannel:
+    def __init__(self) -> None:
+        self.readyState = "open"
+        self.label = "control"
+        self.bufferedAmount = 7
+        self.bufferedAmountLowThreshold = 4
+        self.sent_payloads: list[dict[str, object]] = []
+
+    def send(self, payload: str) -> None:
+        self.sent_payloads.append(json.loads(payload))
 
 
 def build_settings(
@@ -235,6 +254,48 @@ def test_heartbeat_ack_echoes_client_timestamp(monkeypatch: pytest.MonkeyPatch) 
     assert payloads[0]["apply_session_id"] == claims.apply_session_id
     assert payloads[0]["ts_ms"] == 1774086000000
     assert isinstance(payloads[0]["server_ts_ms"], int)
+
+
+def test_augment_control_payload_includes_debug_fields() -> None:
+    channel = DummyChannel()
+
+    payload = _augment_control_payload(
+        {"type": "heartbeat_ack", "server_ts_ms": 123},
+        message_type="heartbeat",
+        message_bytes=28,
+        server_received_ts_ms=111,
+        processing_ms=2.75,
+        response_index=1,
+        response_count=1,
+        channel=channel,
+        client_ts_ms=99,
+    )
+
+    assert payload["control_message_type"] == "heartbeat"
+    assert payload["control_message_bytes"] == 28
+    assert payload["control_processing_ms"] == 2.75
+    assert payload["control_response_index"] == 1
+    assert payload["control_response_count"] == 1
+    assert payload["server_received_ts_ms"] == 111
+    assert payload["client_ts_ms"] == 99
+    assert payload["data_channel_ready_state"] == "open"
+    assert payload["data_channel_buffered_amount"] == 7
+    assert payload["data_channel_label"] == "control"
+
+
+def test_send_channel_json_updates_channel_metrics() -> None:
+    state = RtcSessionState()
+    channel = DummyChannel()
+
+    sent = _send_channel_json(channel, state, {"type": "connected"})
+
+    assert sent is True
+    assert len(channel.sent_payloads) == 1
+    assert channel.sent_payloads[0]["type"] == "connected"
+    assert state.data_channel_send_count == 1
+    assert state.last_channel_payload_type == "connected"
+    assert state.last_channel_buffered_amount == 7
+    assert state.last_channel_send_latency_ms >= 0.0
 
 
 def test_bald_test_mode_keeps_prepared_frame_as_runtime_base(monkeypatch: pytest.MonkeyPatch) -> None:

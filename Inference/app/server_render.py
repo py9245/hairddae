@@ -1,31 +1,45 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 import cv2
 import numpy as np
 from PIL import Image
 
-from app.acceleration import detect_runtime_acceleration
 from app.catalog import AssetBundle
 
 
+RESAMPLE_FILTER = Image.Resampling.BILINEAR
+
+
+def _apply_rgba_rgb_gain(image: Image.Image, rgb_gain: float) -> Image.Image:
+    if abs(float(rgb_gain) - 1.0) <= 0.02:
+        return image
+
+    rgba = np.asarray(image, dtype=np.uint8)
+    if rgba.ndim != 3 or rgba.shape[2] != 4:
+        return image
+
+    alpha_mask = rgba[:, :, 3] >= 8
+    if not np.any(alpha_mask):
+        return image
+
+    adjusted = rgba.copy()
+    rgb = adjusted[:, :, :3].astype(np.float32)
+    rgb[alpha_mask] *= float(rgb_gain)
+    adjusted[:, :, :3] = np.clip(rgb, 0.0, 255.0).astype(np.uint8)
+    return Image.fromarray(adjusted, mode="RGBA")
+
+
 @lru_cache(maxsize=64)
-def _load_rgba_image(path: str) -> np.ndarray:
-    image = cv2.imread(path, cv2.IMREAD_UNCHANGED)
-    if image is None:
-        raise FileNotFoundError(path)
+def _load_rgba_image(path: str) -> Image.Image:
+    return Image.open(path).convert("RGBA")
 
-    if image.ndim == 2:
-        image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGBA)
-    elif image.shape[2] == 3:
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGBA)
-    elif image.shape[2] == 4:
-        image = cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
-    else:
-        raise ValueError(f"unsupported image shape for {path}: {image.shape}")
 
-    return np.ascontiguousarray(image)
+@lru_cache(maxsize=64)
+def _load_mask_image(path: str) -> Image.Image:
+    return Image.open(path).convert("L")
 
 
 def _invert_affine(a: float, b: float, c: float, d: float, e: float, f: float) -> tuple[float, ...] | None:
@@ -94,145 +108,186 @@ def _scale_render_task(
     return scaled_task
 
 
-def _blend_rgba_over_rgb(base_roi: np.ndarray, overlay_rgba: np.ndarray) -> None:
-    alpha = overlay_rgba[:, :, 3].astype(np.uint16)
-    if not np.any(alpha):
-        return
+def _coverage_mask_from_warped_patch(
+    warped_patch: Image.Image,
+    *,
+    feather_px: int | None = None,
+    alpha_threshold: int = 24,
+) -> np.ndarray | None:
+    rgba = np.asarray(warped_patch, dtype=np.uint8)
+    if rgba.ndim != 3 or rgba.shape[2] != 4:
+        return None
 
-    inverse_alpha = 255 - alpha
-    blended = (
-        (
-            overlay_rgba[:, :, :3].astype(np.uint16) * alpha[:, :, None]
-            + base_roi.astype(np.uint16) * inverse_alpha[:, :, None]
-            + 127
-        )
-        // 255
-    ).astype(np.uint8)
-    mask = alpha > 0
-    base_roi[mask] = blended[mask]
+    alpha = rgba[:, :, 3]
+    if alpha.size == 0 or int(np.max(alpha)) < alpha_threshold:
+        return None
 
+    hard_mask = np.where(alpha >= alpha_threshold, np.uint8(255), np.uint8(0))
+    if int(np.count_nonzero(hard_mask)) == 0:
+        return None
 
-def _normalized_acceleration_preference(preference: str) -> str:
-    resolved = preference.strip().lower()
-    if resolved in {"auto", "cpu", "opencv_cuda"}:
-        return resolved
-    return "auto"
+    resolved_feather_px = feather_px
+    if resolved_feather_px is None:
+        resolved_feather_px = max(2, int(round(min(alpha.shape[:2]) * 0.035)))
+    resolved_feather_px = max(0, int(resolved_feather_px))
 
+    if resolved_feather_px > 0:
+        kernel_size = max(3, resolved_feather_px * 2 + 1)
+        if kernel_size % 2 == 0:
+            kernel_size += 1
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+        hard_mask = cv2.dilate(hard_mask, kernel, iterations=1)
 
-def _cuda_gpu_mat_ctor():
-    if hasattr(cv2, "cuda_GpuMat"):
-        return cv2.cuda_GpuMat
-    cuda_module = getattr(cv2, "cuda", None)
-    if cuda_module is not None and hasattr(cuda_module, "GpuMat"):
-        return cuda_module.GpuMat
-    return None
-
-
-def _opencv_cuda_warp_enabled(preference: str) -> bool:
-    if _normalized_acceleration_preference(preference) == "cpu":
-        return False
-    return detect_runtime_acceleration().opencv_cuda_warp_affine_available
-
-
-def _opencv_cuda_alpha_enabled(preference: str) -> bool:
-    if _normalized_acceleration_preference(preference) == "cpu":
-        return False
-    return detect_runtime_acceleration().opencv_cuda_alpha_comp_available
+    soft_mask = hard_mask.astype(np.float32) / 255.0
+    if resolved_feather_px > 0:
+        sigma = max(0.85, resolved_feather_px * 0.55)
+        soft_mask = cv2.GaussianBlur(soft_mask, (0, 0), sigmaX=sigma, sigmaY=sigma)
+    alpha_soft = np.clip(alpha.astype(np.float32) / 255.0, 0.0, 1.0)
+    soft_mask = np.maximum(soft_mask, np.clip(alpha_soft * 1.1, 0.0, 1.0))
+    return np.clip(soft_mask, 0.0, 1.0)
 
 
-@lru_cache(maxsize=64)
-def _load_rgba_image_gpu(path: str):
-    gpu_mat_ctor = _cuda_gpu_mat_ctor()
-    if gpu_mat_ctor is None:
-        raise RuntimeError("OpenCV CUDA GpuMat is unavailable")
+def _restore_uncovered_base_roi(
+    suppressed_roi: Image.Image,
+    original_roi: Image.Image,
+    warped_patch: Image.Image,
+    *,
+    feather_px: int | None = None,
+    alpha_threshold: int = 24,
+) -> Image.Image:
+    coverage_mask = _coverage_mask_from_warped_patch(
+        warped_patch,
+        feather_px=feather_px,
+        alpha_threshold=alpha_threshold,
+    )
+    if coverage_mask is None:
+        return original_roi
 
-    gpu_mat = gpu_mat_ctor()
-    gpu_mat.upload(_load_rgba_image(path))
-    return gpu_mat
+    suppressed_rgba = np.asarray(suppressed_roi.convert("RGBA"), dtype=np.uint8).astype(np.float32)
+    original_rgba = np.asarray(original_roi.convert("RGBA"), dtype=np.uint8).astype(np.float32)
+    coverage = coverage_mask[..., None]
+    blended_rgba = original_rgba * (1.0 - coverage) + suppressed_rgba * coverage
+    blended_rgba[:, :, 3] = 255.0
+    return Image.fromarray(np.clip(blended_rgba, 0.0, 255.0).astype(np.uint8), mode="RGBA")
 
 
-def _warp_rgba_patch_cuda(
-    path: str,
-    inverse_matrix: np.ndarray,
+def _replace_asset_skin_with_base_roi(
+    warped_patch: Image.Image,
+    base_roi: Image.Image,
+    *,
+    face_mask_path: Path | None,
+    protect_face_mask_path: Path | None,
+    hair_bbox: dict[str, object] | None,
+    inverse: tuple[float, ...],
     roi_width: int,
     roi_height: int,
-    *,
-    acceleration_preference: str,
-):
-    if not _opencv_cuda_warp_enabled(acceleration_preference):
-        return None
+) -> Image.Image:
+    if hair_bbox is None:
+        return warped_patch
+    usable_mask_paths = [
+        path
+        for path in (face_mask_path, protect_face_mask_path)
+        if isinstance(path, Path) and path.is_file()
+    ]
+    if not usable_mask_paths:
+        return warped_patch
 
-    cuda_module = getattr(cv2, "cuda", None)
-    if cuda_module is None or not hasattr(cuda_module, "warpAffine"):
-        return None
+    source_x = int(hair_bbox.get("x", 0))
+    source_y = int(hair_bbox.get("y", 0))
+    source_w = int(hair_bbox.get("w", 0))
+    source_h = int(hair_bbox.get("h", 0))
+    if source_w <= 0 or source_h <= 0:
+        return warped_patch
 
-    try:
-        return cuda_module.warpAffine(
-            _load_rgba_image_gpu(path),
-            inverse_matrix,
+    combined_face_mask = np.zeros((roi_height, roi_width), dtype=np.uint8)
+    for mask_path in usable_mask_paths:
+        try:
+            source_mask = _load_mask_image(str(mask_path))
+        except Exception:
+            continue
+        source_patch = source_mask.crop((source_x, source_y, source_x + source_w, source_y + source_h))
+        warped_face = source_patch.transform(
             (roi_width, roi_height),
-            flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=(0, 0, 0, 0),
+            Image.AFFINE,
+            inverse,
+            resample=RESAMPLE_FILTER,
         )
-    except Exception:
-        return None
+        warped_face_mask = np.asarray(warped_face, dtype=np.uint8)
+        if warped_face_mask.ndim != 2:
+            continue
+        combined_face_mask = np.maximum(combined_face_mask, warped_face_mask)
+
+    face_mask = combined_face_mask
+    if int(np.count_nonzero(face_mask >= 16)) == 0:
+        return warped_patch
+    warped_rgba = np.asarray(warped_patch, dtype=np.uint8)
+    base_rgba = np.asarray(base_roi.convert("RGBA"), dtype=np.uint8)
+    if warped_rgba.shape != base_rgba.shape or warped_rgba.ndim != 3 or warped_rgba.shape[2] != 4:
+        return warped_patch
+
+    rgb = warped_rgba[:, :, :3].astype(np.float32)
+    alpha = warped_rgba[:, :, 3]
+    luma = (
+        rgb[:, :, 0] * 0.299
+        + rgb[:, :, 1] * 0.587
+        + rgb[:, :, 2] * 0.114
+    )
+    chroma = np.max(rgb, axis=2) - np.min(rgb, axis=2)
+    face_core_mask = face_mask >= 32
+    replace_candidate_mask = (
+        (alpha >= 12)
+        & (luma >= 50.0)
+        & (chroma <= 165.0)
+    )
+    replace_mask = face_core_mask & replace_candidate_mask
+    if not bool(np.any(replace_mask)):
+        return warped_patch
+
+    replaced = warped_rgba.copy()
+    asset_rgb = warped_rgba[:, :, :3]
+    base_rgb = base_rgba[:, :, :3]
+    asset_ycrcb = cv2.cvtColor(asset_rgb, cv2.COLOR_RGB2YCrCb).astype(np.float32)
+    base_ycrcb = cv2.cvtColor(base_rgb, cv2.COLOR_RGB2YCrCb).astype(np.float32)
+    matched_ycrcb = asset_ycrcb.copy()
+    matched_ycrcb[:, :, 0][replace_mask] = (
+        asset_ycrcb[:, :, 0][replace_mask] * 0.35
+        + base_ycrcb[:, :, 0][replace_mask] * 0.65
+    )
+    matched_ycrcb[:, :, 1][replace_mask] = (
+        base_ycrcb[:, :, 1][replace_mask] * 0.95
+        + asset_ycrcb[:, :, 1][replace_mask] * 0.05
+    )
+    matched_ycrcb[:, :, 2][replace_mask] = (
+        base_ycrcb[:, :, 2][replace_mask] * 0.95
+        + asset_ycrcb[:, :, 2][replace_mask] * 0.05
+    )
+    matched_rgb = cv2.cvtColor(
+        np.clip(matched_ycrcb, 0.0, 255.0).astype(np.uint8),
+        cv2.COLOR_YCrCb2RGB,
+    )
+    replaced[:, :, :3][replace_mask] = matched_rgb[replace_mask]
+    return Image.fromarray(replaced, mode="RGBA")
 
 
-def _download_cuda_mat(gpu_mat) -> np.ndarray | None:
-    try:
-        return gpu_mat.download()
-    except Exception:
-        return None
-
-
-def _blend_rgba_over_rgb_cuda(
-    base_roi: np.ndarray,
-    overlay_rgba_gpu,
-    *,
-    acceleration_preference: str,
-) -> np.ndarray | None:
-    if not _opencv_cuda_alpha_enabled(acceleration_preference):
-        return None
-
-    cuda_module = getattr(cv2, "cuda", None)
-    gpu_mat_ctor = _cuda_gpu_mat_ctor()
-    if cuda_module is None or gpu_mat_ctor is None:
-        return None
-
-    try:
-        base_gpu = gpu_mat_ctor()
-        base_gpu.upload(base_roi)
-        base_rgba_gpu = cuda_module.cvtColor(base_gpu, cv2.COLOR_RGB2RGBA)
-        blended_rgba_gpu = cuda_module.alphaComp(
-            overlay_rgba_gpu,
-            base_rgba_gpu,
-            cuda_module.ALPHA_OVER,
-        )
-        blended_rgb_gpu = cuda_module.cvtColor(blended_rgba_gpu, cv2.COLOR_RGBA2RGB)
-        return blended_rgb_gpu.download()
-    except Exception:
-        return None
-
-
-def compose_bundle_frame_rgb(
-    frame_rgb: np.ndarray,
+def compose_bundle_frame(
+    frame_image: Image.Image,
     bundle: AssetBundle | None,
     *,
     reference_width: int | None = None,
     reference_height: int | None = None,
-    acceleration_preference: str = "auto",
-) -> np.ndarray:
+    rgb_gain: float | None = None,
+    original_frame_image: Image.Image | None = None,
+    preserve_uncovered_base: bool = True,
+    coverage_feather_px: int | None = None,
+    debug_payload: dict[str, object] | None = None,
+) -> Image.Image:
     if (
         bundle is None
         or bundle.hair_rgba_path is None
         or bundle.render_task is None
         or bundle.hair_bbox is None
     ):
-        return frame_rgb
-
-    if frame_rgb.ndim != 3 or frame_rgb.shape[2] != 3:
-        return frame_rgb
+        return frame_image
 
     render_task = bundle.render_task
     if reference_width is not None and reference_height is not None:
@@ -240,21 +295,20 @@ def compose_bundle_frame_rgb(
             render_task,
             reference_width=reference_width,
             reference_height=reference_height,
-            frame_width=int(frame_rgb.shape[1]),
-            frame_height=int(frame_rgb.shape[0]),
+            frame_width=frame_image.width,
+            frame_height=frame_image.height,
         )
     destination_roi = render_task.get("destination_roi")
     matrix = render_task.get("matrix")
     if not destination_roi or not matrix:
-        return frame_rgb
+        return frame_image
 
     roi_width = int(destination_roi["w"])
     roi_height = int(destination_roi["h"])
     if roi_width <= 0 or roi_height <= 0:
-        return frame_rgb
+        return frame_image
 
-    hair_rgba_path = str(bundle.hair_rgba_path)
-    source_patch = _load_rgba_image(hair_rgba_path)
+    source_patch = _load_rgba_image(str(bundle.hair_rgba_path))
     source_origin_x = int(bundle.hair_bbox["x"])
     source_origin_y = int(bundle.hair_bbox["y"])
 
@@ -280,79 +334,67 @@ def compose_bundle_frame_rgb(
         local_f,
     )
     if inverse is None:
-        return frame_rgb
+        return frame_image
 
-    inverse_matrix = np.asarray(inverse, dtype=np.float32).reshape(2, 3)
-    warped_patch_gpu = None
-    if _opencv_cuda_warp_enabled(acceleration_preference):
-        warped_patch_gpu = _warp_rgba_patch_cuda(
-            hair_rgba_path,
-            inverse_matrix,
-            roi_width,
-            roi_height,
-            acceleration_preference=acceleration_preference,
-        )
-
-    warped_patch = None
-    if warped_patch_gpu is None:
-        warped_patch = cv2.warpAffine(
-            source_patch,
-            inverse_matrix,
-            (roi_width, roi_height),
-            flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=(0, 0, 0, 0),
-        )
-
-    output = np.ascontiguousarray(frame_rgb).copy()
-    frame_height, frame_width = output.shape[:2]
-    x0 = max(0, int(destination_roi["x"]))
-    y0 = max(0, int(destination_roi["y"]))
-    x1 = min(frame_width, x0 + roi_width)
-    y1 = min(frame_height, y0 + roi_height)
-    if x1 <= x0 or y1 <= y0:
-        return output
-
-    base_roi = output[y0:y1, x0:x1]
-    if (
-        warped_patch_gpu is not None
-        and (x1 - x0) == roi_width
-        and (y1 - y0) == roi_height
-    ):
-        full_gpu_roi = _blend_rgba_over_rgb_cuda(
-            base_roi,
-            warped_patch_gpu,
-            acceleration_preference=acceleration_preference,
-        )
-        if full_gpu_roi is not None:
-            base_roi[:, :] = full_gpu_roi
-            return output
-
-    if warped_patch_gpu is not None:
-        warped_patch = _download_cuda_mat(warped_patch_gpu)
-
-    if warped_patch is None:
-        return output
-
-    warped_patch = warped_patch[: y1 - y0, : x1 - x0]
-    _blend_rgba_over_rgb(base_roi, warped_patch)
-    return output
-
-
-def compose_bundle_frame(
-    frame_image: Image.Image,
-    bundle: AssetBundle | None,
-    *,
-    reference_width: int | None = None,
-    reference_height: int | None = None,
-    acceleration_preference: str = "auto",
-) -> Image.Image:
-    frame_rgb = np.asarray(frame_image.convert("RGB"))
-    rendered_rgb = compose_bundle_frame_rgb(
-        frame_rgb,
-        bundle,
-        reference_width=reference_width,
-        reference_height=reference_height,
-        acceleration_preference=acceleration_preference,
+    warped_patch = source_patch.transform(
+        (roi_width, roi_height),
+        Image.AFFINE,
+        inverse,
+        resample=RESAMPLE_FILTER,
     )
-    return Image.fromarray(rendered_rgb)
+    if rgb_gain is not None:
+        warped_patch = _apply_rgba_rgb_gain(warped_patch, float(rgb_gain))
+    warped_rgba = np.asarray(warped_patch, dtype=np.uint8)
+    hard_coverage_mask = None
+    if warped_rgba.ndim == 3 and warped_rgba.shape[2] == 4:
+        hard_coverage_mask = np.where(warped_rgba[:, :, 3] >= 4, np.uint8(255), np.uint8(0))
+        if int(np.count_nonzero(hard_coverage_mask)) > 0:
+            hard_coverage_mask = cv2.dilate(
+                hard_coverage_mask,
+                cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
+                iterations=1,
+            )
+
+    output = frame_image if frame_image.mode == "RGB" else frame_image.convert("RGB")
+    box = (
+        int(destination_roi["x"]),
+        int(destination_roi["y"]),
+        int(destination_roi["x"]) + roi_width,
+        int(destination_roi["y"]) + roi_height,
+    )
+    base_roi = output.crop(box).convert("RGBA")
+    if preserve_uncovered_base and original_frame_image is not None:
+        original_output = (
+            original_frame_image
+            if original_frame_image.mode == "RGB"
+            else original_frame_image.convert("RGB")
+        )
+        if original_output.size == output.size:
+            original_roi = original_output.crop(box).convert("RGBA")
+            base_roi = _restore_uncovered_base_roi(
+                base_roi,
+                original_roi,
+                warped_patch,
+                feather_px=coverage_feather_px,
+            )
+    face_mask_path = getattr(bundle, "face_mask_path", None)
+    protect_face_mask_path = getattr(bundle, "protect_face_mask_path", None)
+    hair_bbox = getattr(bundle, "hair_bbox", None)
+    warped_patch = _replace_asset_skin_with_base_roi(
+        warped_patch,
+        base_roi,
+        face_mask_path=face_mask_path,
+        protect_face_mask_path=protect_face_mask_path,
+        hair_bbox=hair_bbox,
+        inverse=inverse,
+        roi_width=roi_width,
+        roi_height=roi_height,
+    )
+    composited_roi = Image.alpha_composite(base_roi, warped_patch)
+    output.paste(composited_roi.convert(output.mode), box[:2])
+    if debug_payload is not None:
+        full_frame_coverage = np.zeros((output.height, output.width), dtype=np.uint8)
+        if hard_coverage_mask is not None:
+            full_frame_coverage[box[1] : box[3], box[0] : box[2]] = hard_coverage_mask
+        debug_payload["coverage_mask"] = full_frame_coverage
+    return output

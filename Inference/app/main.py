@@ -1,58 +1,108 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from app.acceleration import detect_runtime_acceleration
-from app.auth import build_replay_store
-from app.bald import BaldPreprocessor
+from app.auth import ReplayStore, build_replay_store
 from app.catalog import AssetCatalog
 from app.config import Settings
-from app.face_tracking import ServerFaceTracker
+from app.hairddae_runtime_manager import HairddaeRuntimeManager
 from app.http_runtime import attach_http_runtime_routes
+from app.lazy_runtime_dependencies import LazyFaceTracker, LazyHairAttenuator, LazyHairSegmenter
 from app.rtc import attach_rtc_routes
-from app.rtc_h264_acceleration import install_aiortc_h264_acceleration
+from app.rtc_udp_port_range import configure_aioice_udp_port_range
+
+
+@dataclass(frozen=True)
+class AppDependencies:
+    replay_store: ReplayStore
+    catalog: AssetCatalog
+    face_tracker: LazyFaceTracker
+    hair_attenuator: LazyHairAttenuator | None
+    hair_segmenter: LazyHairSegmenter | None
+    hair_runtime_manager: HairddaeRuntimeManager
+
+
+def _build_hair_attenuator(settings: Settings) -> LazyHairAttenuator | None:
+    if not settings.rtc_hair_attenuation_enabled:
+        return None
+    return LazyHairAttenuator(
+        strength=settings.rtc_hair_attenuation_strength,
+        segmentation_confidence_threshold=settings.rtc_hair_segmentation_confidence_threshold,
+        desaturation=settings.rtc_hair_attenuation_desaturation,
+        brightness_lift=settings.rtc_hair_attenuation_brightness_lift,
+        blur_kernel_scale=settings.rtc_hair_attenuation_blur_kernel_scale,
+        max_work_dimension=settings.rtc_hair_attenuation_max_work_dimension,
+        bald_test_mode=settings.rtc_bald_test_mode,
+    )
+
+
+def _build_hair_segmenter(settings: Settings) -> LazyHairSegmenter | None:
+    if not settings.rtc_hair_segmentation_enabled:
+        return None
+    return LazyHairSegmenter(
+        settings.hair_segmenter_model_path,
+        delegate=settings.hair_segmenter_delegate,
+    )
+
+
+def _build_app_dependencies(settings: Settings) -> AppDependencies:
+    return AppDependencies(
+        replay_store=build_replay_store(settings),
+        catalog=AssetCatalog(settings),
+        face_tracker=LazyFaceTracker(
+            settings.face_landmarker_model_path,
+            num_faces=settings.face_tracker_num_faces,
+            delegate=settings.face_tracker_delegate,
+        ),
+        hair_attenuator=_build_hair_attenuator(settings),
+        hair_segmenter=_build_hair_segmenter(settings),
+        hair_runtime_manager=HairddaeRuntimeManager(settings),
+    )
+
+
+def _attach_app_state(app: FastAPI, settings: Settings, dependencies: AppDependencies) -> None:
+    app.state.settings = settings
+    app.state.replay_store = dependencies.replay_store
+    app.state.catalog = dependencies.catalog
+    app.state.face_tracker = dependencies.face_tracker
+    app.state.hair_segmenter = dependencies.hair_segmenter
+    app.state.hair_attenuator = dependencies.hair_attenuator
+    app.state.hair_runtime_manager = dependencies.hair_runtime_manager
+
+
+async def _close_app_dependencies(app: FastAPI, dependencies: AppDependencies) -> None:
+    for peer_connection in list(getattr(app.state, "rtc_peer_connections", set())):
+        await peer_connection.close()
+    dependencies.hair_runtime_manager.close()
+    if dependencies.hair_segmenter is not None:
+        dependencies.hair_segmenter.close()
+    if dependencies.hair_attenuator is not None:
+        dependencies.hair_attenuator.close()
+    dependencies.face_tracker.close()
+    await dependencies.replay_store.close()
 
 
 def create_app() -> FastAPI:
     settings = Settings.from_env()
-    replay_store = build_replay_store(settings)
-    catalog = AssetCatalog(settings)
-    acceleration = detect_runtime_acceleration()
-    rtc_h264_acceleration = install_aiortc_h264_acceleration()
-    face_tracker = ServerFaceTracker(
-        settings.face_landmarker_model_path,
-        delegate_preference=settings.mediapipe_delegate,
-        running_mode=settings.http_face_landmarker_running_mode,
+    configure_aioice_udp_port_range(
+        settings.rtc_udp_port_min,
+        settings.rtc_udp_port_max,
     )
-    bald_processor = BaldPreprocessor(
-        settings.hair_segmenter_model_path,
-        delegate_preference=settings.mediapipe_delegate,
-        running_mode=settings.http_hair_segmenter_running_mode,
-    )
+    dependencies = _build_app_dependencies(settings)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         try:
             yield
         finally:
-            for peer_connection in list(getattr(app.state, "rtc_peer_connections", set())):
-                await peer_connection.close()
-            bald_processor.close()
-            face_tracker.close()
-            await replay_store.close()
+            await _close_app_dependencies(app, dependencies)
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
-
-    app.state.settings = settings
-    app.state.replay_store = replay_store
-    app.state.catalog = catalog
-    app.state.face_tracker = face_tracker
-    app.state.bald_processor = bald_processor
-    app.state.acceleration = acceleration
-    app.state.rtc_h264_acceleration = rtc_h264_acceleration
+    _attach_app_state(app, settings, dependencies)
     attach_rtc_routes(app)
     attach_http_runtime_routes(app)
 
@@ -63,19 +113,6 @@ def create_app() -> FastAPI:
                 "status": "ok",
                 "service": settings.app_name,
                 "node_id": settings.node_id,
-                "acceleration": acceleration.to_dict(),
-                "rtc_h264_acceleration": rtc_h264_acceleration,
-                "http_processors": {
-                    "face_tracker_delegate": face_tracker.acceleration,
-                    "bald_processor_delegate": bald_processor.acceleration,
-                    "bald_processor_warning": getattr(bald_processor, "initialization_warning", None),
-                    "rtc_bald_enabled": settings.rtc_bald_enabled,
-                    "rtc_wait_for_ice_gathering": settings.rtc_wait_for_ice_gathering,
-                    "rtc_ice_gathering_timeout_ms": settings.rtc_ice_gathering_timeout_ms,
-                    "render_acceleration": settings.render_acceleration,
-                    "face_tracker_running_mode": settings.http_face_landmarker_running_mode,
-                    "bald_processor_running_mode": settings.http_hair_segmenter_running_mode,
-                },
             }
         )
 

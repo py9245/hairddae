@@ -2,12 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-from math import hypot
 from pathlib import Path
 from threading import Lock
 from typing import Any
 
 from app.config import Settings
+from app.hairddae_adapter import (
+    build_runtime_asset_rows,
+    score_asset_for_feature,
+    select_runtime_asset,
+)
 from app.models import FeatureMessageModel
 from app.render import build_render_task
 
@@ -16,69 +20,6 @@ def _normalize_url(base_url: str, dataset_code: str, relative_path: str | None) 
     if not relative_path:
         return None
     return f"{base_url}/{dataset_code}/{relative_path.lstrip('/')}"
-
-
-def _point_distance(a: dict[str, Any], b: dict[str, Any]) -> float:
-    return float(hypot(float(a["x"]) - float(b["x"]), float(a["y"]) - float(b["y"])))
-
-
-def _derive_geom(feature: FeatureMessageModel) -> dict[str, float]:
-    bbox_width = max(1.0, float(feature.face_bbox.w))
-    bbox_height = max(1.0, float(feature.face_bbox.h))
-    anchors = {name: point.model_dump() for name, point in feature.anchors.items()}
-    return {
-        "temple_span_norm": _point_distance(anchors["left_temple"], anchors["right_temple"]) / bbox_width,
-        "lower_span_norm": _point_distance(anchors["lower_left"], anchors["lower_right"]) / bbox_width,
-        "crown_offset_norm": abs(float(anchors["forehead_center"]["y"]) - float(anchors["crown"]["y"])) / bbox_height,
-        "face_ratio": (float(feature.face_bbox.w) * float(feature.face_bbox.h))
-        / float(feature.image_size.width * feature.image_size.height),
-    }
-
-
-def _retrieval_score(
-    feature: FeatureMessageModel,
-    asset: "AssetRecord",
-    geom: dict[str, float] | None = None,
-) -> float:
-    resolved_geom = geom if geom is not None else _derive_geom(feature)
-    pose = feature.pose
-    pose_score = (
-        2.6 * abs(pose.yaw_1deg - asset.yaw_1deg)
-        + 1.8 * abs(pose.pitch_1deg - asset.pitch_1deg)
-        + 1.2 * abs(pose.roll_1deg - asset.roll_1deg)
-    )
-    geom_score = (
-        40.0 * abs(resolved_geom["temple_span_norm"] - asset.temple_span_ratio)
-        + 25.0 * abs(resolved_geom["lower_span_norm"] - asset.lower_span_ratio)
-        + 18.0 * abs(resolved_geom["crown_offset_norm"] - asset.crown_offset_ratio)
-        + 18.0 * abs(resolved_geom["face_ratio"] - asset.face_ratio)
-    )
-    return round(pose_score + geom_score, 6)
-
-
-POSE_FILTER_STAGES: tuple[tuple[int, int, int], ...] = (
-    (12, 10, 12),
-    (20, 14, 16),
-    (32, 20, 20),
-)
-
-
-def _filter_assets_by_pose(
-    feature: FeatureMessageModel,
-    candidates: list["AssetRecord"],
-) -> list["AssetRecord"]:
-    pose = feature.pose
-    for yaw_limit, pitch_limit, roll_limit in POSE_FILTER_STAGES:
-        filtered = [
-            item
-            for item in candidates
-            if abs(pose.yaw_1deg - item.yaw_1deg) <= yaw_limit
-            and abs(pose.pitch_1deg - item.pitch_1deg) <= pitch_limit
-            and abs(pose.roll_1deg - item.roll_1deg) <= roll_limit
-        ]
-        if filtered:
-            return filtered
-    return candidates
 
 
 @dataclass(frozen=True)
@@ -99,6 +40,13 @@ class AssetBundle:
     render_task: dict[str, Any] | None
     revision: str
     score: float
+    dataset_code: str | None = None
+    asset_root_path: Path | None = None
+    metadata_path: str | None = None
+    asset_row: dict[str, Any] | None = None
+    weighted_assets: tuple[tuple[dict[str, Any], float], ...] = ()
+    face_mask_path: Path | None = None
+    protect_face_mask_path: Path | None = None
 
     def to_message(self) -> dict[str, Any]:
         return {
@@ -122,26 +70,11 @@ class AssetBundle:
 
 
 @dataclass(frozen=True)
-class AssetRecord:
-    asset_id: str
-    pose_key: str
-    metadata_path: str
-    anchors_path: str
-    hair_mask_path: str | None
-    yaw_1deg: int
-    pitch_1deg: int
-    roll_1deg: int
-    face_ratio: float
-    temple_span_ratio: float
-    lower_span_ratio: float
-    crown_offset_ratio: float
-    approved: bool
-
-
-@dataclass(frozen=True)
 class DatasetRecord:
     dataset_code: str
-    items: tuple[AssetRecord, ...]
+    asset_root_path: Path
+    runtime_items: tuple[dict[str, Any], ...]
+    items_by_id: dict[str, dict[str, Any]]
     metadata_cache: dict[str, dict[str, Any]]
     anchors_cache: dict[str, dict[str, Any]]
 
@@ -158,27 +91,20 @@ class AssetCatalog:
         feature: FeatureMessageModel,
         representative_asset_id: str | None = None,
     ) -> AssetBundle:
-        dataset, best_asset, geom = self._select_asset(
-            dataset_code,
+        dataset = self._load_dataset(dataset_code)
+        selection = select_runtime_asset(
+            dataset.asset_root_path,
+            list(dataset.runtime_items),
             feature,
             representative_asset_id=representative_asset_id,
         )
-        return self._build_bundle(dataset_code, dataset, best_asset, feature, geom=geom)
-
-    def bundle_for_recommended_asset(
-        self,
-        dataset_code: str,
-        *,
-        selection_feature: FeatureMessageModel,
-        render_feature: FeatureMessageModel,
-        representative_asset_id: str | None = None,
-    ) -> AssetBundle:
-        dataset, best_asset, _ = self._select_asset(
-            dataset_code,
-            selection_feature,
-            representative_asset_id=representative_asset_id,
+        return self._build_bundle(
+            dataset,
+            selection.selected_asset,
+            feature,
+            score=selection.score,
+            weighted_assets=((selection.selected_asset, 1.0),),
         )
-        return self._build_bundle(dataset_code, dataset, best_asset, render_feature)
 
     def bundle_for_asset(
         self,
@@ -187,21 +113,64 @@ class AssetCatalog:
         feature: FeatureMessageModel,
     ) -> AssetBundle:
         dataset = self._load_dataset(dataset_code)
-        asset = next((item for item in dataset.items if item.asset_id == asset_id), None)
+        asset = dataset.items_by_id.get(asset_id)
         if asset is None:
             raise ValueError(f"unknown asset_id {asset_id} for dataset {dataset_code}")
-        return self._build_bundle(dataset_code, dataset, asset, feature)
+        return self._build_bundle(
+            dataset,
+            asset,
+            feature,
+            score=score_asset_for_feature(feature, asset),
+            weighted_assets=((asset, 1.0),),
+        )
+
+    def bundle_for_runtime_selection(
+        self,
+        dataset_code: str,
+        asset_id: str,
+        *,
+        score: float | None = None,
+    ) -> AssetBundle:
+        dataset = self._load_dataset(dataset_code)
+        asset = dataset.items_by_id.get(asset_id)
+        if asset is None:
+            raise ValueError(f"unknown asset_id {asset_id} for dataset {dataset_code}")
+        return self._build_runtime_bundle(
+            dataset,
+            asset,
+            score=0.0 if score is None else float(score),
+        )
+
+    def dataset_exists(self, dataset_code: str) -> bool:
+        asset_index_path = self._settings.static_root / dataset_code / "manifests" / "asset_index_v0.json"
+        return asset_index_path.is_file()
+
+    def ensure_control_target(
+        self,
+        dataset_code: str,
+        representative_asset_id: str | None = None,
+    ) -> None:
+        if not self.dataset_exists(dataset_code):
+            raise ValueError(f"unknown dataset_code {dataset_code}")
+
+        if representative_asset_id in (None, ""):
+            return
+
+        dataset = self._load_dataset(dataset_code)
+        if representative_asset_id not in dataset.items_by_id:
+            raise ValueError(
+                f"unknown representative_asset_id {representative_asset_id} for dataset {dataset_code}"
+            )
 
     def _build_bundle(
         self,
-        dataset_code: str,
         dataset: DatasetRecord,
-        asset: AssetRecord,
+        asset: dict[str, Any],
         feature: FeatureMessageModel,
         *,
-        geom: dict[str, float] | None = None,
+        score: float,
+        weighted_assets: tuple[tuple[dict[str, Any], float], ...],
     ) -> AssetBundle:
-        score = _retrieval_score(feature, asset, geom)
         metadata = self._load_metadata(dataset, asset)
         anchors_payload = self._load_anchors(dataset, asset)
         render_task = build_render_task(
@@ -209,70 +178,143 @@ class AssetCatalog:
             asset_anchors_payload=anchors_payload,
             metadata=metadata,
         )
+        hair_rgba_path = metadata.get("hair_rgba_path")
+        face_mask_path = metadata.get("face_mask_path")
+        protect_face_mask_path = metadata.get("protect_face_mask_path")
         return AssetBundle(
-            asset_id=asset.asset_id,
-            pose_key=asset.pose_key,
-            yaw_1deg=asset.yaw_1deg,
-            pitch_1deg=asset.pitch_1deg,
-            roll_1deg=asset.roll_1deg,
+            asset_id=str(asset["asset_id"]),
+            pose_key=str(asset["pose_key"]),
+            yaw_1deg=int(asset.get("yaw_1deg", 0)),
+            pitch_1deg=int(asset.get("pitch_1deg", 0)),
+            roll_1deg=int(asset.get("roll_1deg", 0)),
             hair_rgba_path=(
                 None
-                if metadata.get("hair_rgba_path") in (None, "")
-                else self._settings.static_root / dataset_code / str(metadata["hair_rgba_path"])
+                if hair_rgba_path in (None, "")
+                else dataset.asset_root_path / str(hair_rgba_path)
             ),
             hair_rgba_url=_normalize_url(
                 self._settings.static_base_url,
-                dataset_code,
-                metadata.get("hair_rgba_path"),
+                dataset.dataset_code,
+                None if hair_rgba_path in (None, "") else str(hair_rgba_path),
             ),
             hair_mask_url=_normalize_url(
                 self._settings.static_base_url,
-                dataset_code,
-                asset.hair_mask_path,
+                dataset.dataset_code,
+                None if asset.get("hair_mask_path") in (None, "") else str(asset["hair_mask_path"]),
             ),
             anchors_url=_normalize_url(
                 self._settings.static_base_url,
-                dataset_code,
-                asset.anchors_path,
+                dataset.dataset_code,
+                str(asset["anchors_path"]),
             ),
             metadata_url=_normalize_url(
                 self._settings.static_base_url,
-                dataset_code,
-                asset.metadata_path,
+                dataset.dataset_code,
+                str(asset["metadata_path"]),
             ),
             hair_bbox=metadata.get("hair_rgba_bbox"),
             face_mask_url=_normalize_url(
                 self._settings.static_base_url,
-                dataset_code,
+                dataset.dataset_code,
                 metadata.get("face_mask_path"),
             ),
             protect_face_mask_url=_normalize_url(
                 self._settings.static_base_url,
-                dataset_code,
+                dataset.dataset_code,
                 metadata.get("protect_face_mask_path"),
             ),
             render_task=None if render_task is None else render_task.to_message(),
-            revision=f"{dataset_code}:{asset.asset_id}",
-            score=score,
+            revision=f"{dataset.dataset_code}:{asset['asset_id']}",
+            score=float(score),
+            dataset_code=dataset.dataset_code,
+            asset_root_path=dataset.asset_root_path,
+            metadata_path=str(asset["metadata_path"]),
+            asset_row=asset,
+            weighted_assets=weighted_assets,
+            face_mask_path=(
+                None
+                if face_mask_path in (None, "")
+                else dataset.asset_root_path / str(face_mask_path)
+            ),
+            protect_face_mask_path=(
+                None
+                if protect_face_mask_path in (None, "")
+                else dataset.asset_root_path / str(protect_face_mask_path)
+            ),
         )
 
-    def _select_asset(
+    def _build_runtime_bundle(
         self,
-        dataset_code: str,
-        feature: FeatureMessageModel,
-        representative_asset_id: str | None = None,
-    ) -> tuple[DatasetRecord, AssetRecord, dict[str, float]]:
-        del representative_asset_id
-
-        dataset = self._load_dataset(dataset_code)
-        candidates = [item for item in dataset.items if item.approved] or list(dataset.items)
-        if not candidates:
-            raise ValueError(f"no selectable assets for dataset {dataset_code}")
-
-        candidates = _filter_assets_by_pose(feature, candidates)
-        geom = _derive_geom(feature)
-        best_asset = min(candidates, key=lambda item: _retrieval_score(feature, item, geom))
-        return dataset, best_asset, geom
+        dataset: DatasetRecord,
+        asset: dict[str, Any],
+        *,
+        score: float,
+    ) -> AssetBundle:
+        metadata = self._load_metadata(dataset, asset)
+        hair_rgba_path = metadata.get("hair_rgba_path")
+        face_mask_path = metadata.get("face_mask_path")
+        protect_face_mask_path = metadata.get("protect_face_mask_path")
+        return AssetBundle(
+            asset_id=str(asset["asset_id"]),
+            pose_key=str(asset["pose_key"]),
+            yaw_1deg=int(asset.get("yaw_1deg", 0)),
+            pitch_1deg=int(asset.get("pitch_1deg", 0)),
+            roll_1deg=int(asset.get("roll_1deg", 0)),
+            hair_rgba_path=(
+                None
+                if hair_rgba_path in (None, "")
+                else dataset.asset_root_path / str(hair_rgba_path)
+            ),
+            hair_rgba_url=_normalize_url(
+                self._settings.static_base_url,
+                dataset.dataset_code,
+                None if hair_rgba_path in (None, "") else str(hair_rgba_path),
+            ),
+            hair_mask_url=_normalize_url(
+                self._settings.static_base_url,
+                dataset.dataset_code,
+                None if asset.get("hair_mask_path") in (None, "") else str(asset["hair_mask_path"]),
+            ),
+            anchors_url=_normalize_url(
+                self._settings.static_base_url,
+                dataset.dataset_code,
+                str(asset["anchors_path"]),
+            ),
+            metadata_url=_normalize_url(
+                self._settings.static_base_url,
+                dataset.dataset_code,
+                str(asset["metadata_path"]),
+            ),
+            hair_bbox=metadata.get("hair_rgba_bbox"),
+            face_mask_url=_normalize_url(
+                self._settings.static_base_url,
+                dataset.dataset_code,
+                metadata.get("face_mask_path"),
+            ),
+            protect_face_mask_url=_normalize_url(
+                self._settings.static_base_url,
+                dataset.dataset_code,
+                metadata.get("protect_face_mask_path"),
+            ),
+            render_task=None,
+            revision=f"{dataset.dataset_code}:{asset['asset_id']}",
+            score=float(score),
+            dataset_code=dataset.dataset_code,
+            asset_root_path=dataset.asset_root_path,
+            metadata_path=str(asset["metadata_path"]),
+            asset_row=asset,
+            weighted_assets=((asset, 1.0),),
+            face_mask_path=(
+                None
+                if face_mask_path in (None, "")
+                else dataset.asset_root_path / str(face_mask_path)
+            ),
+            protect_face_mask_path=(
+                None
+                if protect_face_mask_path in (None, "")
+                else dataset.asset_root_path / str(protect_face_mask_path)
+            ),
+        )
 
     def _load_dataset(self, dataset_code: str) -> DatasetRecord:
         with self._lock:
@@ -280,50 +322,40 @@ class AssetCatalog:
             if dataset is not None:
                 return dataset
 
-            asset_index_path = self._settings.static_root / dataset_code / "manifests" / "asset_index_v0.json"
-            payload = json.loads(asset_index_path.read_text())
-            items: list[AssetRecord] = []
-            for item in payload.get("items", []):
-                items.append(
-                    AssetRecord(
-                        asset_id=str(item["asset_id"]),
-                        pose_key=str(item["pose_key"]),
-                        metadata_path=str(item["metadata_path"]),
-                        anchors_path=str(item["anchors_path"]),
-                        hair_mask_path=(
-                            None if item.get("hair_mask_path") in (None, "") else str(item["hair_mask_path"])
-                        ),
-                        yaw_1deg=int(item.get("yaw_1deg", 0)),
-                        pitch_1deg=int(item.get("pitch_1deg", 0)),
-                        roll_1deg=int(item.get("roll_1deg", 0)),
-                        face_ratio=float(item.get("face_ratio", 0.0)),
-                        temple_span_ratio=float(item.get("temple_span_ratio", 0.0)),
-                        lower_span_ratio=float(item.get("lower_span_ratio", 0.0)),
-                        crown_offset_ratio=float(item.get("crown_offset_ratio", 0.0)),
-                        approved=bool(item.get("approved", False)),
-                    )
-                )
+            asset_root_path = self._settings.static_root / dataset_code
+            asset_index_path = asset_root_path / "manifests" / "asset_index_v0.json"
+            payload = json.loads(asset_index_path.read_text(encoding="utf-8"))
+            items = [
+                dict(item)
+                for item in payload.get("items", [])
+                if isinstance(item, dict) and str(item.get("asset_id") or "")
+            ]
+            runtime_items = tuple(build_runtime_asset_rows(asset_root_path, items))
             dataset = DatasetRecord(
                 dataset_code=dataset_code,
-                items=tuple(items),
+                asset_root_path=asset_root_path,
+                runtime_items=runtime_items,
+                items_by_id={str(item["asset_id"]): item for item in items},
                 metadata_cache={},
                 anchors_cache={},
             )
             self._cache[dataset_code] = dataset
             return dataset
 
-    def _load_metadata(self, dataset: DatasetRecord, asset: AssetRecord) -> dict[str, Any]:
-        if asset.asset_id in dataset.metadata_cache:
-            return dataset.metadata_cache[asset.asset_id]
-        metadata_path = self._settings.static_root / dataset.dataset_code / asset.metadata_path
-        metadata = json.loads(metadata_path.read_text())
-        dataset.metadata_cache[asset.asset_id] = metadata
+    def _load_metadata(self, dataset: DatasetRecord, asset: dict[str, Any]) -> dict[str, Any]:
+        asset_id = str(asset["asset_id"])
+        if asset_id in dataset.metadata_cache:
+            return dataset.metadata_cache[asset_id]
+        metadata_path = dataset.asset_root_path / str(asset["metadata_path"])
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        dataset.metadata_cache[asset_id] = metadata
         return metadata
 
-    def _load_anchors(self, dataset: DatasetRecord, asset: AssetRecord) -> dict[str, Any]:
-        if asset.asset_id in dataset.anchors_cache:
-            return dataset.anchors_cache[asset.asset_id]
-        anchors_path = self._settings.static_root / dataset.dataset_code / asset.anchors_path
-        anchors_payload = json.loads(anchors_path.read_text())
-        dataset.anchors_cache[asset.asset_id] = anchors_payload
+    def _load_anchors(self, dataset: DatasetRecord, asset: dict[str, Any]) -> dict[str, Any]:
+        asset_id = str(asset["asset_id"])
+        if asset_id in dataset.anchors_cache:
+            return dataset.anchors_cache[asset_id]
+        anchors_path = dataset.asset_root_path / str(asset["anchors_path"])
+        anchors_payload = json.loads(anchors_path.read_text(encoding="utf-8"))
+        dataset.anchors_cache[asset_id] = anchors_payload
         return anchors_payload

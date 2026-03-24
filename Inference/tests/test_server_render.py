@@ -1,22 +1,26 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import numpy as np
 from PIL import Image
 
 from app.catalog import AssetBundle
-from app.server_render import compose_bundle_frame, compose_bundle_frame_rgb
+from app.server_render import compose_bundle_frame
 
 
-def _build_bundle(image_path: str) -> AssetBundle:
-    return AssetBundle(
-        asset_id="asset-1",
-        pose_key="pose-1",
+def test_compose_bundle_frame_restores_uncovered_base_roi(tmp_path) -> None:
+    rgba = np.zeros((4, 4, 4), dtype=np.uint8)
+    rgba[1:3, 1:3, :3] = np.array([18, 28, 220], dtype=np.uint8)
+    rgba[1:3, 1:3, 3] = 255
+    hair_path = tmp_path / "hair.png"
+    Image.fromarray(rgba, mode="RGBA").save(hair_path)
+
+    bundle = AssetBundle(
+        asset_id="asset-a",
+        pose_key="0_0_0",
         yaw_1deg=0,
         pitch_1deg=0,
         roll_1deg=0,
-        hair_rgba_path=None if not image_path else Path(image_path),
+        hair_rgba_path=hair_path,
         hair_rgba_url=None,
         hair_mask_url=None,
         anchors_url=None,
@@ -25,55 +29,128 @@ def _build_bundle(image_path: str) -> AssetBundle:
         face_mask_url=None,
         protect_face_mask_url=None,
         render_task={
-            "matrix": {"a": 1.0, "b": 0.0, "c": 0.0, "d": 1.0, "e": 3.0, "f": 4.0},
-            "destination_roi": {"x": 3, "y": 4, "w": 4, "h": 4},
+            "destination_roi": {"x": 0, "y": 0, "w": 4, "h": 4},
+            "matrix": {"a": 1.0, "b": 0.0, "c": 0.0, "d": 1.0, "e": 0.0, "f": 0.0},
         },
-        revision="test",
-        score=0.0,
+        revision="r1",
+        score=1.0,
     )
 
+    suppressed_frame = Image.fromarray(np.full((4, 4, 3), 190, dtype=np.uint8), mode="RGB")
+    original_frame = Image.fromarray(np.full((4, 4, 3), 24, dtype=np.uint8), mode="RGB")
 
-def test_compose_bundle_frame_rgb_blends_overlay_without_mutating_input(tmp_path) -> None:
-    overlay_rgba = np.zeros((4, 4, 4), dtype=np.uint8)
-    overlay_rgba[:, :, 0] = 200
-    overlay_rgba[:, :, 1] = 10
-    overlay_rgba[:, :, 2] = 10
-    overlay_rgba[:, :, 3] = 128
-    overlay_path = tmp_path / "overlay.png"
-    Image.fromarray(overlay_rgba).save(overlay_path)
+    output = compose_bundle_frame(
+        suppressed_frame,
+        bundle,
+        original_frame_image=original_frame,
+        coverage_feather_px=0,
+    )
 
-    frame_rgb = np.full((12, 12, 3), 20, dtype=np.uint8)
-    original = frame_rgb.copy()
-    bundle = _build_bundle(str(overlay_path))
+    output_bgr = np.asarray(output, dtype=np.uint8)
+    uncovered_pixel = output_bgr[0, 0]
+    covered_pixel = output_bgr[1, 1]
 
-    rendered = compose_bundle_frame_rgb(frame_rgb, bundle)
-
-    assert np.array_equal(frame_rgb, original)
-    assert rendered.shape == frame_rgb.shape
-
-    expected_roi = (
-        (
-            overlay_rgba[:, :, :3].astype(np.uint16) * 128
-            + original[4:8, 3:7].astype(np.uint16) * 127
-            + 127
-        )
-        // 255
-    ).astype(np.uint8)
-    assert np.array_equal(rendered[4:8, 3:7], expected_roi)
-    assert np.array_equal(rendered[:4, :, :], original[:4, :, :])
+    assert np.allclose(uncovered_pixel, np.array([24, 24, 24], dtype=np.uint8), atol=2)
+    assert int(covered_pixel[2]) > int(uncovered_pixel[2])
 
 
-def test_compose_bundle_frame_wrapper_matches_rgb_path(tmp_path) -> None:
-    overlay_rgba = np.zeros((4, 4, 4), dtype=np.uint8)
-    overlay_rgba[:, :, 1] = 180
-    overlay_rgba[:, :, 3] = 255
-    overlay_path = tmp_path / "overlay.png"
-    Image.fromarray(overlay_rgba).save(overlay_path)
+def test_compose_bundle_frame_replaces_asset_skin_with_base_skin(tmp_path) -> None:
+    rgba = np.zeros((4, 4, 4), dtype=np.uint8)
+    rgba[1:3, 1:3, :3] = np.array([220, 200, 190], dtype=np.uint8)
+    rgba[1:3, 1:3, 3] = 255
+    rgba[1, 1, :3] = np.array([10, 10, 10], dtype=np.uint8)
+    hair_path = tmp_path / "hair.png"
+    Image.fromarray(rgba, mode="RGBA").save(hair_path)
 
-    frame_rgb = np.full((12, 12, 3), 40, dtype=np.uint8)
-    bundle = _build_bundle(str(overlay_path))
+    face_mask = np.zeros((4, 4), dtype=np.uint8)
+    face_mask[1:3, 1:3] = 255
+    face_mask_path = tmp_path / "face.png"
+    Image.fromarray(face_mask, mode="L").save(face_mask_path)
 
-    rendered_rgb = compose_bundle_frame_rgb(frame_rgb, bundle)
-    rendered_image = compose_bundle_frame(Image.fromarray(frame_rgb), bundle)
+    bundle = AssetBundle(
+        asset_id="asset-a",
+        pose_key="0_0_0",
+        yaw_1deg=0,
+        pitch_1deg=0,
+        roll_1deg=0,
+        hair_rgba_path=hair_path,
+        hair_rgba_url=None,
+        hair_mask_url=None,
+        anchors_url=None,
+        metadata_url=None,
+        hair_bbox={"x": 0, "y": 0, "w": 4, "h": 4},
+        face_mask_url=None,
+        protect_face_mask_url=None,
+        render_task={
+            "destination_roi": {"x": 0, "y": 0, "w": 4, "h": 4},
+            "matrix": {"a": 1.0, "b": 0.0, "c": 0.0, "d": 1.0, "e": 0.0, "f": 0.0},
+        },
+        revision="r1",
+        score=1.0,
+        face_mask_path=face_mask_path,
+    )
 
-    assert np.array_equal(rendered_rgb, np.asarray(rendered_image))
+    base = np.full((4, 4, 3), 120, dtype=np.uint8)
+    output = compose_bundle_frame(
+        Image.fromarray(base, mode="RGB"),
+        bundle,
+        preserve_uncovered_base=False,
+    )
+
+    output_rgb = np.asarray(output, dtype=np.uint8)
+    replaced_pixel = output_rgb[2, 2].astype(np.float32)
+    base_pixel = np.array([120, 120, 120], dtype=np.float32)
+    asset_pixel = np.array([220, 200, 190], dtype=np.float32)
+    assert np.mean(np.abs(replaced_pixel - base_pixel)) < np.mean(np.abs(replaced_pixel - asset_pixel))
+    assert int(output_rgb[1, 1, 0]) < 40
+
+
+def test_compose_bundle_frame_replaces_bright_fringe_connected_to_face_mask(tmp_path) -> None:
+    rgba = np.zeros((6, 6, 4), dtype=np.uint8)
+    rgba[1:5, 2:4, :3] = np.array([226, 204, 196], dtype=np.uint8)
+    rgba[1:5, 2:4, 3] = 255
+    rgba[1:5, 4, :3] = np.array([220, 198, 192], dtype=np.uint8)
+    rgba[1:5, 4, 3] = 18
+    hair_path = tmp_path / "hair.png"
+    Image.fromarray(rgba, mode="RGBA").save(hair_path)
+
+    face_mask = np.zeros((6, 6), dtype=np.uint8)
+    face_mask[1:5, 2:4] = 255
+    face_mask_path = tmp_path / "face.png"
+    Image.fromarray(face_mask, mode="L").save(face_mask_path)
+
+    bundle = AssetBundle(
+        asset_id="asset-a",
+        pose_key="0_0_0",
+        yaw_1deg=0,
+        pitch_1deg=0,
+        roll_1deg=0,
+        hair_rgba_path=hair_path,
+        hair_rgba_url=None,
+        hair_mask_url=None,
+        anchors_url=None,
+        metadata_url=None,
+        hair_bbox={"x": 0, "y": 0, "w": 6, "h": 6},
+        face_mask_url=None,
+        protect_face_mask_url=None,
+        render_task={
+            "destination_roi": {"x": 0, "y": 0, "w": 6, "h": 6},
+            "matrix": {"a": 1.0, "b": 0.0, "c": 0.0, "d": 1.0, "e": 0.0, "f": 0.0},
+        },
+        revision="r1",
+        score=1.0,
+        face_mask_path=face_mask_path,
+    )
+
+    base = np.full((6, 6, 3), 118, dtype=np.uint8)
+    output = compose_bundle_frame(
+        Image.fromarray(base, mode="RGB"),
+        bundle,
+        preserve_uncovered_base=False,
+    )
+
+    output_rgb = np.asarray(output, dtype=np.uint8)
+    fringe_pixel = output_rgb[3, 4].astype(np.float32)
+    base_pixel = np.array([118, 118, 118], dtype=np.float32)
+    asset_pixel = np.array([220, 198, 192], dtype=np.float32)
+    assert np.mean(np.abs(fringe_pixel - base_pixel)) < np.mean(np.abs(fringe_pixel - asset_pixel))

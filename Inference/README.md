@@ -1,114 +1,173 @@
-# Inference Service
+# HairApply Inference Execution Map
 
-`Inference/`는 헤어 apply의 WebRTC 중심 inference 서비스를 담는다.
-  
-새로 합류한 인프런스 서버 담당자나 GPU 서버 분리 작업자는 먼저 [`GPU_SERVER_AGENT_GUIDE.md`](/home/ubuntu/S14P21M101/Inference/GPU_SERVER_AGENT_GUIDE.md) 를 읽는 것을 권장한다.
+이 문서는 `Inference` 서비스가 실제로 어떻게 시작되고, 어떤 모듈을 거쳐 요청을 처리하는지 E2E 기준으로 정리한 운영 메모다.
 
-## 현재 배포 방식
+기준 시점: 2026-03-24
 
-현재 same-server 배포에서는 `Inference` 전용 `docker-compose.yml`을 두지 않는다.
+## 1. 시작 지점
 
-이유:
+### 컨테이너/프로세스 시작 순서
 
-- 실제 배포 단위가 `nginx + app + inference + redis + postgres` 하나의 네트워크여야 한다.
-- Jenkins도 `BE/docker-compose.yml` 하나로 same-server 스택을 올리는 방식이다.
-- 따라서 현재 기준의 운영 compose 엔트리포인트는 [`BE/docker-compose.yml`](/home/ubuntu/S14P21M101/BE/docker-compose.yml) 과 [`BE/docker-compose.local.yml`](/home/ubuntu/S14P21M101/BE/docker-compose.local.yml) 이다.
+1. `docker-compose.gpu.yml`
+   `inference-server` 컨테이너를 띄우고 `/app/.venv/bin/python -m uvicorn app.main:create_app --factory`를 실행한다.
+2. `Dockerfile`
+   런타임 이미지를 만들고 `app/`, `hairddae_tools/`, `models/`를 이미지에 복사한다.
+3. `app/main.py`
+   `create_app()`가 FastAPI 앱을 만들고, 설정/런타임 의존성/라우트를 모두 연결한다.
 
-즉, `Inference`는 compose를 "안 쓰는" 것이 아니라, `BE` 쪽 상위 compose에 서비스로 포함되어 있다.
+### `create_app()`에서 실제로 연결하는 모듈
 
-## 언제 별도 compose를 두는가
+- `app/config.py`
+  환경변수를 읽어 `Settings`를 만들고 모델 경로, static root, RTC/HTTP 옵션을 결정한다.
+- `app/rtc_udp_port_range.py`
+  `aioice` UDP 바인딩을 지정 포트 범위로 제한한다.
+- `app/auth.py`
+  replay store를 구성한다.
+- `app/catalog.py`
+  asset catalog 로더를 준비한다.
+- `app/lazy_runtime_dependencies.py`
+  face tracker, hair segmenter, hair attenuator를 lazy init 래퍼로 준비한다.
+- `app/hairddae_runtime_manager.py`
+  dataset별 `HairOverlayRuntime` 캐시를 관리한다.
+- `app/http_runtime.py`
+  HTTP 테스트/렌더링 라우트를 등록한다.
+- `app/rtc.py`
+  WebRTC offer, control channel, video frame 처리 라우트를 등록한다.
 
-별도 `Inference/docker-compose.yml`은 다음 상황에서만 고려한다.
+## 2. E2E 흐름
 
-- GPU 서버에 inference만 따로 배포할 때
-- 로컬에서 `BE/nginx/postgres/redis` 없이 inference만 독립 실행하고 싶을 때
+### HTTP 프레임 경로
 
-현재 브랜치 목표인 same-server MVP에서는 별도 compose보다 상위 compose 일원화가 낫다.
+`docker-compose.gpu.yml`
+-> `app.main:create_app`
+-> `app.http_runtime:attach_http_runtime_routes`
+-> `/api/runtime/frame` 또는 `/api/runtime/render-frame`
+-> `app.http_runtime:_process_http_frame`
+-> `app.hairddae_runtime_manager.HairddaeRuntimeManager.process_frame`
+-> `app.hairddae_runtime.HairOverlayRuntime.process_frame`
+-> 결과 JPEG/PNG 응답
 
-GPU 서버에서 inference 단독 배포가 필요하면 [`docker-compose.gpu.yml`](/home/ubuntu/S14P21M101/Inference/docker-compose.gpu.yml) 과 [`Dockerfile.gpu`](/home/ubuntu/S14P21M101/Inference/Dockerfile.gpu) 를 사용한다.
+이 경로에서 핵심 하위 모듈은 다음과 같다.
 
-## 로컬 실행
+- `app/hairddae_runtime_manager.py`
+  dataset별 runtime을 캐시하고 face parsing repo/weights/env를 맞춘다.
+- `app/hairddae_runtime.py`
+  세션 상태, 얼굴 feature 추출, 사용자 parsing, asset 선택, 합성을 한 번에 처리하는 핵심 엔진이다.
+- `app/server_render.py`
+  RGBA hair asset을 frame에 affine warp 후 합성한다.
+- `app/overlay_postprocess_pipeline.py`
+  합성 뒤 coverage/mask 기반 후처리를 적용한다.
 
-직접 실행:
+### RTC offer + 영상 프레임 경로
 
-```bash
-cd Inference
-uv sync --dev --frozen
-uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8090
-```
+`docker-compose.gpu.yml`
+-> `app.main:create_app`
+-> `app.rtc:attach_rtc_routes`
+-> `/rtc/offer`
+-> `app.auth.validate_connect_ticket`
+-> `app.rtc._create_peer_connection`
+-> data channel/control message 처리
+-> incoming video track에 `RtcServerTrackedRenderTrack` 연결
+-> `RtcServerTrackedRenderTrack.recv()`
+-> `app.frame_prepare_pipeline.prepare_runtime_frame`
+-> `app.hairddae_runtime_manager.HairddaeRuntimeManager.process_frame`
+-> `app.hairddae_runtime.HairOverlayRuntime.process_frame`
+-> processed video frame 반환
 
-HTTP 프레임 테스트까지 켜서 실행:
+RTC 프레임 준비 단계에서 쓰는 하위 모듈:
 
-```bash
-cd Inference
-INFERENCE_STATIC_ROOT=/home/ubuntu/S14P21M101/static \
-INFERENCE_FACE_LANDMARKER_MODEL_PATH=/home/ubuntu/S14P21M101/Inference/models/face_landmarker.task \
-INFERENCE_HAIR_SEGMENTER_MODEL_PATH=/home/ubuntu/S14P21M101/Inference/models/hair_segmenter.tflite \
-INFERENCE_HTTP_TEST_ENABLED=true \
-uv run uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8090
-```
+- `app/face_tracking.py`
+  MediaPipe face landmarker로 pose, anchors, bbox, feature payload를 만든다.
+- `app/hair_segmentation.py`
+  hair confidence mask를 만든다.
+- `app/hair_attenuation.py`
+  사용자 원본 머리 영역을 attenuation/bald 처리해 overlay가 더 안정적으로 보이게 만든다.
+- `app/frame_prepare_pipeline.py`
+  tracking + segmentation을 병렬 수행하고, 결과를 이용해 prepared frame을 만든다.
+- `app/fallback_render_pipeline.py`
+  런타임 경로가 아닌 catalog 기반 단순 합성 fallback을 제공한다.
 
-HTTP health 확인:
+### Asset 선택/합성 내부 흐름
 
-```bash
-curl "http://127.0.0.1:8090/api/runtime/health?dataset_code=0001"
-```
+`app.hairddae_runtime.HairOverlayRuntime.process_frame`
+-> 얼굴 feature 확보
+-> 사용자 parsing/mask 재사용 판단
+-> asset 선택
+-> render/composite
+-> overlay postprocess
 
-가속 상태 확인:
+이 단계에서 쓰는 모듈:
 
-```bash
-curl "http://127.0.0.1:8090/healthz"
-curl "http://127.0.0.1:8090/api/runtime/health?dataset_code=0001"
-```
+- `app/catalog.py`
+  dataset manifest를 읽고 `AssetBundle`을 만든다.
+- `app/hairddae_adapter.py`
+  `hairddae_tools`의 선택 로직을 app 런타임에 맞게 감싼다.
+- `app/render.py`
+  asset anchor와 사용자 anchor로 affine render task를 만든다.
+- `app/server_render.py`
+  실제 이미지 warp/composite를 수행한다.
+- `app/models.py`
+  feature payload의 pydantic 모델을 정의한다.
 
-응답의 `acceleration` 필드에서 현재 런타임이 GPU를 실제로 보고 있는지, OpenCV CUDA `warpAffine/alphaComp` 까지 사용 가능한지 확인할 수 있다.
+## 3. `app/` 파일별 역할
 
-## GPU 서버 실행
+| Path | 역할 | 누가 사용하나 |
+| --- | --- | --- |
+| `app/main.py` | FastAPI app factory, dependency wiring, lifespan cleanup | Uvicorn 엔트리포인트 |
+| `app/config.py` | 환경변수 -> `Settings` 구성 | `main`, `rtc`, `http_runtime`, `auth`, `catalog`, `runtime_manager` |
+| `app/rtc_udp_port_range.py` | `aioice` UDP 바인딩 범위 patch | `main` |
+| `app/auth.py` | connect ticket 검증, replay 방지 | `main`, `rtc`, `face_tracking` |
+| `app/http_runtime.py` | HTTP health/frame/render-frame 라우트 | `main` |
+| `app/rtc.py` | RTC offer, control channel, video processing loop | `main` |
+| `app/lazy_runtime_dependencies.py` | tracking/segmentation/attenuation lazy init | `main` |
+| `app/face_tracking.py` | 얼굴 landmark, pose, anchor, bbox 추출 | `lazy_runtime_dependencies`, `rtc`, `hair_attenuation` |
+| `app/hair_segmentation.py` | MediaPipe hair confidence mask 생성 | `lazy_runtime_dependencies` |
+| `app/hair_attenuation.py` | 원본 머리 suppression/attenuation | `lazy_runtime_dependencies`, `rtc` |
+| `app/frame_prepare_pipeline.py` | RTC 입력 프레임 사전 처리 | `rtc` |
+| `app/fallback_render_pipeline.py` | catalog 기반 fallback render | `rtc` |
+| `app/hairddae_runtime_manager.py` | dataset별 runtime cache와 env 준비 | `main`, `rtc`, `http_runtime` |
+| `app/hairddae_runtime.py` | 핵심 세션/선택/합성 엔진 | `hairddae_runtime_manager` |
+| `app/catalog.py` | asset index 로드, bundle 생성, control target 검증 | `main`, `rtc`, `fallback_render_pipeline` |
+| `app/hairddae_adapter.py` | `hairddae_tools` 선택 함수 bridge | `catalog` |
+| `app/render.py` | affine render task 계산 | `catalog`, `hairddae_runtime` |
+| `app/server_render.py` | image warp/composite/coverage restore | `rtc`, `fallback_render_pipeline`, `hairddae_runtime` |
+| `app/overlay_postprocess_pipeline.py` | overlay 결과 후처리 | `hairddae_runtime` |
+| `app/models.py` | feature message schema | `face_tracking`, `render`, `catalog`, `rtc`, `fallback_render_pipeline`, `hairddae_runtime`, `hairddae_adapter`, `frame_prepare_pipeline` |
+| `app/__init__.py` | package marker | Python import system |
 
-```bash
-cd Inference
-docker compose -f docker-compose.gpu.yml up -d --build
-```
+## 4. `hairddae_tools/` 중 런타임에서 실제로 물고 있는 파일
 
-권장 환경 변수:
+아래 파일은 app 런타임이 직접 import하거나 실질적으로 의존한다.
 
-- `INFERENCE_MEDIAPIPE_DELEGATE=gpu`
-- `INFERENCE_RENDER_ACCELERATION=opencv_cuda`
-- `INFERENCE_RTC_FACE_LANDMARKER_RUNNING_MODE=video`
-- `INFERENCE_RTC_HAIR_SEGMENTER_RUNNING_MODE=video`
-- `INFERENCE_RTC_SESSION_LOCAL_PROCESSORS=true`
+| Path | 역할 | 누가 사용하나 |
+| --- | --- | --- |
+| `hairddae_tools/run_hair_overlay_poc.py` | asset ranking, best asset selection, overlay helper | `app/hairddae_adapter.py`, `app/hairddae_runtime.py` |
+| `hairddae_tools/face_feature_utils.py` | MediaPipe landmarker 생성과 feature 추출 | `app/hairddae_runtime.py` |
+| `hairddae_tools/realtime_face_parsing.py` | user face/hair parsing runtime | `app/hairddae_runtime.py` |
+| `hairddae_tools/local_demo_paths.py` | runtime/static/generated 경로 해석 | `app/hairddae_runtime.py`, 여러 active tool |
 
-주의:
+운영상 같이 기억해야 하는 offline/build 스크립트:
 
-- 기본 [`Dockerfile`](/home/ubuntu/S14P21M101/Inference/Dockerfile) 은 `opencv-python-headless` CPU 휠을 설치한다.
-- [`Dockerfile.gpu`](/home/ubuntu/S14P21M101/Inference/Dockerfile.gpu) 은 `opencv-python` 공식 저장소를 빌드해 CUDA OpenCV 휠을 만든 뒤 런타임에 주입한다.
-- MediaPipe GPU delegate는 런타임이 GPU 디바이스를 노출할 때만 활성화된다.
+- `hairddae_tools/build_local_demo_assets.py`
+  runtime이 읽는 asset index/manifest류를 만드는 준비 스크립트다.
 
-HTTP 프레임 테스트:
+## 5. 현재 정리 상태
 
-```bash
-curl -X POST \
-  "http://127.0.0.1:8090/api/runtime/frame?dataset_code=0001&hair_id=1&apply_session_id=local-http-test&response_format=jpeg" \
-  -H "content-type: image/jpeg" \
-  --data-binary @/path/to/frame.jpg \
-  -o rendered.jpg -D runtime_headers.txt
-```
+### `app/`
 
-이 경로는 내부/local 검증용이다. 운영 프록시에는 그대로 외부 공개하지 않는 편이 맞다.
+2026-03-24 기준 `app/*.py`는 모두 repo 내부에서 참조가 확인됐다. 즉, 지금은 archive로 뺀 파일이 없다.
 
-테스트:
+### `hairddae_tools/`
 
-```bash
-cd Inference
-uv sync --dev --frozen
-uv run pytest
-```
+repo 내부 참조가 없던 스크립트는 `hairddae_tools/archive/`로 이동했다. active tool set은 루트에 남아 있다.
 
-## 환경 변수
+## 6. 운영자가 먼저 보면 좋은 파일
 
-추적 가능한 예시는 [`Inference/.env.example`](/home/ubuntu/S14P21M101/Inference/.env.example) 에 둔다.
-
-중요:
-
-- same-server deploy에서는 `APP_SECURITY_JWT_SECRET`, `APP_SECURITY_JWT_ISSUER`가 `BE`와 반드시 같아야 한다.
-- 실제 운영에서는 `.env.example`를 복사해 별도 `.env`를 만들거나, Jenkins/compose env로 주입한다.
+1. `docker-compose.gpu.yml`
+2. `app/main.py`
+3. `app/rtc.py`
+4. `app/http_runtime.py`
+5. `app/hairddae_runtime_manager.py`
+6. `app/hairddae_runtime.py`
+7. `app/catalog.py`
+8. `app/server_render.py`

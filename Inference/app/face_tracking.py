@@ -11,10 +11,12 @@ import numpy as np
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-from app.acceleration import select_mediapipe_delegate
 from app.auth import TicketClaims
 from app.config import Settings
 from app.models import FeatureMessageModel
+
+
+logger = logging.getLogger("uvicorn.error")
 
 
 FACE_LANDMARK_INDEX = {
@@ -31,13 +33,12 @@ FACE_LANDMARK_INDEX = {
     "chin_center": 152,
 }
 
-logger = logging.getLogger("uvicorn.error")
-
 
 @dataclass(frozen=True)
 class TrackingResult:
     feature: FeatureMessageModel
     landmarks_px: np.ndarray
+    user_row: dict[str, object]
 
 
 def _clamp(value: float, low: float, high: float) -> float:
@@ -77,6 +78,96 @@ def _bbox_from_landmarks(landmarks: list[object], width: int, height: int) -> di
     x1 = int(min(width, round(max(xs))))
     y1 = int(min(height, round(max(ys))))
     return {"x": x0, "y": y0, "w": max(0, x1 - x0), "h": max(0, y1 - y0)}
+
+
+def _bbox_center(bbox: dict[str, int] | dict[str, object]) -> tuple[float, float]:
+    return (
+        float(bbox["x"]) + float(bbox["w"]) * 0.5,
+        float(bbox["y"]) + float(bbox["h"]) * 0.5,
+    )
+
+
+def _bbox_iou(lhs_bbox: dict[str, int] | dict[str, object], rhs_bbox: dict[str, int] | dict[str, object]) -> float:
+    lhs_x0 = float(lhs_bbox["x"])
+    lhs_y0 = float(lhs_bbox["y"])
+    lhs_x1 = lhs_x0 + float(lhs_bbox["w"])
+    lhs_y1 = lhs_y0 + float(lhs_bbox["h"])
+    rhs_x0 = float(rhs_bbox["x"])
+    rhs_y0 = float(rhs_bbox["y"])
+    rhs_x1 = rhs_x0 + float(rhs_bbox["w"])
+    rhs_y1 = rhs_y0 + float(rhs_bbox["h"])
+    inter_x0 = max(lhs_x0, rhs_x0)
+    inter_y0 = max(lhs_y0, rhs_y0)
+    inter_x1 = min(lhs_x1, rhs_x1)
+    inter_y1 = min(lhs_y1, rhs_y1)
+    inter_w = max(0.0, inter_x1 - inter_x0)
+    inter_h = max(0.0, inter_y1 - inter_y0)
+    inter_area = inter_w * inter_h
+    lhs_area = max(0.0, lhs_x1 - lhs_x0) * max(0.0, lhs_y1 - lhs_y0)
+    rhs_area = max(0.0, rhs_x1 - rhs_x0) * max(0.0, rhs_y1 - rhs_y0)
+    denominator = lhs_area + rhs_area - inter_area
+    if denominator <= 0.0:
+        return 0.0
+    return inter_area / denominator
+
+
+def _choose_face_index(
+    bboxes: list[dict[str, int]],
+    width: int,
+    height: int,
+    reference_face_bbox: dict[str, object] | None = None,
+) -> int:
+    if not bboxes:
+        return 0
+
+    if reference_face_bbox:
+        ref_center_x, ref_center_y = _bbox_center(reference_face_bbox)
+        ref_width = max(1.0, float(reference_face_bbox.get("w", 0.0)))
+        ref_height = max(1.0, float(reference_face_bbox.get("h", 0.0)))
+        scored_candidates: list[tuple[int, float, float, float, float, float, int]] = []
+        for index, bbox in enumerate(bboxes):
+            center_x, center_y = _bbox_center(bbox)
+            center_delta_norm = max(
+                abs(center_x - ref_center_x) / ref_width,
+                abs(center_y - ref_center_y) / ref_height,
+            )
+            size_delta_norm = max(
+                abs(float(bbox["w"]) - ref_width) / ref_width,
+                abs(float(bbox["h"]) - ref_height) / ref_height,
+            )
+            area_ratio = (float(bbox["w"]) * float(bbox["h"])) / max(1.0, float(width * height))
+            iou = _bbox_iou(reference_face_bbox, bbox)
+            edge_bias = max(
+                abs(center_x - (float(width) * 0.5)) / max(1.0, float(width)),
+                abs(center_y - (float(height) * 0.5)) / max(1.0, float(height)),
+            )
+            scored_candidates.append(
+                (
+                    0 if iou >= 0.16 else 1,
+                    -round(iou, 6),
+                    round(center_delta_norm + 0.55 * size_delta_norm + 0.18 * edge_bias, 6),
+                    round(size_delta_norm, 6),
+                    round(edge_bias, 6),
+                    -round(area_ratio, 6),
+                    index,
+                )
+            )
+        scored_candidates.sort()
+        return int(scored_candidates[0][6])
+
+    frame_center_x = float(width) * 0.5
+    frame_center_y = float(height) * 0.5
+    scored_candidates: list[tuple[float, float, int]] = []
+    for index, bbox in enumerate(bboxes):
+        center_x, center_y = _bbox_center(bbox)
+        area_ratio = (float(bbox["w"]) * float(bbox["h"])) / max(1.0, float(width * height))
+        center_bias = max(
+            abs(center_x - frame_center_x) / max(1.0, float(width)),
+            abs(center_y - frame_center_y) / max(1.0, float(height)),
+        )
+        scored_candidates.append((-round(area_ratio, 6), round(center_bias, 6), index))
+    scored_candidates.sort()
+    return int(scored_candidates[0][2])
 
 
 def _anchor_points(landmarks: list[object], width: int, height: int) -> dict[str, dict[str, float]]:
@@ -120,10 +211,10 @@ def _anchor_points(landmarks: list[object], width: int, height: int) -> dict[str
     }
 
 
-def _pose_from_result(result: vision.FaceLandmarkerResult) -> dict[str, float | int]:
+def _pose_from_result(result: vision.FaceLandmarkerResult, face_index: int = 0) -> dict[str, float | int]:
     pitch, yaw, roll = [
         float(value)
-        for value in cv2.RQDecomp3x3(result.facial_transformation_matrixes[0][:3, :3])[0]
+        for value in cv2.RQDecomp3x3(result.facial_transformation_matrixes[face_index][:3, :3])[0]
     ]
     return {
         "yaw_float": yaw,
@@ -136,83 +227,68 @@ def _pose_from_result(result: vision.FaceLandmarkerResult) -> dict[str, float | 
 
 
 class ServerFaceTracker:
-    def __init__(
-        self,
-        model_path: Path,
-        *,
-        delegate_preference: str = "auto",
-        running_mode: str = "image",
-    ) -> None:
+    def __init__(self, model_path: Path, num_faces: int = 1, delegate: str = "cpu") -> None:
         resolved_model_path = model_path.expanduser().resolve()
-        self._running_mode = self._resolve_running_mode(running_mode)
-        self._video_timestamp_ms = 0
-        self._acceleration = "cpu"
-        self._landmarker = self._build_landmarker(
+        requested_delegate = str(delegate or "cpu").strip().lower()
+        self.delegate = self._create_landmarker(
             resolved_model_path,
-            delegate_preference=delegate_preference,
+            requested_delegate,
+            num_faces=max(1, int(num_faces)),
         )
         self._lock = Lock()
 
     def close(self) -> None:
         self._landmarker.close()
 
-    @property
-    def acceleration(self) -> str:
-        return self._acceleration
-
-    @staticmethod
-    def _resolve_running_mode(running_mode: str) -> vision.RunningMode:
-        resolved = running_mode.strip().lower()
-        if resolved == "video":
-            return vision.RunningMode.VIDEO
-        return vision.RunningMode.IMAGE
-
-    def _build_landmarker(
+    def _create_landmarker(
         self,
         model_path: Path,
+        requested_delegate: str,
         *,
-        delegate_preference: str,
-    ) -> vision.FaceLandmarker:
-        delegate, delegate_name = select_mediapipe_delegate(delegate_preference)
-        options = vision.FaceLandmarkerOptions(
-            base_options=python.BaseOptions(
-                model_asset_path=str(model_path),
-                delegate=delegate,
-            ),
-            running_mode=self._running_mode,
-            output_facial_transformation_matrixes=True,
-            num_faces=1,
-        )
-        try:
-            landmarker = vision.FaceLandmarker.create_from_options(options)
-            self._acceleration = delegate_name
-            logger.info(
-                "face tracker initialized: delegate=%s running_mode=%s",
-                delegate_name,
-                self._running_mode.name.lower(),
-            )
-            return landmarker
-        except Exception as exc:
-            if delegate_name != "gpu":
-                raise
-            logger.warning("face tracker GPU delegate unavailable, falling back to CPU: %s", exc)
-            fallback_options = vision.FaceLandmarkerOptions(
-                base_options=python.BaseOptions(
-                    model_asset_path=str(model_path),
-                    delegate=python.BaseOptions.Delegate.CPU,
-                ),
-                running_mode=self._running_mode,
-                output_facial_transformation_matrixes=True,
-                num_faces=1,
-            )
-            landmarker = vision.FaceLandmarker.create_from_options(fallback_options)
-            self._acceleration = "cpu"
-            return landmarker
+        num_faces: int,
+    ) -> str:
+        delegate_candidates = [requested_delegate] if requested_delegate == "cpu" else [requested_delegate, "cpu"]
+        last_error: Exception | None = None
 
-    def _next_video_timestamp_ms(self, ts_ms: int) -> int:
-        candidate = max(int(ts_ms), self._video_timestamp_ms + 1)
-        self._video_timestamp_ms = candidate
-        return candidate
+        for candidate in delegate_candidates:
+            try:
+                options = vision.FaceLandmarkerOptions(
+                    base_options=python.BaseOptions(
+                        model_asset_path=str(model_path),
+                        delegate=self._delegate_enum(candidate),
+                    ),
+                    output_facial_transformation_matrixes=True,
+                    num_faces=num_faces,
+                )
+                self._landmarker = vision.FaceLandmarker.create_from_options(options)
+                if candidate != requested_delegate:
+                    logger.warning(
+                        "face tracker delegate fallback: requested=%s active=%s",
+                        requested_delegate,
+                        candidate,
+                    )
+                else:
+                    logger.info("face tracker delegate active: %s", candidate)
+                return candidate
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "face tracker delegate init failed: requested=%s candidate=%s error=%s",
+                    requested_delegate,
+                    candidate,
+                    exc,
+                )
+                continue
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("failed to initialize face tracker")
+
+    @staticmethod
+    def _delegate_enum(delegate: str) -> python.BaseOptions.Delegate:
+        if str(delegate).strip().lower() == "gpu":
+            return python.BaseOptions.Delegate.GPU
+        return python.BaseOptions.Delegate.CPU
 
     def extract_tracking_result_from_rgb(
         self,
@@ -222,6 +298,8 @@ class ServerFaceTracker:
         settings: Settings,
         seq: int,
         ts_ms: int,
+        hair_id_override: int | None = None,
+        reference_face_bbox: dict[str, object] | None = None,
     ) -> TrackingResult | None:
         if frame_rgb.ndim != 3 or frame_rgb.shape[2] != 3:
             return None
@@ -233,18 +311,27 @@ class ServerFaceTracker:
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
 
         with self._lock:
-            if self._running_mode == vision.RunningMode.VIDEO:
-                result = self._landmarker.detect_for_video(
-                    mp_image,
-                    self._next_video_timestamp_ms(ts_ms),
-                )
-            else:
-                result = self._landmarker.detect(mp_image)
+            result = self._landmarker.detect(mp_image)
 
         if not result.face_landmarks or not result.facial_transformation_matrixes:
             return None
 
-        landmarks = result.face_landmarks[0]
+        bboxes = [_bbox_from_landmarks(face_landmarks, width, height) for face_landmarks in result.face_landmarks]
+        face_index = _choose_face_index(bboxes, width, height, reference_face_bbox=reference_face_bbox)
+        landmarks = result.face_landmarks[face_index]
+        bbox = _bbox_from_landmarks(landmarks, width, height)
+        pose = _pose_from_result(result, face_index)
+        user_row = {
+            "file": "rtc_frame.jpg",
+            "ok": True,
+            "image_size": {"width": width, "height": height},
+            "pose": pose,
+            "face_bbox": bbox,
+            "face_ratio": round((bbox["w"] * bbox["h"]) / float(width * height), 6),
+            "anchors": _anchor_points(landmarks, width, height),
+            "face_index": int(face_index),
+            "candidate_face_count": len(result.face_landmarks),
+        }
         feature = FeatureMessageModel.model_validate(
             {
                 "type": "feature",
@@ -255,16 +342,17 @@ class ServerFaceTracker:
                 "seq": seq,
                 "ts_ms": ts_ms,
                 "apply_session_id": claims.apply_session_id,
-                "hair_id": claims.hair_id,
-                "image_size": {"width": width, "height": height},
-                "pose": _pose_from_result(result),
-                "face_bbox": _bbox_from_landmarks(landmarks, width, height),
-                "anchors": _anchor_points(landmarks, width, height),
+                "hair_id": int(claims.hair_id if hair_id_override is None else hair_id_override),
+                "image_size": user_row["image_size"],
+                "pose": user_row["pose"],
+                "face_bbox": user_row["face_bbox"],
+                "anchors": user_row["anchors"],
             }
         )
         return TrackingResult(
             feature=feature,
             landmarks_px=_landmarks_to_pixel_array(landmarks, width, height),
+            user_row=user_row,
         )
 
     def extract_feature_from_rgb(
@@ -275,6 +363,8 @@ class ServerFaceTracker:
         settings: Settings,
         seq: int,
         ts_ms: int,
+        hair_id_override: int | None = None,
+        reference_face_bbox: dict[str, object] | None = None,
     ) -> FeatureMessageModel | None:
         tracking_result = self.extract_tracking_result_from_rgb(
             frame_rgb,
@@ -282,6 +372,8 @@ class ServerFaceTracker:
             settings=settings,
             seq=seq,
             ts_ms=ts_ms,
+            hair_id_override=hair_id_override,
+            reference_face_bbox=reference_face_bbox,
         )
         if tracking_result is None:
             return None

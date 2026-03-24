@@ -11,7 +11,7 @@ services:
       APP_INFERENCE_RTC_OFFER_URL: ${APP_INFERENCE_RTC_OFFER_URL:-/rtc/inference/offer}
       APP_INFERENCE_RTC_ICE_SERVERS_JSON: ${APP_INFERENCE_RTC_ICE_SERVERS_JSON:-[]}
       APP_INFERENCE_WS_AUTH_TRANSPORT: ${APP_INFERENCE_WS_AUTH_TRANSPORT:-sec-websocket-protocol.v1}
-      APP_INFERENCE_NODE_ID: ${APP_INFERENCE_NODE_ID:-infer-a-01}
+      APP_INFERENCE_NODE_ID: ${APP_INFERENCE_NODE_ID:-infer-gpu-01}
     depends_on:
       postgres:
         condition: service_healthy

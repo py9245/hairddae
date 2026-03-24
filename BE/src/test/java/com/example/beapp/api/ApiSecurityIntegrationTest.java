@@ -352,6 +352,7 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.inference.ws_url").value(org.hamcrest.Matchers.containsString("/ws/inference/apply")))
                 .andExpect(jsonPath("$.inference.ws_auth_transport").value("sec-websocket-protocol.v1"))
                 .andExpect(jsonPath("$.inference.connect_ticket").isString())
+                .andExpect(jsonPath("$.inference.node_id").value("infer-gpu-01"))
                 .andExpect(jsonPath("$.rtc.enabled").value(true))
                 .andExpect(jsonPath("$.rtc.offer_url").value(org.hamcrest.Matchers.containsString("/rtc/inference/offer")))
                 .andExpect(jsonPath("$.rtc.connect_ticket").isString());

@@ -18,6 +18,7 @@ import SignUp from '@/app/sign-up'
 import Splash from '@/app/splash'
 import { BottomNav } from '@/components/bottom-nav'
 import { NotFoundPage } from '@/components/not-found-page'
+import { PwaBanner } from '@/components/pwa-banner'
 import { type AuthStore, auth } from '@/lib/auth'
 
 type RouterContext = {
@@ -146,6 +147,7 @@ function RootLayout() {
         <div className="app-frame-content">
           <Outlet />
         </div>
+        <PwaBanner />
         <BottomNav />
       </div>
     </div>

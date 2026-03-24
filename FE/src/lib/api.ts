@@ -1,3 +1,5 @@
+import { auth } from '@/lib/auth'
+
 const DEFAULT_API_BASE_URL = '/api'
 
 export type RefreshTokenRequest = {
@@ -39,6 +41,10 @@ async function ensureRefreshed(): Promise<void> {
   if (!refreshInFlight) {
     refreshInFlight = refreshAuth({ rotate: false })
       .then(() => undefined)
+      .catch(async (error) => {
+        await auth.expireSession()
+        throw error
+      })
       .finally(() => {
         refreshInFlight = null
       })

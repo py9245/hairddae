@@ -13,6 +13,8 @@ services:
       INFERENCE_FACE_LANDMARKER_MODEL_PATH: /app/models/face_landmarker.task
       INFERENCE_HAIR_SEGMENTER_MODEL_PATH: /app/models/mediapipe/hair_segmenter.tflite
       INFERENCE_RTC_DEBUG_DUMP_DIR: /tmp/rtc-debug
+      INFERENCE_RTC_LIGHTWEIGHT_OVERLAY_ONLY: "1"
+      INFERENCE_RTC_LIGHTWEIGHT_RENDERER_NAME: mesh_v2
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
       NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility,video}
     command:

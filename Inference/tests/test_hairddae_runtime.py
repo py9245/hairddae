@@ -51,6 +51,8 @@ def build_runtime_stub() -> HairOverlayRuntime:
     runtime.bundle_render_latency_only = True
     runtime.bundle_render_render_cost_ratio = 0.098
     runtime.bundle_render_allow_transition = True
+    runtime.lightweight_overlay_only = False
+    runtime.lightweight_renderer_name = "mesh_v2"
     runtime.assets = []
     runtime.asset_count = 0
     runtime.approved_asset_count = 0
@@ -519,6 +521,51 @@ def test_resolve_compose_mode_forces_bundle_render_when_requested(
     ) == "bundle_render"
 
 
+def test_resolve_compose_mode_forces_overlay_when_lightweight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = build_runtime_stub()
+    runtime.lightweight_overlay_only = True
+    asset = {
+        "asset_id": "asset-a",
+        "image_size": {"width": 1000, "height": 1000},
+        "hair_rgba_bbox": {"x": 0, "y": 0, "w": 360, "h": 360},
+        "alpha_area_ratio": 0.09,
+        "hair_area_ratio": 0.08,
+    }
+    monkeypatch.setattr(
+        runtime,
+        "_bundle_render_entry_for_asset",
+        lambda asset_row, **kwargs: RuntimeBundleRenderEntry(
+            asset_id=str(asset_row["asset_id"]),
+            metadata={},
+            anchors_payload={},
+            hair_rgba_path=Path("hair.png"),
+            hair_bbox={"x": 0, "y": 0, "w": 10, "h": 10},
+        ),
+    )
+
+    assert runtime._resolve_compose_mode(
+        {"_force_bundle_render": True, "pose": {"yaw_1deg": 0, "pitch_1deg": 0, "roll_1deg": 0}},
+        "mesh_v3",
+        [(asset, 1.0)],
+        prefer_latency=True,
+    ) == "overlay"
+
+
+def test_set_active_renderer_forces_lightweight_renderer() -> None:
+    runtime = build_runtime_stub()
+    runtime.lightweight_overlay_only = True
+    runtime.available_renderers = ["mesh_v2", "mesh_v3"]
+    runtime._current_session = runtime._get_or_create_session("lightweight-renderer")
+
+    try:
+        assert runtime._set_active_renderer("mesh_v3") == "mesh_v2"
+        assert runtime._active_renderer_name == "mesh_v2"
+    finally:
+        runtime._current_session = None
+
+
 def test_compose_output_frame_uses_bundle_render_mode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -556,6 +603,51 @@ def test_compose_output_frame_uses_bundle_render_mode(
     assert transition_progress == 1.0
     assert transition_from_asset_id is None
     assert effective_renderer_name == "bundle_render"
+    assert coverage_mask is None
+
+
+def test_compose_output_frame_drops_transition_when_lightweight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = build_runtime_stub()
+    runtime.lightweight_overlay_only = True
+    runtime.available_renderers = ["mesh_v2", "mesh_v3"]
+    runtime._current_session = runtime._get_or_create_session("lightweight-compose")
+    runtime._transition = {
+        "from_blend_assets": [({"asset_id": "from-asset"}, 1.0)],
+        "from_asset_id": "from-asset",
+        "step": 0,
+        "steps": 2,
+    }
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+    asset = {"asset_id": "asset-a"}
+    monkeypatch.setattr(runtime, "_resolve_compose_mode", lambda *args, **kwargs: "overlay")
+    monkeypatch.setattr(runtime, "_resolve_compose_renderer", lambda *args, **kwargs: "mesh_v2")
+    monkeypatch.setattr(
+        "app.hairddae_runtime.compose_overlay_blend_frame",
+        lambda *args, **kwargs: np.full_like(frame, 21),
+    )
+    monkeypatch.setattr(
+        "app.hairddae_runtime.compose_overlay_transition_frames",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("transition path should not be used")),
+    )
+
+    try:
+        output_frame, transition_progress, transition_from_asset_id, effective_renderer_name, coverage_mask = runtime._compose_output_frame(
+            {"pose": {"yaw_1deg": 0, "pitch_1deg": 0, "roll_1deg": 0}},
+            frame,
+            [(asset, 1.0)],
+            "mesh_v3",
+            None,
+            prefer_latency=True,
+        )
+    finally:
+        runtime._current_session = None
+
+    assert np.array_equal(output_frame, np.full((8, 8, 3), 21, dtype=np.uint8))
+    assert transition_progress == 1.0
+    assert transition_from_asset_id is None
+    assert effective_renderer_name == "mesh_v2"
     assert coverage_mask is None
 
 

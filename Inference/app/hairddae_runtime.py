@@ -172,6 +172,12 @@ class HairOverlayRuntime:
         self.bundle_render_allow_transition = str(
             os.environ.get("INFERENCE_RTC_BUNDLE_RENDER_ALLOW_TRANSITION", "1")
         ).strip().lower() in {"1", "true", "yes", "on"}
+        self.lightweight_overlay_only = str(
+            os.environ.get("INFERENCE_RTC_LIGHTWEIGHT_OVERLAY_ONLY", "0")
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        self.lightweight_renderer_name = normalize_renderer_name(
+            os.environ.get("INFERENCE_RTC_LIGHTWEIGHT_RENDERER_NAME", "mesh_v2")
+        )
         self._lock = threading.Lock()
         self._landmarker = build_landmarker(self.model_path, num_faces=3)
         self._user_parser: RuntimeFaceParsing | None = None
@@ -1142,6 +1148,10 @@ class HairOverlayRuntime:
 
     def _set_active_renderer(self, renderer_name: str | None) -> str:
         resolved_renderer = normalize_renderer_name(renderer_name or self.default_renderer_name)
+        if self.lightweight_overlay_only:
+            preferred_renderer = self._preferred_lightweight_renderer(resolved_renderer)
+            if preferred_renderer is not None:
+                resolved_renderer = preferred_renderer
         if resolved_renderer == "mesh_v4":
             self._ensure_user_parser()
         if resolved_renderer == "mesh_v4" and not self.user_parsing_ready:
@@ -1152,6 +1162,16 @@ class HairOverlayRuntime:
             self._frames_since_switch = 0
             self._active_renderer_name = resolved_renderer
         return resolved_renderer
+
+    def _preferred_lightweight_renderer(self, fallback_renderer: str) -> str | None:
+        preferred_renderer = normalize_renderer_name(self.lightweight_renderer_name)
+        if preferred_renderer in self.available_renderers:
+            return preferred_renderer
+        if "mesh_v2" in self.available_renderers:
+            return "mesh_v2"
+        if fallback_renderer in self.available_renderers:
+            return fallback_renderer
+        return self.available_renderers[0] if self.available_renderers else None
 
     @staticmethod
     def _renderer_requires_user_parsing(renderer_name: str, user_row: dict[str, Any] | None = None) -> bool:
@@ -2275,7 +2295,7 @@ class HairOverlayRuntime:
             return finalize(current_asset, current_score, "hold", self._blend_assets)
 
         previous_blend_assets = self._blend_assets or [(current_asset, 1.0)]
-        if fast_motion:
+        if fast_motion or self.lightweight_overlay_only:
             self._transition = None
         else:
             self._transition = {
@@ -2328,6 +2348,8 @@ class HairOverlayRuntime:
                 prefer_latency=prefer_latency,
             )
 
+        if self.lightweight_overlay_only and self._transition is not None:
+            self._transition = None
         resolve_renderer_started_at = time.perf_counter()
         effective_renderer_name = self._resolve_compose_renderer(user_row, renderer_name, blend_assets)
         resolve_compose_renderer_ms = round((time.perf_counter() - resolve_renderer_started_at) * 1000.0, 3)
@@ -2391,7 +2413,7 @@ class HairOverlayRuntime:
         *,
         prefer_latency: bool,
     ) -> str:
-        if not self.bundle_render_enabled or not blend_assets:
+        if self.lightweight_overlay_only or not self.bundle_render_enabled or not blend_assets:
             return "overlay"
         if bool(user_row.get("_force_bundle_render")):
             primary_asset = blend_assets[0][0]
@@ -2765,6 +2787,10 @@ class HairOverlayRuntime:
         blend_assets: list[tuple[dict[str, Any], float]],
     ) -> str:
         resolved_renderer = normalize_renderer_name(renderer_name)
+        if self.lightweight_overlay_only:
+            preferred_renderer = self._preferred_lightweight_renderer(resolved_renderer)
+            if preferred_renderer is not None:
+                return preferred_renderer
         if resolved_renderer not in {"mesh_v3", "mesh_v4"} or not blend_assets:
             return resolved_renderer
 

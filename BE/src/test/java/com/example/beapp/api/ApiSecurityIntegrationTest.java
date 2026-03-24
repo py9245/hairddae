@@ -273,7 +273,9 @@ class ApiSecurityIntegrationTest {
         mockMvc.perform(get("/api/home/normalrank"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.best").isArray())
-                .andExpect(jsonPath("$.latest").isArray());
+                .andExpect(jsonPath("$.best[0].datasetCode").isString())
+                .andExpect(jsonPath("$.latest").isArray())
+                .andExpect(jsonPath("$.latest[0].datasetCode").isString());
 
         mockMvc.perform(get("/api/home/categorylist"))
                 .andExpect(status().isOk())
@@ -284,7 +286,8 @@ class ApiSecurityIntegrationTest {
         mockMvc.perform(get("/api/home/categorycardlist").param("categoryId", "all"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.categoryID").value("all"))
-                .andExpect(jsonPath("$.cardList").isArray());
+                .andExpect(jsonPath("$.cardList").isArray())
+                .andExpect(jsonPath("$.cardList[0].datasetCode").isString());
     }
 
     @Test
@@ -306,13 +309,15 @@ class ApiSecurityIntegrationTest {
                         .cookie(accessTokenCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalCount").isNumber())
-                .andExpect(jsonPath("$.hairList").isArray());
+                .andExpect(jsonPath("$.hairList").isArray())
+                .andExpect(jsonPath("$.hairList[0].datasetCode").isString());
 
         mockMvc.perform(get("/api/mypage/likelist")
                         .cookie(accessTokenCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userID").value("TestUser01"))
-                .andExpect(jsonPath("$.likeList").isArray());
+                .andExpect(jsonPath("$.likeList").isArray())
+                .andExpect(jsonPath("$.likeList[0].datasetCode").isString());
     }
 
     @Test

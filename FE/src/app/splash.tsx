@@ -49,7 +49,7 @@ export default function Splash() {
     <main className="app-frame-page flex flex-col overflow-hidden bg-bg-primary px-6 pt-16 text-text-dark">
       <div className="mx-auto flex w-full max-w-[390px] flex-1 flex-col">
         {/* Carousel Viewport */}
-        <div className="w-full overflow-hidden" ref={emblaRef}>
+        <div className="min-h-[600px] w-full overflow-hidden" ref={emblaRef}>
           {/* Carousel Container */}
           <div className="flex">
             {slides.map((slide, index) => (

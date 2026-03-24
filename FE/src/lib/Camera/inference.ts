@@ -46,6 +46,7 @@ const RawConnectedMessageSchema = z
 const RawHairAppliedMessageSchema = z.object({
   type: z.literal('hair_applied'),
   hair_id: z.number().int(),
+  source: z.string().optional(),
   server_ts_ms: z.number().int().optional(),
 })
 
@@ -115,6 +116,7 @@ export type InferenceConnectedMessage = {
 export type InferenceHairAppliedMessage = {
   type: 'hair_applied'
   hairId: number
+  source: string | null
   serverTsMs: number | null
 }
 
@@ -343,6 +345,7 @@ export function safeParseInferenceControlMessage(
     return {
       type: 'hair_applied',
       hairId: hairApplied.data.hair_id,
+      source: hairApplied.data.source ?? null,
       serverTsMs: hairApplied.data.server_ts_ms ?? null,
     }
   }

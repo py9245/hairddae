@@ -172,6 +172,7 @@ export function useHairRtcSession({
   const [error, setError] = useState<string | null>(null)
   const [reconnectVersion, setReconnectVersion] = useState(0)
   const [appliedHairId, setAppliedHairId] = useState<number | null>(null)
+  const [hasHelloApplied, setHasHelloApplied] = useState(false)
   const [metrics, setMetrics] = useState<HairRtcMetrics>({
     senderFps: null,
     senderBitrateKbps: null,
@@ -268,6 +269,7 @@ export function useHairRtcSession({
       statsSnapshotRef.current = null
       setIsRenderReady(false)
       setAppliedHairId(null)
+      setHasHelloApplied(false)
       setError(null)
       setMetrics({
         senderFps: null,
@@ -685,6 +687,7 @@ export function useHairRtcSession({
 
             if (message.type === 'hair_applied') {
               setAppliedHairId(message.hairId)
+              setHasHelloApplied(message.source === 'hello')
               setIsRenderReady(true)
               return
             }
@@ -827,6 +830,7 @@ export function useHairRtcSession({
     isRenderReady,
     error,
     appliedHairId,
+    hasHelloApplied,
     metrics,
   }
 }

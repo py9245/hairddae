@@ -244,13 +244,19 @@ export function HairCameraView({
 
   const modalOpen = pendingHairId != null && pendingHairId > 0
   const hairItemsErrorOpen = hairItemsError != null
-  const rtcApplyReady =
+  const hasAppliedPendingHair =
     modalOpen &&
     pendingHairId != null &&
-    hairRtc.isConnected &&
-    !hairRtc.error &&
-    (hairRtc.appliedHairId === pendingHairId ||
-      (hairRtc.isRenderReady && remoteDisplayReady))
+    hairRtc.appliedHairId === pendingHairId
+  const hasHelloApplied =
+    modalOpen && pendingHairId != null && hairRtc.hasHelloApplied
+  const hasRenderedPendingHair =
+    modalOpen &&
+    pendingHairId != null &&
+    hairRtc.isRenderReady &&
+    remoteDisplayReady
+  const rtcApplyReady =
+    hasAppliedPendingHair || hasHelloApplied || hasRenderedPendingHair
 
   useEffect(() => {
     if (finishTimerRef.current != null) {

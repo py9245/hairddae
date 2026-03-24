@@ -101,6 +101,34 @@ def test_hair_attenuation_segmentation_mask_applies_zone_suppression() -> None:
     assert float(np.abs(bulk_output - background_color).mean()) < float(np.abs(bulk_original - background_color).mean())
 
 
+def test_hair_attenuation_segmentation_feathers_hairline_boundary() -> None:
+    frame = np.full((256, 192, 3), 38, dtype=np.uint8)
+    frame[8:120, 24:168] = np.array([24, 40, 88], dtype=np.uint8)
+    frame[120:244, 44:148] = np.array([164, 188, 214], dtype=np.uint8)
+    landmarks = _build_landmarks()
+    hair_confidence_mask = np.zeros((256, 192), dtype=np.float32)
+    hair_confidence_mask[8:120, 24:168] = 0.96
+
+    attenuator = HairAttenuator(segmentation_confidence_threshold=0.25, strength=0.92)
+    output, metadata = attenuator.apply_with_metadata(
+        frame,
+        landmarks,
+        user_row={},
+        hair_confidence_mask=hair_confidence_mask,
+    )
+
+    scalp_color = np.asarray(metadata["scalp_color"], dtype=np.float32)
+    inner_original = frame[36:60, 76:116].astype(np.float32).mean(axis=(0, 1))
+    inner_output = output[36:60, 76:116].astype(np.float32).mean(axis=(0, 1))
+    edge_original = frame[102:116, 76:116].astype(np.float32).mean(axis=(0, 1))
+    edge_output = output[102:116, 76:116].astype(np.float32).mean(axis=(0, 1))
+
+    assert metadata["boundary_feather_px"] >= 4
+    assert float(np.abs(inner_output - scalp_color).mean()) < float(np.abs(inner_original - scalp_color).mean())
+    assert float(np.abs(edge_output - edge_original).mean()) < float(np.abs(inner_output - inner_original).mean())
+    assert float(np.abs(edge_output - scalp_color).mean()) > float(np.abs(inner_output - scalp_color).mean())
+
+
 def test_hair_attenuation_bald_test_mode_stays_within_segmentation_mask() -> None:
     background = np.array([214, 216, 222], dtype=np.uint8)
     skin = np.array([156, 182, 210], dtype=np.uint8)

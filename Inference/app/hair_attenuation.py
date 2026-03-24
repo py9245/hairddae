@@ -315,6 +315,46 @@ class HairAttenuator:
         scalp = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR).reshape(3).astype(np.float32)
         return scalp
 
+    @staticmethod
+    def _resize_mask_float(
+        mask: np.ndarray,
+        width: int,
+        height: int,
+    ) -> np.ndarray:
+        if mask.ndim != 2 or width <= 0 or height <= 0:
+            return np.zeros((max(height, 0), max(width, 0)), dtype=np.float32)
+        resolved = mask.astype(np.float32)
+        if resolved.size == 0:
+            return np.zeros((height, width), dtype=np.float32)
+        if float(resolved.max()) > 1.0:
+            resolved /= 255.0
+        if resolved.shape != (height, width):
+            resolved = cv2.resize(resolved, (width, height), interpolation=cv2.INTER_LINEAR)
+        return np.clip(resolved, 0.0, 1.0)
+
+    @staticmethod
+    def _smoothstep(mask: np.ndarray) -> np.ndarray:
+        resolved = np.clip(np.asarray(mask, dtype=np.float32), 0.0, 1.0)
+        return resolved * resolved * (3.0 - 2.0 * resolved)
+
+    def _build_interior_transition_mask(
+        self,
+        mask: np.ndarray,
+        *,
+        feather_px: int,
+    ) -> np.ndarray:
+        if mask.ndim != 2 or mask.size == 0:
+            return np.zeros_like(mask, dtype=np.float32)
+        active_mask = np.where(mask > 0, np.uint8(255), np.uint8(0))
+        if int(np.count_nonzero(active_mask)) == 0:
+            return np.zeros(active_mask.shape, dtype=np.float32)
+        if feather_px <= 1:
+            return np.where(active_mask > 0, np.float32(1.0), np.float32(0.0))
+        distance = cv2.distanceTransform(active_mask, cv2.DIST_L2, 5)
+        normalized = np.clip(distance / float(feather_px), 0.0, 1.0)
+        smoothed = self._smoothstep(normalized)
+        return np.where(active_mask > 0, smoothed, np.float32(0.0))
+
     def _estimate_lower_boundary_skin_color(
         self,
         frame_bgr: np.ndarray,
@@ -979,6 +1019,39 @@ class HairAttenuator:
                 covered_work = covered_roi >= 96
                 outer_bulk_work = outer_bulk_roi >= 96
 
+            zone_sigma = max(0.8, float(max(work_width, work_height)) * 0.012)
+            fringe_zone_work = self._resize_mask_float(fringe_roi, work_width, work_height)
+            covered_zone_work = self._resize_mask_float(covered_roi, work_width, work_height)
+            outer_bulk_zone_work = self._resize_mask_float(outer_bulk_roi, work_width, work_height)
+            if float(fringe_zone_work.max()) > 0.0:
+                fringe_zone_work = np.clip(
+                    cv2.GaussianBlur(fringe_zone_work, (0, 0), sigmaX=zone_sigma, sigmaY=zone_sigma),
+                    0.0,
+                    1.0,
+                )
+            if float(covered_zone_work.max()) > 0.0:
+                covered_zone_work = np.clip(
+                    cv2.GaussianBlur(covered_zone_work, (0, 0), sigmaX=zone_sigma, sigmaY=zone_sigma),
+                    0.0,
+                    1.0,
+                )
+            if float(outer_bulk_zone_work.max()) > 0.0:
+                outer_bulk_zone_work = np.clip(
+                    cv2.GaussianBlur(outer_bulk_zone_work, (0, 0), sigmaX=zone_sigma, sigmaY=zone_sigma),
+                    0.0,
+                    1.0,
+                )
+            boundary_feather_px = max(4, min(10, int(round(max(work_width, work_height) * 0.045))))
+            scalp_zone_work = np.maximum(fringe_zone_work, covered_zone_work)
+            scalp_transition_work = self._build_interior_transition_mask(
+                np.where(scalp_zone_work >= 0.08, np.uint8(255), np.uint8(0)),
+                feather_px=boundary_feather_px,
+            )
+            outer_bulk_transition_work = self._build_interior_transition_mask(
+                np.where(outer_bulk_zone_work >= 0.08, np.uint8(255), np.uint8(0)),
+                feather_px=max(3, int(round(boundary_feather_px * 0.8))),
+            )
+
             blur_kernel = _odd_kernel(max(work_width, work_height) * self.profile.blur_kernel_scale, minimum=5)
             blurred_work = cv2.GaussianBlur(roi_work, (blur_kernel, blur_kernel), 0)
             blurred_hsv = cv2.cvtColor(blurred_work, cv2.COLOR_BGR2HSV).astype(np.float32)
@@ -1007,15 +1080,32 @@ class HairAttenuator:
                 scalp_color = self._resolve_scalp_color(scalp_source_color)
                 scalp_matte_work = np.empty_like(roi_work, dtype=np.uint8)
                 scalp_matte_work[:] = np.clip(scalp_color, 0.0, 255.0).astype(np.uint8)
-            if scalp_matte_work is not None and np.any(fringe_work):
-                weakened_work = weakened_work.astype(np.float32)
-                weakened_work[fringe_work] = (
-                    scalp_matte_work.astype(np.float32)[fringe_work]
+            if scalp_matte_work is not None and float(scalp_zone_work.max()) > 0.0:
+                blurred_float = blurred_work.astype(np.float32)
+                scalp_float = scalp_matte_work.astype(np.float32)
+                scalp_mix = np.clip(
+                    scalp_zone_work * (0.18 + 0.82 * scalp_transition_work),
+                    0.0,
+                    1.0,
                 )
-                weakened_work = np.clip(weakened_work, 0, 255).astype(np.uint8)
+                scalp_target = (
+                    blurred_float * (1.0 - scalp_mix[..., None])
+                    + scalp_float * scalp_mix[..., None]
+                )
+                weakened_work = np.where(
+                    scalp_zone_work[..., None] > 1e-3,
+                    scalp_target,
+                    weakened_work.astype(np.float32),
+                )
+                weakened_work = np.clip(weakened_work, 0.0, 255.0).astype(np.uint8)
+                scalp_alpha_floor = (
+                    np.float32(self.profile.strength)
+                    * scalp_zone_work
+                    * (0.42 + 0.46 * scalp_transition_work)
+                )
                 alpha_work = np.where(
-                    fringe_work[..., None],
-                    np.float32(max(self.profile.strength, 0.92)),
+                    scalp_zone_work[..., None] > 1e-3,
+                    np.maximum(alpha_work, scalp_alpha_floor[..., None].astype(np.float32)),
                     alpha_work,
                 )
 
@@ -1023,12 +1113,8 @@ class HairAttenuator:
                 frame_bgr,
                 outer_bulk_mask_full,
             )
-            if np.any(covered_work):
-                covered_work_rgb = (
-                    scalp_matte_work.astype(np.float32)
-                    if scalp_matte_work is not None
-                    else covered_soft_work.astype(np.float32)
-                )
+            if scalp_matte_work is None and np.any(covered_work):
+                covered_work_rgb = covered_soft_work.astype(np.float32)
                 weakened_work = weakened_work.astype(np.float32)
                 weakened_work[covered_work] = covered_work_rgb[covered_work]
                 weakened_work = np.clip(weakened_work, 0, 255).astype(np.uint8)
@@ -1040,14 +1126,27 @@ class HairAttenuator:
             if background_color is not None and np.any(outer_bulk_work):
                 bg_fill = np.empty_like(roi_work, dtype=np.float32)
                 bg_fill[:] = background_color
-                weakened_work = weakened_work.astype(np.float32)
-                weakened_work[outer_bulk_work] = (
-                    bg_fill[outer_bulk_work] * 0.82 + blurred_work.astype(np.float32)[outer_bulk_work] * 0.18
+                outer_bulk_target = bg_fill * 0.82 + blurred_work.astype(np.float32) * 0.18
+                outer_bulk_mix = np.clip(
+                    outer_bulk_zone_work * (0.74 + 0.26 * outer_bulk_transition_work),
+                    0.0,
+                    1.0,
+                )
+                weakened_work = np.where(
+                    outer_bulk_zone_work[..., None] > 1e-3,
+                    weakened_work.astype(np.float32) * (1.0 - outer_bulk_mix[..., None])
+                    + outer_bulk_target * outer_bulk_mix[..., None],
+                    weakened_work.astype(np.float32),
                 )
                 weakened_work = np.clip(weakened_work, 0, 255).astype(np.uint8)
+                outer_alpha_floor = (
+                    outer_bulk_zone_work
+                    * np.float32(max(self.profile.strength, 0.95))
+                    * (0.84 + 0.12 * outer_bulk_transition_work)
+                )
                 alpha_work = np.where(
-                    outer_bulk_work[..., None],
-                    np.float32(max(self.profile.strength, 0.95)),
+                    outer_bulk_zone_work[..., None] > 1e-3,
+                    np.maximum(alpha_work, outer_alpha_floor[..., None].astype(np.float32)),
                     alpha_work,
                 )
 
@@ -1057,6 +1156,7 @@ class HairAttenuator:
                 if scalp_matte_work is not None
                 else "soft_blur"
             )
+            tone_metadata["boundary_feather_px"] = boundary_feather_px
             hair_pixel_count = max(1, int(np.count_nonzero(hair_mask_full)))
             tone_metadata["fringe_ratio"] = round(float(np.count_nonzero(fringe_mask_full)) / float(hair_pixel_count), 6)
             tone_metadata["outer_bulk_ratio"] = round(float(np.count_nonzero(outer_bulk_mask_full)) / float(hair_pixel_count), 6)

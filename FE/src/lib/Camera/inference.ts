@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { buildApiUrl } from '@/lib/api'
+import { apiFetch } from '@/lib/api'
 
 const DEVICE_ID_STORAGE_KEY = 'hairapply-device-id'
 
@@ -237,12 +237,11 @@ async function postHairApplyV2(
   path: '/home/hairapplybootstrap' | '/home/hairapplyresume',
   payload: Record<string, unknown>,
 ) {
-  const response = await fetch(buildApiUrl(path), {
+  const response = await apiFetch(path, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    credentials: 'include',
     body: JSON.stringify(payload),
   })
 

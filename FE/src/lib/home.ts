@@ -1,4 +1,4 @@
-import { buildApiUrl } from './api'
+import { apiFetch } from './api'
 
 export type CustomRankItem = {
   hairID: number
@@ -17,9 +17,8 @@ export type CustomRankResponse = {
 }
 
 export async function getCustomRank(size = 20): Promise<CustomRankResponse> {
-  const res = await fetch(buildApiUrl(`/home/customrank?size=${size}`), {
+  const res = await apiFetch(`/home/customrank?size=${size}`, {
     method: 'GET',
-    credentials: 'include',
   })
 
   // 401 Unauthorized handling could be managed globally or by throwing an error
@@ -44,9 +43,8 @@ export type CategoryListResponse = {
 }
 
 export async function getCategoryList(): Promise<CategoryListResponse> {
-  const res = await fetch(buildApiUrl(`/home/categorylist/`), {
+  const res = await apiFetch(`/home/categorylist/`, {
     method: 'GET',
-    credentials: 'include',
   })
 
   if (!res.ok) {
@@ -83,9 +81,8 @@ export async function getCategoryCardList(
     ? `/home/categorycardlist?categoryId=${categoryId}&size=${size}`
     : `/home/categorycardlist?size=${size}`
 
-  const res = await fetch(buildApiUrl(url), {
+  const res = await apiFetch(url, {
     method: 'GET',
-    credentials: 'include',
   })
 
   if (!res.ok) {
@@ -104,9 +101,8 @@ export type NormalRankResponse = {
 }
 
 export async function getNormalRank(): Promise<NormalRankResponse> {
-  const res = await fetch(buildApiUrl('/home/normalrank'), {
+  const res = await apiFetch('/home/normalrank', {
     method: 'GET',
-    credentials: 'include',
   })
 
   if (!res.ok) {

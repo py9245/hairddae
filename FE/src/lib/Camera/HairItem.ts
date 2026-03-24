@@ -1,6 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { z } from 'zod'
-import { buildApiUrl } from '@/lib/api'
+import { apiFetch } from '@/lib/api'
 
 export type HairItem = {
   id: number
@@ -33,9 +33,8 @@ const HairListResponseSchema = z.object({
 export async function fetchHairItems(
   signal?: AbortSignal,
 ): Promise<HairItem[]> {
-  const response = await fetch(buildApiUrl('/mypage/appliedlist/'), {
+  const response = await apiFetch('/mypage/appliedlist/', {
     method: 'GET',
-    credentials: 'include',
     signal,
   })
 

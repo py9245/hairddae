@@ -20,9 +20,60 @@ function normalizeBaseUrl(rawBaseUrl?: string): string {
 
 export const API_BASE_URL = normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL)
 
+type ApiFetchInit = RequestInit & {
+  skipAuthRefresh?: boolean
+}
+
+let refreshInFlight: Promise<void> | null = null
+
 export function buildApiUrl(path: string): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`
   return `${API_BASE_URL}${normalizedPath}`
+}
+
+function isRefreshRequest(url: string): boolean {
+  return url === buildApiUrl('/accounts/refreshToken/')
+}
+
+async function ensureRefreshed(): Promise<void> {
+  if (!refreshInFlight) {
+    refreshInFlight = refreshAuth({ rotate: false })
+      .then(() => undefined)
+      .finally(() => {
+        refreshInFlight = null
+      })
+  }
+
+  return refreshInFlight
+}
+
+export async function apiFetch(
+  input: string,
+  init: ApiFetchInit = {},
+): Promise<Response> {
+  const { skipAuthRefresh = false, credentials, ...requestInit } = init
+  const requestUrl = input.startsWith('http') ? input : buildApiUrl(input)
+  const requestCredentials = credentials ?? 'include'
+
+  const response = await fetch(requestUrl, {
+    ...requestInit,
+    credentials: requestCredentials,
+  })
+
+  if (
+    response.status !== 401 ||
+    skipAuthRefresh ||
+    isRefreshRequest(requestUrl)
+  ) {
+    return response
+  }
+
+  await ensureRefreshed()
+
+  return fetch(requestUrl, {
+    ...requestInit,
+    credentials: requestCredentials,
+  })
 }
 
 export async function refreshAuth(

@@ -11,6 +11,10 @@ import {
 import {
   RTC_SENDER_MAX_BITRATE,
   RTC_SENDER_MAX_FRAMERATE,
+  RTC_STAGE_FPS,
+  RTC_STAGE_HEIGHT,
+  RTC_STAGE_MIRRORED,
+  RTC_STAGE_WIDTH,
 } from '@/lib/Camera/runtime'
 
 type UseHairRtcSessionArgs = {
@@ -35,7 +39,12 @@ type HairRtcMetrics = {
   receiverFps: number | null
   roundTripTimeMs: number | null
   heartbeatRttMs: number | null
+  decodeMs: number | null
+  trackingMs: number | null
+  hairSegmentationMs: number | null
+  hairAttenuationMs: number | null
   inferMs: number | null
+  renderMs: number | null
   encodeMs: number | null
   e2eEstimateMs: number | null
   queueDepth: number
@@ -43,10 +52,16 @@ type HairRtcMetrics = {
   packetsLost: number | null
 }
 
+type HairSelection = {
+  hairId: number | null
+  datasetCode: string | null
+}
+
 const RECONNECT_DELAY_MS = 800
 const ICE_GATHERING_TIMEOUT_MS = 1500
 const HEARTBEAT_INTERVAL_MS = 5000
 const STATS_POLL_INTERVAL_MS = 1000
+const RTC_SESSION_VERSION = 1
 
 async function configureRtcSender(sender: RTCRtpSender) {
   const track = sender.track
@@ -130,7 +145,7 @@ export function useHairRtcSession({
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const dataChannelRef = useRef<RTCDataChannel | null>(null)
   const sessionRef = useRef<HairApplyV2Response | null>(null)
-  const sessionHairIdRef = useRef<number | null>(null)
+  const sessionStreamRef = useRef<MediaStream | null>(null)
   const remoteStreamRef = useRef<MediaStream | null>(null)
   const reconnectTimerRef = useRef<number | null>(null)
   const heartbeatTimerRef = useRef<number | null>(null)
@@ -142,6 +157,11 @@ export function useHairRtcSession({
   const latestHairIdRef = useRef<number | null>(hairId ?? null)
   const latestDatasetCodeRef = useRef<string | null>(datasetCode ?? null)
   const latestStreamRef = useRef<MediaStream | null>(stream)
+  const currentSelectionRef = useRef<HairSelection>({
+    hairId: null,
+    datasetCode: null,
+  })
+  const channelReadyRef = useRef(false)
   const manualCloseRef = useRef(false)
   const reconnectingRef = useRef(false)
 
@@ -161,7 +181,12 @@ export function useHairRtcSession({
     receiverFps: null,
     roundTripTimeMs: null,
     heartbeatRttMs: null,
+    decodeMs: null,
+    trackingMs: null,
+    hairSegmentationMs: null,
+    hairAttenuationMs: null,
     inferMs: null,
+    renderMs: null,
     encodeMs: null,
     e2eEstimateMs: null,
     queueDepth: 0,
@@ -209,6 +234,7 @@ export function useHairRtcSession({
   const teardownConnection = useCallback(
     (manual: boolean) => {
       manualCloseRef.current = manual
+      channelReadyRef.current = false
       clearHeartbeat()
       clearStatsPolling()
 
@@ -217,6 +243,11 @@ export function useHairRtcSession({
 
       peerConnectionRef.current?.close()
       peerConnectionRef.current = null
+      sessionStreamRef.current = null
+      currentSelectionRef.current = {
+        hairId: null,
+        datasetCode: null,
+      }
 
       remoteStreamRef.current?.getTracks().forEach((track) => {
         track.stop()
@@ -247,7 +278,12 @@ export function useHairRtcSession({
         receiverFps: null,
         roundTripTimeMs: null,
         heartbeatRttMs: null,
+        decodeMs: null,
+        trackingMs: null,
+        hairSegmentationMs: null,
+        hairAttenuationMs: null,
         inferMs: null,
+        renderMs: null,
         encodeMs: null,
         e2eEstimateMs: null,
         queueDepth: 0,
@@ -256,7 +292,6 @@ export function useHairRtcSession({
       })
       if (clearSession) {
         sessionRef.current = null
-        sessionHairIdRef.current = null
       }
     },
     [clearReconnect, teardownConnection],
@@ -418,19 +453,89 @@ export function useHairRtcSession({
     }, STATS_POLL_INTERVAL_MS)
   }, [clearStatsPolling, pollPeerConnectionStats])
 
-  const startHeartbeat = useCallback(
-    (applySessionId: string) => {
-      clearHeartbeat()
-      heartbeatTimerRef.current = window.setInterval(() => {
-        heartbeatSentAtRef.current = performance.now()
-        sendControlMessage({
-          type: 'heartbeat',
-          apply_session_id: applySessionId,
-          ts_ms: Date.now(),
-        })
-      }, HEARTBEAT_INTERVAL_MS)
+  const buildHelloMessage = useCallback(() => {
+    const message: Record<string, unknown> = {
+      type: 'hello',
+      session_version: RTC_SESSION_VERSION,
+      stage_width: RTC_STAGE_WIDTH,
+      stage_height: RTC_STAGE_HEIGHT,
+      fps: RTC_STAGE_FPS,
+      mirrored: RTC_STAGE_MIRRORED,
+    }
+
+    if (latestHairIdRef.current != null) {
+      message.hair_id = latestHairIdRef.current
+    }
+    if (latestDatasetCodeRef.current) {
+      message.dataset_code = latestDatasetCodeRef.current
+    }
+
+    return message
+  }, [])
+
+  const buildSelectHairMessage = useCallback(
+    (nextHairId: number, nextDatasetCode: string | null) => {
+      const message: Record<string, unknown> = {
+        type: 'select_hair',
+        hair_id: nextHairId,
+      }
+
+      if (nextDatasetCode) {
+        message.dataset_code = nextDatasetCode
+      }
+
+      return message
     },
-    [clearHeartbeat, sendControlMessage],
+    [],
+  )
+
+  const startHeartbeat = useCallback(() => {
+    clearHeartbeat()
+    heartbeatTimerRef.current = window.setInterval(() => {
+      heartbeatSentAtRef.current = performance.now()
+      sendControlMessage({
+        type: 'heartbeat',
+        ts_ms: Date.now(),
+      })
+    }, HEARTBEAT_INTERVAL_MS)
+  }, [clearHeartbeat, sendControlMessage])
+
+  const sendHairSelection = useCallback(
+    (
+      nextHairId: number,
+      nextDatasetCode: string | null,
+      options?: {
+        force?: boolean
+      },
+    ) => {
+      if (
+        nextHairId <= 0 ||
+        !channelReadyRef.current ||
+        dataChannelRef.current?.readyState !== 'open'
+      ) {
+        return false
+      }
+
+      const force = options?.force === true
+      const previousSelection = currentSelectionRef.current
+      if (
+        !force &&
+        previousSelection.hairId === nextHairId &&
+        previousSelection.datasetCode === nextDatasetCode
+      ) {
+        return true
+      }
+
+      currentSelectionRef.current = {
+        hairId: nextHairId,
+        datasetCode: nextDatasetCode,
+      }
+      setAppliedHairId(null)
+      setIsRenderReady(false)
+      sendControlMessage(buildSelectHairMessage(nextHairId, nextDatasetCode))
+      return true
+    },
+    [buildSelectHairMessage, sendControlMessage],
   )
 
   const scheduleReconnect = useCallback(
@@ -459,7 +564,7 @@ export function useHairRtcSession({
   const openSession = useCallback(
     async (
       nextHairId: number,
-      nextDatasetCode: string | null,
+      _nextDatasetCode: string | null,
       localStream: MediaStream,
     ) => {
       const requestId = bootstrapRequestRef.current + 1
@@ -467,13 +572,12 @@ export function useHairRtcSession({
       resetRuntime({ clearSession: false })
 
       try {
-        const nextBootstrap =
-          sessionRef.current && sessionHairIdRef.current === nextHairId
-            ? await postHairApplyResumeV2(
-                sessionRef.current.applySessionId,
-                deviceIdRef.current,
-              )
-            : await postHairApplyStartV2(nextHairId, deviceIdRef.current)
+        const nextBootstrap = sessionRef.current
+          ? await postHairApplyResumeV2(
+              sessionRef.current.applySessionId,
+              deviceIdRef.current,
+            )
+          : await postHairApplyStartV2(nextHairId, deviceIdRef.current)
 
         if (bootstrapRequestRef.current !== requestId) {
           return
@@ -502,10 +606,11 @@ export function useHairRtcSession({
 
         peerConnectionRef.current = peerConnection
         sessionRef.current = nextBootstrap
-        sessionHairIdRef.current = nextHairId
+        sessionStreamRef.current = localStream
         remoteStreamRef.current = remoteMediaStream
         reconnectingRef.current = false
         manualCloseRef.current = false
+        channelReadyRef.current = false
         setRemoteStream(remoteMediaStream)
         setConnectionState(peerConnection.connectionState)
         setError(null)
@@ -531,37 +636,22 @@ export function useHairRtcSession({
           }
           currentRemoteStream.addTrack(event.track)
           setRemoteStream(new MediaStream(currentRemoteStream.getTracks()))
-          setIsRenderReady(true)
           event.track.addEventListener('ended', () => {
             currentRemoteStream.removeTrack(event.track)
             setRemoteStream(new MediaStream(currentRemoteStream.getTracks()))
           })
         })
 
-        const dataChannel =
-          peerConnection.createDataChannel('hairapply-control')
+        const dataChannel = peerConnection.createDataChannel('control')
         dataChannelRef.current = dataChannel
 
         dataChannel.addEventListener('open', () => {
           setError(null)
-          sendControlMessage({
-            type: 'hello',
-            apply_session_id: nextBootstrap.applySessionId,
-            hair_id: nextHairId,
-            dataset_code: nextDatasetCode,
-            ts_ms: Date.now(),
-          })
-          sendControlMessage({
-            type: 'select_hair',
-            apply_session_id: nextBootstrap.applySessionId,
-            hair_id: nextHairId,
-            dataset_code: nextDatasetCode,
-            ts_ms: Date.now(),
-          })
-          startHeartbeat(nextBootstrap.applySessionId)
+          sendControlMessage(buildHelloMessage())
         })
 
         dataChannel.addEventListener('close', () => {
+          channelReadyRef.current = false
           if (!manualCloseRef.current) {
             scheduleReconnect('RTC data channel closed.')
           }
@@ -573,6 +663,23 @@ export function useHairRtcSession({
               JSON.parse(String(event.data)) as unknown,
             )
             if (!message) {
+              return
+            }
+
+            if (message.type === 'connected') {
+              channelReadyRef.current = true
+              setError(null)
+              startHeartbeat()
+              if (
+                latestHairIdRef.current != null &&
+                latestHairIdRef.current > 0
+              ) {
+                sendHairSelection(
+                  latestHairIdRef.current,
+                  latestDatasetCodeRef.current,
+                  { force: true },
+                )
+              }
               return
             }
 
@@ -599,7 +706,14 @@ export function useHairRtcSession({
                 ...current,
                 queueDepth: message.queueDepth,
                 droppedPendingCount: message.droppedPendingCount,
+                decodeMs: message.decodeMs ?? current.decodeMs,
+                trackingMs: message.trackingMs ?? current.trackingMs,
+                hairSegmentationMs:
+                  message.hairSegmentationMs ?? current.hairSegmentationMs,
+                hairAttenuationMs:
+                  message.hairAttenuationMs ?? current.hairAttenuationMs,
                 inferMs: message.inferMs ?? current.inferMs,
+                renderMs: message.renderMs ?? current.renderMs,
                 encodeMs: message.encodeMs ?? current.encodeMs,
                 e2eEstimateMs: message.e2eEstimateMs ?? current.e2eEstimateMs,
               }))
@@ -646,8 +760,10 @@ export function useHairRtcSession({
       }
     },
     [
+      buildHelloMessage,
       resetRuntime,
       scheduleReconnect,
+      sendHairSelection,
       sendControlMessage,
       startHeartbeat,
       startStatsPolling,
@@ -662,11 +778,15 @@ export function useHairRtcSession({
       return
     }
 
-    void openSession(hairId, datasetCode ?? null, stream)
+    const hasActiveConnection =
+      peerConnectionRef.current != null &&
+      peerConnectionRef.current.connectionState !== 'closed' &&
+      dataChannelRef.current != null &&
+      dataChannelRef.current.readyState !== 'closed' &&
+      sessionStreamRef.current === stream
 
-    return () => {
-      bootstrapRequestRef.current += 1
-      resetRuntime({ clearSession: false })
+    if (!hasActiveConnection) {
+      void openSession(hairId, datasetCode ?? null, stream)
     }
   }, [
     datasetCode,
@@ -677,6 +797,27 @@ export function useHairRtcSession({
     resetRuntime,
     stream,
   ])
+
+  useEffect(() => {
+    if (
+      !enabled ||
+      !hairId ||
+      hairId <= 0 ||
+      !stream ||
+      reconnectingRef.current
+    ) {
+      return
+    }
+
+    void sendHairSelection(hairId, datasetCode ?? null)
+  }, [datasetCode, enabled, hairId, sendHairSelection, stream])
+
+  useEffect(() => {
+    return () => {
+      bootstrapRequestRef.current += 1
+      resetRuntime({ clearSession: false })
+    }
+  }, [resetRuntime])
 
   return {
     isConnected:

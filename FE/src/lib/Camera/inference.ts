@@ -31,6 +31,15 @@ const RawConnectedMessageSchema = z
     type: z.literal('connected'),
     apply_session_id: z.string().optional(),
     node_id: z.string().optional(),
+    hello_required: z.boolean().optional(),
+    expected_input_width: z.number().int().optional(),
+    expected_input_height: z.number().int().optional(),
+    expected_input_fps: z.number().int().optional(),
+    expected_input_mirrored: z.boolean().optional(),
+    expected_output_width: z.number().int().optional(),
+    expected_output_height: z.number().int().optional(),
+    expected_output_fps: z.number().int().optional(),
+    expected_output_mirrored: z.boolean().optional(),
   })
   .passthrough()
 
@@ -50,6 +59,9 @@ const RawStatsMessageSchema = z.object({
   queue_depth: z.number().int().optional(),
   dropped_pending_count: z.number().int().optional(),
   decode_ms: z.number().optional(),
+  tracking_ms: z.number().optional(),
+  hair_segmentation_ms: z.number().optional(),
+  hair_attenuation_ms: z.number().optional(),
   infer_ms: z.number().optional(),
   render_ms: z.number().optional(),
   encode_ms: z.number().optional(),
@@ -89,6 +101,15 @@ export type InferenceConnectedMessage = {
   type: 'connected'
   applySessionId: string | null
   nodeId: string | null
+  helloRequired: boolean | null
+  expectedInputWidth: number | null
+  expectedInputHeight: number | null
+  expectedInputFps: number | null
+  expectedInputMirrored: boolean | null
+  expectedOutputWidth: number | null
+  expectedOutputHeight: number | null
+  expectedOutputFps: number | null
+  expectedOutputMirrored: boolean | null
 }
 
 export type InferenceHairAppliedMessage = {
@@ -107,6 +128,9 @@ export type InferenceStatsMessage = {
   queueDepth: number
   droppedPendingCount: number
   decodeMs: number | null
+  trackingMs: number | null
+  hairSegmentationMs: number | null
+  hairAttenuationMs: number | null
   inferMs: number | null
   renderMs: number | null
   encodeMs: number | null
@@ -293,6 +317,24 @@ export function safeParseInferenceControlMessage(
       type: 'connected',
       applySessionId: connected.data.apply_session_id ?? null,
       nodeId: connected.data.node_id ?? null,
+      helloRequired:
+        typeof connected.data.hello_required === 'boolean'
+          ? connected.data.hello_required
+          : null,
+      expectedInputWidth: connected.data.expected_input_width ?? null,
+      expectedInputHeight: connected.data.expected_input_height ?? null,
+      expectedInputFps: connected.data.expected_input_fps ?? null,
+      expectedInputMirrored:
+        typeof connected.data.expected_input_mirrored === 'boolean'
+          ? connected.data.expected_input_mirrored
+          : null,
+      expectedOutputWidth: connected.data.expected_output_width ?? null,
+      expectedOutputHeight: connected.data.expected_output_height ?? null,
+      expectedOutputFps: connected.data.expected_output_fps ?? null,
+      expectedOutputMirrored:
+        typeof connected.data.expected_output_mirrored === 'boolean'
+          ? connected.data.expected_output_mirrored
+          : null,
     }
   }
 
@@ -320,6 +362,9 @@ export function safeParseInferenceControlMessage(
       queueDepth: stats.data.queue_depth ?? 0,
       droppedPendingCount: stats.data.dropped_pending_count ?? 0,
       decodeMs: stats.data.decode_ms ?? null,
+      trackingMs: stats.data.tracking_ms ?? null,
+      hairSegmentationMs: stats.data.hair_segmentation_ms ?? null,
+      hairAttenuationMs: stats.data.hair_attenuation_ms ?? null,
       inferMs: stats.data.infer_ms ?? null,
       renderMs: stats.data.render_ms ?? null,
       encodeMs: stats.data.encode_ms ?? null,

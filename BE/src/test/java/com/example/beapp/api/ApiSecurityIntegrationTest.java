@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import com.example.beapp.api.dto.hairs.HairMetadataSyncResponse;
 import com.example.beapp.security.AuthCookieManager;
+import com.example.beapp.service.CategoryMetadataSyncService;
 import com.example.beapp.service.HairMetadataSyncService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,6 +45,9 @@ class ApiSecurityIntegrationTest {
 
     @MockBean
     private HairMetadataSyncService hairMetadataSyncService;
+
+    @MockBean
+    private CategoryMetadataSyncService categoryMetadataSyncService;
 
     @Test
     void protectedEndpointRequiresJwt() throws Exception {

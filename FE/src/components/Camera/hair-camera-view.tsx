@@ -70,7 +70,7 @@ export function HairCameraView({
     fps: RTC_STAGE_FPS,
     width: RTC_STAGE_WIDTH,
     height: RTC_STAGE_HEIGHT,
-    mirror: stageMirrored,
+    mirror: false,
     sourceVideoRef: videoRef,
   })
 

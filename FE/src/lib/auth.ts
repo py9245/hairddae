@@ -41,6 +41,11 @@ async function clearClientCookies() {
   }
 }
 
+async function clearSession() {
+  await clearClientCookies()
+  setAuthStatus('anonymous')
+}
+
 function setAuthStatus(nextStatus: AuthStatus) {
   if (authStatus === nextStatus) {
     return
@@ -116,7 +121,7 @@ async function resolveAuthStatus() {
 
   const refreshed = await refreshSession()
   if (!refreshed) {
-    setAuthStatus('anonymous')
+    await clearSession()
     return false
   }
 
@@ -148,6 +153,9 @@ export const auth = {
   login() {
     setAuthStatus('authenticated')
   },
+  async expireSession() {
+    await clearSession()
+  },
   async logout() {
     try {
       await fetch(`${BaseUrl}/accounts/logout`, {
@@ -157,8 +165,7 @@ export const auth = {
     } catch (error) {
       console.error('Failed to call logout API.', error)
     } finally {
-      await clearClientCookies()
-      setAuthStatus('anonymous')
+      await clearSession()
     }
   },
   subscribe(listener: AuthListener) {

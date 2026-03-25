@@ -218,13 +218,7 @@ export function HairCameraView({
     })
 
     setIsFrameFrozen(false)
-  }, [
-    displayHairId,
-    hairItems,
-    hasRemoteVideo,
-    remoteVideoRef,
-    videoRef,
-  ])
+  }, [displayHairId, hairItems, hasRemoteVideo, remoteVideoRef, videoRef])
 
   const handleTopLeftAction = useCallback(() => {
     if (isFrameFrozen) {

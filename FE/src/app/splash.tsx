@@ -46,11 +46,9 @@ export default function Splash() {
   }, [emblaApi, onSelect])
 
   return (
-    <main className="app-frame-page flex flex-col overflow-hidden bg-bg-primary px-6 pt-16 text-text-dark">
-      <div className="mx-auto flex w-full max-w-[390px] flex-1 flex-col">
-        {/* Carousel Viewport */}
-        <div className="min-h-[600px] w-full overflow-hidden" ref={emblaRef}>
-          {/* Carousel Container */}
+    <main className="app-frame-page h-full overflow-y-auto bg-bg-primary px-6 pt-12 text-text-dark">
+      <div className="mx-auto flex min-h-full w-full max-w-[390px] flex-col pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
+        <div className="w-full overflow-hidden" ref={emblaRef}>
           <div className="flex">
             {slides.map((slide, index) => (
               <div className="min-w-0 flex-[0_0_100%]" key={slide.imageSrc}>
@@ -59,7 +57,7 @@ export default function Splash() {
                     {slide.title}
                   </h1>
 
-                  <div className="mt-[92px] flex w-full justify-center px-5">
+                  <div className="mt-12 flex w-full justify-center px-5 sm:mt-[92px]">
                     <img
                       src={slide.imageSrc}
                       alt={slide.imageAlt}
@@ -76,7 +74,6 @@ export default function Splash() {
             ))}
           </div>
 
-          {/* Indicators */}
           <div className="mt-[30px] flex items-center justify-center gap-[7px]">
             {slides.map((slide, index) => (
               <span
@@ -90,9 +87,10 @@ export default function Splash() {
             ))}
           </div>
         </div>
+
         <PwaBanner />
 
-        <div className="mt-auto">
+        <div className="mt-8 pb-4">
           <SplashStartButton asChild>
             <Link to="/auth/login">헤어 어때 시작하기</Link>
           </SplashStartButton>

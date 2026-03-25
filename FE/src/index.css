@@ -66,6 +66,27 @@
   --shadow-pink-card: 0 4px 12px rgba(227, 194, 194, 0.32);
   --shadow-dark-sm: 0 4px 12px rgba(15, 23, 42, 0.15);
   --shadow-dark-md: 0 4px 12px rgba(15, 23, 42, 0.28);
+  /* Adsense */
+  --adsense-panel-border: #ffe3e8;
+  --adsense-panel-surface: #fffafb;
+  --adsense-card-border: #f4dfe4;
+  --adsense-card-surface: #ffffff;
+  --adsense-card-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
+  --adsense-skeleton-border: #efe4e7;
+  --adsense-skeleton-surface: #f8f1f3;
+  --adsense-title: #2f2f2f;
+  --adsense-body: #7a6a6a;
+  --adsense-link: #b69aa1;
+  --adsense-link-hover: #ea7589;
+  --adsense-indicator-active: #ea7589;
+  --adsense-indicator-inactive: #e6d7db;
+  --adsense-globe-start: #4f8cff;
+  --adsense-globe-end: #22304d;
+  --adsense-youtube-start: #ff6b6b;
+  --adsense-youtube-end: #d9485f;
+  --adsense-instagram-start: #ff9f5a;
+  --adsense-instagram-mid: #f06292;
+  --adsense-instagram-end: #8b5cf6;
 }
 
 .dark {
@@ -105,6 +126,20 @@
   /* Brand (dark) */
   --brand: #ea7589;
   --primary-gradient: linear-gradient(90deg, #ffa7a6 0%, #ea7589 100%);
+  /* Adsense (dark) */
+  --adsense-panel-border: #40333a;
+  --adsense-panel-surface: #221b20;
+  --adsense-card-border: #4b3a43;
+  --adsense-card-surface: #2a2228;
+  --adsense-card-shadow: 0 24px 60px rgba(0, 0, 0, 0.32);
+  --adsense-skeleton-border: #43343c;
+  --adsense-skeleton-surface: #31272d;
+  --adsense-title: #fff6f8;
+  --adsense-body: #ddc9cf;
+  --adsense-link: #bfa8af;
+  --adsense-link-hover: #ff9aad;
+  --adsense-indicator-active: #ff9aad;
+  --adsense-indicator-inactive: #5b4750;
 }
 
 @theme inline {
@@ -190,6 +225,25 @@
   --color-canvas-landmark: #8bff5a;
   --color-canvas-draw: rgba(0, 255, 0, 0.9);
   --color-error: #ff3b30;
+  --color-adsense-panel-border: var(--adsense-panel-border);
+  --color-adsense-panel-surface: var(--adsense-panel-surface);
+  --color-adsense-card-border: var(--adsense-card-border);
+  --color-adsense-card-surface: var(--adsense-card-surface);
+  --color-adsense-skeleton-border: var(--adsense-skeleton-border);
+  --color-adsense-skeleton-surface: var(--adsense-skeleton-surface);
+  --color-adsense-title: var(--adsense-title);
+  --color-adsense-body: var(--adsense-body);
+  --color-adsense-link: var(--adsense-link);
+  --color-adsense-link-hover: var(--adsense-link-hover);
+  --color-adsense-indicator-active: var(--adsense-indicator-active);
+  --color-adsense-indicator-inactive: var(--adsense-indicator-inactive);
+  --color-adsense-globe-start: var(--adsense-globe-start);
+  --color-adsense-globe-end: var(--adsense-globe-end);
+  --color-adsense-youtube-start: var(--adsense-youtube-start);
+  --color-adsense-youtube-end: var(--adsense-youtube-end);
+  --color-adsense-instagram-start: var(--adsense-instagram-start);
+  --color-adsense-instagram-mid: var(--adsense-instagram-mid);
+  --color-adsense-instagram-end: var(--adsense-instagram-end);
   --font-sans:
     "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
   --font-display: "Hakgyoansim Byeolbichhaneul", sans-serif;

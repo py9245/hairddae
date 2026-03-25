@@ -4,7 +4,6 @@ import {
   createRouter,
   Outlet,
   redirect,
-  useRouterState,
 } from '@tanstack/react-router'
 import type { ReactElement } from 'react'
 import { z } from 'zod'
@@ -19,7 +18,6 @@ import SignUp from '@/app/sign-up'
 import Splash from '@/app/splash'
 import { BottomNav } from '@/components/bottom-nav'
 import { NotFoundPage } from '@/components/not-found-page'
-import { PwaBanner } from '@/components/pwa-banner'
 import { type AuthStore, auth } from '@/lib/auth'
 
 type RouterContext = {
@@ -141,9 +139,6 @@ function createProtectedRoute<
 }
 
 function RootLayout() {
-  const pathname = useRouterState({
-    select: (state) => state.location.pathname,
-  })
 
   return (
     <div className="app-frame-shell flex items-center justify-center gap-10">

@@ -152,7 +152,6 @@ function RootLayout() {
         <div className="app-frame-content">
           <Outlet />
         </div>
-        {pathname === '/landing' ? null : <PwaBanner />}
         <BottomNav />
       </div>
     </div>

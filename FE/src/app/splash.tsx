@@ -4,6 +4,7 @@ import useEmblaCarousel from 'embla-carousel-react'
 import { useCallback, useEffect, useState } from 'react'
 
 import { SplashStartButton } from '@/components/splash-start-button'
+import { PwaBanner } from '@/components/pwa-banner'
 
 const slides = [
   {
@@ -90,6 +91,8 @@ export default function Splash() {
             />
           ))}
         </div>
+
+        <PwaBanner />
 
         <div className="mt-auto">
           <SplashStartButton asChild>

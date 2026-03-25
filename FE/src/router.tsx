@@ -139,7 +139,6 @@ function createProtectedRoute<
 }
 
 function RootLayout() {
-
   return (
     <div className="app-frame-shell flex items-center justify-center gap-10">
       <Adsense />

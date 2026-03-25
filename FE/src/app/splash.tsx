@@ -2,9 +2,8 @@ import { Link } from '@tanstack/react-router'
 import Autoplay from 'embla-carousel-autoplay'
 import useEmblaCarousel from 'embla-carousel-react'
 import { useCallback, useEffect, useState } from 'react'
-
-import { SplashStartButton } from '@/components/splash-start-button'
 import { PwaBanner } from '@/components/pwa-banner'
+import { SplashStartButton } from '@/components/splash-start-button'
 
 const slides = [
   {
@@ -76,22 +75,21 @@ export default function Splash() {
               </div>
             ))}
           </div>
-        </div>
 
-        {/* Indicators */}
-        <div className="mt-[30px] flex items-center justify-center gap-[7px]">
-          {slides.map((slide, index) => (
-            <span
-              key={slide.imageSrc}
-              className={`block size-[10px] rounded-full transition-colors ${
-                index === activeSlide
-                  ? 'bg-indicator-active'
-                  : 'bg-indicator-inactive'
-              }`}
-            />
-          ))}
+          {/* Indicators */}
+          <div className="mt-[30px] flex items-center justify-center gap-[7px]">
+            {slides.map((slide, index) => (
+              <span
+                key={slide.imageSrc}
+                className={`block size-[10px] rounded-full transition-colors ${
+                  index === activeSlide
+                    ? 'bg-indicator-active'
+                    : 'bg-indicator-inactive'
+                }`}
+              />
+            ))}
+          </div>
         </div>
-
         <PwaBanner />
 
         <div className="mt-auto">

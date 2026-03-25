@@ -1,14 +1,10 @@
 import { useRouter } from '@tanstack/react-router'
-import { Settings, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { HairCameraStage } from '@/components/Camera/hair-camera-stage'
 import { HairSelector } from '@/components/Camera/hair-selector'
 import { ApplyStyleModal, CameraNoticeModal } from '@/components/Camera/modal'
-import {
-  type CameraSettingOption,
-  CameraSettingsModal,
-} from '@/components/Camera/setting-modal'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
 import { useHairRtcDisplay } from '@/hooks/Camera/useHairRtcDisplay'
@@ -58,8 +54,6 @@ export function HairCameraView({
     description: string[]
   } | null>(null)
   const [isFrameFrozen, setIsFrameFrozen] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [stageMirrored, setStageMirrored] = useState(RTC_STAGE_MIRRORED)
   const [uiScale, setUiScale] = useState(1)
 
   const displayHairId = pendingHairId ?? selectedHairId
@@ -219,7 +213,7 @@ export function HairCameraView({
       videoRef: hasRemoteVideo ? remoteVideoRef : videoRef,
       wrapRef,
       hairItems,
-      mirror: hasRemoteVideo ? false : stageMirrored,
+      mirror: hasRemoteVideo ? false : RTC_STAGE_MIRRORED,
       selectedHairId: displayHairId,
     })
 
@@ -229,7 +223,6 @@ export function HairCameraView({
     hairItems,
     hasRemoteVideo,
     remoteVideoRef,
-    stageMirrored,
     videoRef,
   ])
 
@@ -281,13 +274,6 @@ export function HairCameraView({
     }
   }, [handleModalFinish, rtcApplyReady])
 
-  const resolutionOptions: CameraSettingOption[] = [
-    {
-      value: `${RTC_STAGE_WIDTH}x${RTC_STAGE_HEIGHT}`,
-      label: `${RTC_STAGE_WIDTH}x${RTC_STAGE_HEIGHT}`,
-    },
-  ]
-
   return (
     <main className="app-frame-page relative flex min-h-full items-center justify-center overflow-hidden bg-black text-white">
       <div className="relative flex h-full min-h-full w-full items-center justify-center overflow-hidden px-0">
@@ -299,12 +285,12 @@ export function HairCameraView({
             videoRef={videoRef}
             remoteVideoRef={remoteVideoRef}
             hasRemoteVideo={hasRemoteVideo}
-            localMirrored={stageMirrored}
+            localMirrored={RTC_STAGE_MIRRORED}
             remoteMirrored={false}
           />
 
           <Header
-            leftAction={
+            rightAction={
               <Button
                 type="button"
                 variant="camera-back"
@@ -314,20 +300,6 @@ export function HairCameraView({
                 aria-label={isFrameFrozen ? '캡처 취소' : '닫기'}
               >
                 <X className="size-12 text-white" />
-              </Button>
-            }
-            rightAction={
-              <Button
-                type="button"
-                variant="camera-setting"
-                size="camera-icon"
-                onClick={() => {
-                  setSettingsOpen(true)
-                }}
-                data-testid="camera-settings-button"
-                aria-label="설정 열기"
-              >
-                <Settings className="size-12 text-white" />
               </Button>
             }
           />
@@ -371,21 +343,6 @@ export function HairCameraView({
               />
             </div>
           ) : null}
-
-          <CameraSettingsModal
-            open={settingsOpen}
-            mirrored={stageMirrored}
-            onMirroredChange={setStageMirrored}
-            selectedResolutionId={resolutionOptions[0].value}
-            selectedFps={RTC_STAGE_FPS}
-            resolutionOptions={resolutionOptions}
-            fpsOptions={[RTC_STAGE_FPS]}
-            onResolutionChange={() => {}}
-            onFpsChange={() => {}}
-            onClose={() => {
-              setSettingsOpen(false)
-            }}
-          />
         </div>
       </div>
     </main>

@@ -6,14 +6,48 @@ type ApplyStyleModalContent = {
   tips: string[]
 }
 
-const mockModalContent: ApplyStyleModalContent = {
-  title: '선택한 스타일을 적용하고 있어요.',
-  tips: [
-    '얼굴이 길어 보인다면 구레나룻을',
-    '너무 짧게 치지 마세요.',
-    '옆 볼륨이 살아야 시선이 분산됩니다.',
-  ],
-}
+const mockModalContents: ApplyStyleModalContent[] = [
+  {
+    title: '선택한 스타일을 적용하고 있어요',
+    tips: [
+      '정면을 보고 있으면 결과가 더 안정적이에요.',
+      '머리카락이 얼굴을 가리지 않게 정리해 주세요.',
+      '화면 안에서 천천히 움직여 주세요.',
+    ],
+  },
+  {
+    title: '새 헤어 스타일을 준비 중이에요',
+    tips: [
+      '고개를 너무 빠르게 돌리면 추적이 흔들릴 수 있어요.',
+      '이마와 턱선이 보이면 인식이 더 쉬워져요.',
+      '밝은 곳에서 사용하면 결과가 더 자연스러워요.',
+    ],
+  },
+  {
+    title: '지금 스타일을 맞추고 있어요',
+    tips: [
+      '카메라와 얼굴 사이 거리를 조금만 유지해 주세요.',
+      '모자나 굵은 액세서리는 잠시 벗어 두면 좋아요.',
+      '정면에서 시작하면 적용 속도가 더 빨라져요.',
+    ],
+  },
+  {
+    title: '헤어 효과를 반영하는 중이에요',
+    tips: [
+      '머리 윤곽이 잘 보이도록 배경과 구분해 주세요.',
+      '머리 전체가 화면 안에 들어오면 더 정확해져요.',
+      '잠깐만 기다리면 스타일이 곧 반영돼요.',
+    ],
+  },
+  {
+    title: '어울리는 스타일을 씌우는 중이에요',
+    tips: [
+      '카메라를 손으로 크게 흔들지 않는 편이 좋아요.',
+      '측면보다는 정면 각도에서 먼저 확인해 보세요.',
+      '적용 후 캡처하면 현재 스타일로 저장할 수 있어요.',
+    ],
+  },
+]
 
 export function ProgressBar({ value }: { value: number }) {
   return (
@@ -44,14 +78,19 @@ export function ApplyStyleModal({
   completed = false,
   onFinish,
   onClose,
-  content = mockModalContent,
+  content,
   scale = 1,
 }: ApplyStyleModalProps) {
   const [progress, setProgress] = useState(0)
   const [failed, setFailed] = useState(false)
+  const [randomContent, setRandomContent] = useState<ApplyStyleModalContent>(
+    mockModalContents[0],
+  )
   const finishedRef = useRef(false)
   const completionStartRef = useRef<number | null>(null)
   const progressRef = useRef(0)
+
+  const modalContent = content ?? randomContent
 
   useEffect(() => {
     progressRef.current = progress
@@ -66,7 +105,12 @@ export function ApplyStyleModal({
       progressRef.current = 0
       return
     }
-  }, [open])
+
+    if (!content) {
+      const randomIndex = Math.floor(Math.random() * mockModalContents.length)
+      setRandomContent(mockModalContents[randomIndex])
+    }
+  }, [content, open])
 
   useEffect(() => {
     if (!open || failed) return
@@ -160,7 +204,7 @@ export function ApplyStyleModal({
         <div className="px-6 py-6">
           <div className="space-y-5">
             <h2 className="pr-10 text-xl font-bold leading-snug text-black">
-              {failed ? '적용에 실패했어요.' : content.title}
+              {failed ? '적용에 실패했어요' : modalContent.title}
             </h2>
 
             {failed ? (
@@ -170,7 +214,7 @@ export function ApplyStyleModal({
               </div>
             ) : (
               <div className="space-y-1 text-sm leading-snug text-gray-500">
-                {content.tips.map((tip) => (
+                {modalContent.tips.map((tip) => (
                   <p key={tip}>{tip}</p>
                 ))}
               </div>
@@ -200,7 +244,7 @@ export function CameraNoticeModal({
   open,
   title,
   description,
-  confirmLabel = '홈으로 이동',
+  confirmLabel = '메인으로 이동',
   onConfirm,
   onClose,
   scale = 1,

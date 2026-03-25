@@ -46,10 +46,10 @@ export default function Splash() {
   }, [emblaApi, onSelect])
 
   return (
-    <main className="app-frame-page flex flex-col overflow-hidden bg-bg-primary px-6 pt-16 text-text-dark">
-      <div className="mx-auto flex w-full max-w-[390px] flex-1 flex-col">
+    <main className="app-frame-page flex flex-col overflow-x-hidden overflow-y-auto bg-bg-primary px-6 pt-16 text-text-dark">
+      <div className="mx-auto flex w-full max-w-[390px] flex-1 flex-col pb-6">
         {/* Carousel Viewport */}
-        <div className="min-h-[600px] w-full overflow-hidden" ref={emblaRef}>
+        <div className="w-full flex-1 overflow-hidden" ref={emblaRef}>
           {/* Carousel Container */}
           <div className="flex">
             {slides.map((slide, index) => (

@@ -108,12 +108,14 @@ export default function SignUp() {
                   : 'border-gray-200 focus:border-primary-200'
               }`}
             />
-            {errors.userId && (
-              <p className="mt-2 text-sm text-error">{errors.userId}</p>
-            )}
-            <span className="ml-auto block text-right text-sm text-gray-400">
-              {userIdLength}/20자
-            </span>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <p className="min-h-[20px] text-sm text-error">
+                {errors.userId ?? ''}
+              </p>
+              <span className="shrink-0 text-sm text-gray-400">
+                {userIdLength}/20자
+              </span>
+            </div>
           </div>
 
           <div>
@@ -151,12 +153,14 @@ export default function SignUp() {
                 )}
               </button>
             </div>
-            {errors.password && (
-              <p className="mt-2 text-sm text-error">{errors.password}</p>
-            )}
-            <span className="ml-auto block text-right text-sm text-gray-400">
-              {passwordLength}/20자
-            </span>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <p className="min-h-[20px] text-sm text-error">
+                {errors.password ?? ''}
+              </p>
+              <span className="shrink-0 text-sm text-gray-400">
+                {passwordLength}/20자
+              </span>
+            </div>
           </div>
 
           <div>
@@ -200,14 +204,14 @@ export default function SignUp() {
                 )}
               </button>
             </div>
-            {errors.passwordConfirm && (
-              <p className="mt-2 text-sm text-error">
-                {errors.passwordConfirm}
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <p className="min-h-[20px] text-sm text-error">
+                {errors.passwordConfirm ?? ''}
               </p>
-            )}
-            <span className="ml-auto block text-right text-sm text-gray-400">
-              {passwordConfirmLength}/20자
-            </span>
+              <span className="shrink-0 text-sm text-gray-400">
+                {passwordConfirmLength}/20자
+              </span>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

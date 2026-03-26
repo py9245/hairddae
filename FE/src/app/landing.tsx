@@ -165,9 +165,9 @@ function useOnboardingStep(totalSteps: number) {
       if (!el) return
       const { top, height } = el.getBoundingClientRect()
       const viewH = container.clientHeight
-      const scrolled = viewH - top
+      const scrolled = Math.max(0, -top)
       const total = height - viewH
-      const p = Math.max(0, Math.min(1, scrolled / total))
+      const p = total > 0 ? Math.max(0, Math.min(1, scrolled / total)) : 0
       setLocalProgress(p)
       setStep(Math.min(totalSteps - 1, Math.floor(p * totalSteps)))
     }
@@ -183,9 +183,9 @@ function useOnboardingStep(totalSteps: number) {
 
 const HAIR_WORDS = [
   '레이어드컷',
-  '베이비컷',
-  '울프컷',
-  '애쉬컷',
+  '단발펌',
+  '리젠트컷',
+  '댄디컷',
   '히피펌',
   '내추럴웨이브',
 ]
@@ -206,7 +206,7 @@ const FEATURES: FeatureTab[] = [
     icon: Camera,
     label: 'AI 카메라',
     badge: '실시간 AR',
-    title: 'AI 가상 헤어 체험',
+    title: 'AR 가상 헤어 체험',
     description:
       '카메라를 켜는 순간, AI가 얼굴을 자동 인식하고 원하는 헤어스타일을 실시간으로 입혀드려요. 미용실 가기 전에 먼저 체험해보세요.',
     points: ['얼굴형 자동 인식', '실시간 AR 렌더링', '결과 사진 저장'],
@@ -214,13 +214,13 @@ const FEATURES: FeatureTab[] = [
   {
     id: 'recommend',
     icon: Sparkles,
-    label: 'AI 추천',
-    badge: 'AI 분석',
-    title: '나에게 딱 맞는 헤어 추천',
+    label: '데이터 기반 추천',
+    badge: '데이터 분석',
+    title: '사용자 행동 기반 추천',
     description:
-      '얼굴형, 취향, 최신 트렌드를 종합 분석한 AI가 지금 가장 어울리는 헤어스타일을 골라드려요.',
+      '실제 사용자들의 경험을 기반으로 분석하여 가장 어울리는 헤어스타일을 골라드려요.',
     points: [
-      '얼굴형 분석 기반 추천',
+      '실제 사용자 데이터 기반',
       '트렌드 반영 업데이트',
       '인기순·최신순 정렬',
     ],
@@ -230,7 +230,7 @@ const FEATURES: FeatureTab[] = [
     icon: Layers,
     label: '카테고리 탐색',
     badge: '트렌드',
-    title: '수백 가지 스타일을 한눈에',
+    title: '수십 가지 스타일을 한눈에',
     description:
       '숏컷부터 장발까지, 클래식부터 최신 트렌드까지 다양한 카테고리에서 원하는 스타일을 자유롭게 탐색하세요.',
     points: ['카테고리별 분류', '좋아요로 즐겨찾기', '헤어 이름·특징 안내'],
@@ -242,40 +242,46 @@ type OnboardingStep = {
   title: string
   description: string
   color: string
+  image: string
+  phoneBg?: string
 }
 
 const ONBOARDING: OnboardingStep[] = [
   {
     step: '01',
-    title: '간편 회원가입',
+    title: '나만의 맞춤 시작',
     description:
-      '이메일 하나로 30초 만에 가입 완료. 복잡한 절차 없이 바로 시작할 수 있어요.',
+      '더 정확한 맞춤 서비스를 위해 간단한 정보를 입력하고 가입을 완료해 보세요.',
     color: 'from-pink-50 to-rose-100',
+    image: '/images/sign-up.png',
   },
   {
     step: '02',
     title: '스타일 탐색',
     description:
-      '숏컷·미디엄·롱까지 수백 가지 스타일을 카테고리별로 자유롭게 둘러보세요.',
+      '숏컷·미디엄·롱까지 수십 가지 스타일을 카테고리별로 자유롭게 둘러보세요.',
     color: 'from-fuchsia-50 to-pink-100',
+    image: '/images/main.png',
   },
   {
     step: '03',
-    title: 'AI 카메라 체험',
+    title: '실시간 헤어 피팅',
     description:
-      '카메라를 켜면 AI가 실시간으로 내 얼굴에 선택한 스타일을 입혀드려요.',
+      '카메라를 켜면 내 얼굴에 딱 맞는 다양한 헤어스타일을 실시간으로 입혀볼 수 있어요.',
     color: 'from-rose-50 to-pink-100',
+    image: '/images/camera.png',
+    phoneBg: '#000',
   },
   {
     step: '04',
-    title: '결과 저장·공유',
+    title: '결과 저장',
     description:
-      '마음에 든 스타일을 저장하고, 친구들에게 공유해 의견을 들어보세요.',
+      '마음에 든 스타일을 저장하고, 디자이너와 더욱 자세하게 소통해보세요.',
     color: 'from-pink-50 to-fuchsia-100',
+    image: '/images/result.png',
+    phoneBg: '#000',
   },
 ]
-
-const LANDING_APP_PREVIEW = '/component/1.jpg'
 
 type TeamMember = {
   name: string
@@ -407,9 +413,9 @@ function ScrollProgressBar() {
 
 function StatsSection() {
   const { ref, visible } = useReveal()
-  const styles = useCounter(500, 1600, visible)
+  const styles = useCounter(40, 1600, visible)
   const satisfaction = useCounter(98, 1400, visible)
-  const users = useCounter(50, 1800, visible)
+  const users = useCounter(2, 1200, visible)
 
   return (
     <div ref={ref} className="border-y border-neutral-100 bg-white px-6 py-12">
@@ -422,7 +428,7 @@ function StatsSection() {
             unit: '',
             label: '사용자 만족도',
           },
-          { value: users, suffix: '만+', unit: '', label: '누적 체험 수' },
+          { value: users, suffix: '천+', unit: '', label: '누적 체험 수' },
         ].map(({ value, suffix, unit, label }) => (
           <div key={label} className="text-center">
             <p className="text-3xl font-extrabold tracking-[-0.04em] text-primary-300 md:text-5xl">
@@ -556,21 +562,68 @@ function FeatureTabs() {
 
 // ─── Phone Preview ────────────────────────────────────────────────────────────
 
-function AppPreviewPhone() {
+function AppPreviewPhone({ src, bg }: { src: string; bg?: string }) {
   return (
-    <div className="relative h-full w-full bg-neutral-100">
+    <div
+      className="relative h-full w-full bg-neutral-100"
+      style={bg ? { background: bg } : undefined}
+    >
       <img
-        src={LANDING_APP_PREVIEW}
+        src={src}
         alt="헤어때 앱 미리보기"
-        className="h-full w-full object-cover object-top"
+        className="h-full w-full object-contain"
         loading="lazy"
       />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/35 to-transparent" />
-      <div className="absolute left-1/2 top-10 -translate-x-1/2 rounded-full bg-white/92 px-3 py-1 shadow-sm">
-        <span className="text-[9px] font-bold text-primary-300">
-          PWA 설치 지원
-        </span>
+    </div>
+  )
+}
+
+// ─── Phone Mockup ─────────────────────────────────────────────────────────────
+
+function PhoneMockup({
+  src,
+  bg,
+  floatDown,
+}: {
+  src: string
+  bg?: string
+  floatDown?: boolean
+}) {
+  return (
+    <div
+      className="relative transition-all duration-700"
+      style={{ transform: `translateY(${floatDown ? '8px' : '-8px'})` }}
+    >
+      <div
+        className="absolute -inset-5 rounded-full opacity-40 blur-3xl transition-all duration-700 md:-inset-8"
+        style={{ background: 'linear-gradient(135deg, #fbcfe8, #f9a8d4)' }}
+      />
+      <div
+        className="relative h-[430px] w-[210px] overflow-hidden rounded-[38px] bg-neutral-900 sm:h-[470px] sm:w-[230px] md:h-[500px] md:w-[240px] md:rounded-[44px]"
+        style={{
+          boxShadow:
+            '0 40px 80px -20px rgba(236,72,153,0.35), 0 0 0 1px rgba(255,255,255,0.1)',
+        }}
+      >
+        <div className="absolute left-1/2 top-3 z-20 h-5 w-[72px] -translate-x-1/2 rounded-full bg-neutral-900 md:h-6 md:w-20" />
+        <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between px-4 pt-2 md:px-5">
+          <div className="h-1.5 w-8 rounded-full bg-white/20" />
+          <div className="flex gap-1">
+            <div className="h-1.5 w-4 rounded-full bg-white/20" />
+            <div className="h-1.5 w-3 rounded-full bg-white/20" />
+          </div>
+        </div>
+        <div className="absolute inset-0 overflow-hidden rounded-[44px]">
+          <div className="h-full w-full">
+            <AppPreviewPhone src={src} bg={bg} />
+          </div>
+        </div>
+        <div className="absolute bottom-2 left-1/2 h-1 w-20 -translate-x-1/2 rounded-full bg-white/20 md:w-24" />
       </div>
+      <div className="absolute -right-1 top-24 h-14 w-1.5 rounded-full bg-neutral-700 md:top-28 md:h-16" />
+      <div className="absolute -left-1 top-[4.5rem] h-9 w-1.5 rounded-full bg-neutral-700 md:top-20 md:h-10" />
+      <div className="absolute -left-1 top-28 h-9 w-1.5 rounded-full bg-neutral-700 md:top-32 md:h-10" />
     </div>
   )
 }
@@ -582,154 +635,145 @@ function OnboardingSection() {
   const current = ONBOARDING[step]
 
   return (
-    <section ref={outerRef} className="relative md:h-[400vh]">
-      <div className="flex min-h-screen items-start overflow-visible bg-white px-6 py-14 md:sticky md:top-0 md:h-screen md:items-center md:overflow-hidden md:py-0">
-        {/* bg gradient follows step */}
-        <div
-          className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${current.color} opacity-30 transition-all duration-700`}
-        />
+    <>
+      {/* 모바일: 4단계 정적 카드 */}
+      <section className="bg-white px-6 py-14 md:hidden">
+        <div className="mx-auto max-w-md space-y-16">
+          {ONBOARDING.map((s, i) => (
+            <RevealBox key={s.step} delay={i * 60}>
+              <div
+                className={`relative overflow-hidden rounded-3xl bg-gradient-to-br ${s.color} p-1`}
+              >
+                <div className="rounded-[20px] bg-white p-6">
+                  <div className="mb-4 flex justify-center">
+                    <PhoneMockup
+                      src={s.image}
+                      bg={s.phoneBg}
+                      floatDown={i % 2 !== 0}
+                    />
+                  </div>
+                  <span className="inline-block rounded-full bg-primary-100 px-3 py-1 text-xs font-bold text-primary-300">
+                    STEP {s.step}
+                  </span>
+                  <h3 className="mt-3 break-keep text-xl font-extrabold tracking-[-0.03em] text-text-dark">
+                    {s.title}
+                  </h3>
+                  <p className="mt-2 break-keep text-sm leading-relaxed text-text-warm-300">
+                    {s.description}
+                  </p>
+                </div>
+              </div>
+            </RevealBox>
+          ))}
+        </div>
+      </section>
 
-        <div className="relative mx-auto grid w-full max-w-6xl grid-cols-1 items-start gap-10 md:grid-cols-2 md:items-center md:gap-12">
-          {/* 텍스트 영역 */}
-          <div className="order-2 md:order-1">
-            {/* 스텝 도트 */}
-            <div className="mb-8 flex gap-2">
-              {ONBOARDING.map((item, i) => (
-                <div
-                  key={item.step}
-                  className="h-1.5 rounded-full transition-all duration-500"
-                  style={{
-                    width: i === step ? 28 : 8,
-                    background:
-                      i === step
-                        ? 'var(--color-primary-300)'
-                        : i < step
-                          ? 'var(--color-primary-200)'
-                          : 'var(--color-neutral-200)',
-                  }}
-                />
-              ))}
-            </div>
+      {/* 데스크톱: 스크롤 드리븐 sticky */}
+      <section ref={outerRef} className="relative hidden md:block md:h-[400vh]">
+        <div className="flex h-screen items-center overflow-hidden bg-white md:sticky md:top-0">
+          <div
+            className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${current.color} opacity-30 transition-all duration-700`}
+          />
 
-            <div
-              key={step}
-              style={{ animation: 'onboardFadeIn 0.5s ease both' }}
-            >
-              <span className="inline-block rounded-full bg-primary-100 px-3 py-1 text-xs font-bold text-primary-300">
-                STEP {current.step}
-              </span>
-              <h2 className="mt-4 text-3xl font-extrabold tracking-[-0.04em] text-text-dark md:text-4xl lg:text-5xl">
-                {current.title}
-              </h2>
-              <p className="mt-4 max-w-md text-base leading-relaxed text-text-warm-300 md:text-lg">
-                {current.description}
-              </p>
-            </div>
-
-            {/* 스텝 목록 */}
-            <div className="mt-10 space-y-3">
-              {ONBOARDING.map((s, i) => (
-                <div
-                  key={s.step}
-                  className="flex items-center gap-3 transition-all duration-300"
-                  style={{ opacity: i === step ? 1 : 0.35 }}
-                >
+          <div className="relative mx-auto grid w-full max-w-6xl grid-cols-2 items-center gap-12 px-6">
+            {/* 텍스트 영역 */}
+            <div>
+              <div className="mb-8 flex gap-2">
+                {ONBOARDING.map((item, i) => (
                   <div
-                    className="flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all duration-300"
+                    key={item.step}
+                    className="h-1.5 rounded-full transition-all duration-500"
                     style={{
+                      width: i === step ? 28 : 8,
                       background:
                         i === step
                           ? 'var(--color-primary-300)'
-                          : 'var(--color-neutral-100)',
-                      color: i === step ? '#fff' : 'var(--color-text-warm-300)',
+                          : i < step
+                            ? 'var(--color-primary-200)'
+                            : 'var(--color-neutral-200)',
                     }}
-                  >
-                    {i < step ? '✓' : s.step}
-                  </div>
-                  <span
-                    className="text-sm font-semibold transition-colors duration-300"
-                    style={{
-                      color:
-                        i === step
-                          ? 'var(--color-text-dark)'
-                          : 'var(--color-text-warm-300)',
-                    }}
-                  >
-                    {s.title}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* 폰 목업 */}
-          <div className="order-1 flex justify-center md:order-2">
-            <div
-              className="relative transition-all duration-700"
-              style={{
-                transform: `translateY(${step % 2 === 0 ? '-8px' : '8px'})`,
-              }}
-            >
-              {/* 배경 blob */}
-              <div
-                className="absolute -inset-5 rounded-full opacity-40 blur-3xl transition-all duration-700 md:-inset-8"
-                style={{
-                  background: 'linear-gradient(135deg, #fbcfe8, #f9a8d4)',
-                }}
-              />
-              {/* phone frame */}
-              <div
-                className="relative h-[430px] w-[210px] overflow-hidden rounded-[38px] bg-neutral-900 shadow-2xl sm:h-[470px] sm:w-[230px] md:h-[500px] md:w-[240px] md:rounded-[44px]"
-                style={{
-                  boxShadow:
-                    '0 40px 80px -20px rgba(236,72,153,0.35), 0 0 0 1px rgba(255,255,255,0.1)',
-                }}
-              >
-                {/* dynamic island */}
-                <div className="absolute left-1/2 top-3 z-20 h-5 w-[72px] -translate-x-1/2 rounded-full bg-neutral-900 md:h-6 md:w-20" />
-                {/* status bar */}
-                <div className="absolute left-0 right-0 top-0 z-10 flex items-center justify-between px-4 pt-2 md:px-5">
-                  <div className="h-1.5 w-8 rounded-full bg-white/20" />
-                  <div className="flex gap-1">
-                    <div className="h-1.5 w-4 rounded-full bg-white/20" />
-                    <div className="h-1.5 w-3 rounded-full bg-white/20" />
-                  </div>
-                </div>
-                {/* screen */}
-                <div className="absolute inset-0 overflow-hidden rounded-[44px]">
-                  <div className="h-full w-full">
-                    <AppPreviewPhone />
-                  </div>
-                </div>
-                {/* home indicator */}
-                <div className="absolute bottom-2 left-1/2 h-1 w-20 -translate-x-1/2 rounded-full bg-white/20 md:w-24" />
+                  />
+                ))}
               </div>
 
-              {/* side button */}
-              <div className="absolute -right-1 top-24 h-14 w-1.5 rounded-full bg-neutral-700 md:top-28 md:h-16" />
-              <div className="absolute -left-1 top-[4.5rem] h-9 w-1.5 rounded-full bg-neutral-700 md:top-20 md:h-10" />
-              <div className="absolute -left-1 top-28 h-9 w-1.5 rounded-full bg-neutral-700 md:top-32 md:h-10" />
-            </div>
-          </div>
-        </div>
-
-        {/* scroll hint (첫 번째 스텝에서만) */}
-        {step === 0 && (
-          <div
-            className="absolute bottom-8 left-1/2 hidden -translate-x-1/2 flex-col items-center gap-1 text-text-warm-300 md:flex"
-            style={{ animation: 'scrollHint 2s ease-in-out infinite' }}
-          >
-            <span className="text-xs font-medium">스크롤하여 계속</span>
-            <div className="flex h-8 w-5 items-start justify-center rounded-full border-2 border-neutral-300 pt-1.5">
               <div
-                className="h-1.5 w-1 rounded-full bg-primary-300"
-                style={{ animation: 'scrollDot 2s ease-in-out infinite' }}
+                key={step}
+                style={{ animation: 'onboardFadeIn 0.5s ease both' }}
+              >
+                <span className="inline-block rounded-full bg-primary-100 px-3 py-1 text-xs font-bold text-primary-300">
+                  STEP {current.step}
+                </span>
+                <h2 className="mt-4 break-keep text-4xl font-extrabold tracking-[-0.04em] text-text-dark lg:text-5xl">
+                  {current.title}
+                </h2>
+                <p className="mt-4 max-w-md break-keep text-base leading-relaxed text-text-warm-300 md:text-lg">
+                  {current.description}
+                </p>
+              </div>
+
+              <div className="mt-10 space-y-3">
+                {ONBOARDING.map((s, i) => (
+                  <div
+                    key={s.step}
+                    className="flex items-center gap-3 transition-all duration-300"
+                    style={{ opacity: i === step ? 1 : 0.35 }}
+                  >
+                    <div
+                      className="flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all duration-300"
+                      style={{
+                        background:
+                          i === step
+                            ? 'var(--color-primary-300)'
+                            : 'var(--color-neutral-100)',
+                        color:
+                          i === step ? '#fff' : 'var(--color-text-warm-300)',
+                      }}
+                    >
+                      {i < step ? '✓' : s.step}
+                    </div>
+                    <span
+                      className="text-sm font-semibold transition-colors duration-300"
+                      style={{
+                        color:
+                          i === step
+                            ? 'var(--color-text-dark)'
+                            : 'var(--color-text-warm-300)',
+                      }}
+                    >
+                      {s.title}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 폰 목업 */}
+            <div className="flex justify-center">
+              <PhoneMockup
+                src={current.image}
+                bg={current.phoneBg}
+                floatDown={step % 2 !== 0}
               />
             </div>
           </div>
-        )}
-      </div>
-    </section>
+
+          {step === 0 && (
+            <div
+              className="absolute bottom-8 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 text-text-warm-300"
+              style={{ animation: 'scrollHint 2s ease-in-out infinite' }}
+            >
+              <span className="text-xs font-medium">스크롤하여 계속</span>
+              <div className="flex h-8 w-5 items-start justify-center rounded-full border-2 border-neutral-300 pt-1.5">
+                <div
+                  className="h-1.5 w-1 rounded-full bg-primary-300"
+                  style={{ animation: 'scrollDot 2s ease-in-out infinite' }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </section>
+    </>
   )
 }
 
@@ -739,10 +783,10 @@ function TeamSection() {
       <div className="mx-auto max-w-4xl">
         <RevealBox className="text-center">
           <h2 className="text-3xl font-extrabold tracking-[-0.04em] text-text-dark md:text-4xl">
-            팀 소개
+            Me:ah
           </h2>
           <p className="mt-3 text-text-warm-300 md:text-lg">
-            헤어때를 만든 사람들
+            당신의 새로운 헤어스타일을 위해 모인 사람들, Me:ah 팀을 소개해요.
           </p>
         </RevealBox>
 
@@ -758,10 +802,17 @@ function TeamSection() {
                   href={member.github}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="group flex flex-col items-center rounded-3xl border border-neutral-100 bg-white p-6 text-center transition-all duration-300 hover:border-primary-200 hover:shadow-[var(--shadow-pink-card)]"
+                  className="group flex flex-col items-center rounded-3xl border border-neutral-100 bg-white p-6 text-center transition-all duration-300 hover:shadow-[var(--shadow-pink-card)]"
                 >
-                  <div className="flex size-14 items-center justify-center rounded-full bg-primary-100 text-xl font-bold text-primary-300 transition-colors duration-300 group-hover:bg-primary-200">
-                    {member.name[0]}
+                  <div className="relative flex size-14 items-center justify-center rounded-full bg-primary-100 text-xl font-bold text-primary-300 transition-colors duration-300 group-hover:bg-primary-200">
+                    <span className="transition-opacity duration-300 group-hover:opacity-0">
+                      {member.name[0]}
+                    </span>
+                    <img
+                      src="/images/github-logo.png"
+                      alt="GitHub"
+                      className="absolute inset-0 m-auto w-8 h-auto opacity-0 transition-opacity duration-300 group-hover:opacity-70"
+                    />
                   </div>
                   <p className="mt-3 text-sm font-bold text-text-dark">
                     {member.name}
@@ -1001,8 +1052,8 @@ export default function Landing() {
             className="mx-auto mt-6 max-w-xl text-base leading-relaxed text-text-warm-300 md:text-lg"
             style={{ animation: 'fadeSlideUp 0.6s ease 0.2s both' }}
           >
-            카메라 하나로 수백 가지 헤어스타일을 가상으로 적용해보고, AI가
-            분석한 맞춤 추천까지 받아보세요.
+            카메라 하나로 수십 가지 헤어스타일을 가상으로 적용해보고, 사용자
+            행동 데이터를 기반으로 한 맞춤 추천까지 받아보세요.
           </p>
 
           <div
@@ -1159,7 +1210,7 @@ export default function Landing() {
             헤어때
           </span>
           <p className="mt-3 text-sm text-neutral-400">
-            © 2025 헤어때. All rights reserved.
+            © 2026 Me:ah team 헤어때. All rights reserved.
           </p>
         </div>
       </footer>

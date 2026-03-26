@@ -104,6 +104,28 @@ class ApiSecurityIntegrationTest {
     }
 
     @Test
+    void googleLoginIssuesJwtAndProtectedEndpointAcceptsIt() throws Exception {
+        MvcResult googleLoginResult = mockMvc.perform(post("/api/accounts/google-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "google-user-01@example.com"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.userID").value("google-user-01@example.com"))
+                .andReturn();
+
+        mockMvc.perform(get("/api/mypage/user")
+                        .cookie(extractCookie(googleLoginResult, AuthCookieManager.ACCESS_TOKEN_COOKIE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userID").value("google-user-01@example.com"))
+                .andExpect(jsonPath("$.birthDate").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.gender").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
     void logoutBlocksIssuedAccessToken() throws Exception {
         MvcResult loginResult = mockMvc.perform(post("/api/accounts/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -292,6 +314,13 @@ class ApiSecurityIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(401))
                 .andExpect(jsonPath("$.message").value("일반 로그인 계정이 아닙니다."));
+    }
+
+    @Test
+    void openApiIncludesGoogleLoginEndpoint() throws Exception {
+        mockMvc.perform(get("/api/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/accounts/google-login/']").exists());
     }
 
     @Test

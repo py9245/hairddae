@@ -62,6 +62,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST,
                                 "/api/internal/hairs/sync",
                                 "/api/internal/hairs/sync/",
+                                "/api/accounts/google-login",
+                                "/api/accounts/google-login/",
                                 "/api/accounts/signup",
                                 "/api/accounts/signup/",
                                 "/api/accounts/login",

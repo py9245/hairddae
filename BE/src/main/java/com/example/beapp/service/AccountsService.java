@@ -1,9 +1,12 @@
 package com.example.beapp.service;
 
+import java.util.UUID;
+
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import com.example.beapp.api.dto.accounts.GoogleLoginRequest;
 import com.example.beapp.api.dto.accounts.LoginRequest;
 import com.example.beapp.api.dto.accounts.LogoutRequest;
 import com.example.beapp.api.dto.accounts.SignoutRequest;
@@ -48,6 +51,28 @@ public class AccountsService {
         if (!passwordEncoder.matches(request.password(), userAccount.encodedPassword())) {
             throw new ApiException(ErrorCode.INVALID_CREDENTIALS);
         }
+
+        return new AuthTokens(
+                userAccount.userID(),
+                jwtTokenService.issueAccessToken(userAccount.userID()),
+                issueAndStoreRefreshToken(userAccount.userID()));
+    }
+
+    public AuthTokens googleLogin(GoogleLoginRequest request) {
+        String normalizedEmail = request.normalizedEmail();
+        UserAccount userAccount = userAccountRepository.findByUserId(normalizedEmail)
+                .map(existingUserAccount -> {
+                    if (existingUserAccount.loginType() != LoginType.GOOGLE) {
+                        throw new ApiException(ErrorCode.DUPLICATE_USER, "이미 일반 로그인으로 가입된 계정입니다.");
+                    }
+                    return existingUserAccount;
+                })
+                .orElseGet(() -> userAccountRepository.save(new UserAccount(
+                        normalizedEmail,
+                        passwordEncoder.encode(UUID.randomUUID().toString()),
+                        null,
+                        null,
+                        LoginType.GOOGLE)));
 
         return new AuthTokens(
                 userAccount.userID(),

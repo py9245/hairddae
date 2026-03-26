@@ -80,7 +80,7 @@ export default function HairList() {
   return (
     <main
       className={cn(
-        'app-frame-page relative h-full overflow-y-auto bg-bg-primary pb-[108px] text-text-warm-500',
+        'app-frame-page relative flex h-full flex-col overflow-hidden bg-bg-primary text-text-warm-500',
         isLeaving && 'animate-hair-list-page-out',
       )}
     >
@@ -92,31 +92,33 @@ export default function HairList() {
         }
       />
 
-      <div className="mx-auto flex w-full max-w-[390px] flex-col px-4 pt-16">
-        <section className="mt-2 overflow-x-auto pb-1">
-          <div className="flex min-w-max items-start gap-3">
-            {isCategoryLoading ? (
-              <CategorySkeleton count={6} />
-            ) : (
-              apiCategories.map((category) => (
-                <button
-                  key={category.categoryID}
-                  type="button"
-                  className="shrink-0"
-                  onClick={() => handleCategoryClick(category.categoryID)}
-                >
-                  <CategoryCard
-                    label={category.categoryName}
-                    imageSrc={category.image}
-                    active={activeCategory === category.categoryID}
-                  />
-                </button>
-              ))
-            )}
-          </div>
-        </section>
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-[390px] flex-col px-4 pt-16">
+        <div className="shrink-0">
+          <section className="mt-2 overflow-x-auto pb-1">
+            <div className="flex min-w-max items-start gap-3">
+              {isCategoryLoading ? (
+                <CategorySkeleton count={6} />
+              ) : (
+                apiCategories.map((category) => (
+                  <button
+                    key={category.categoryID}
+                    type="button"
+                    className="shrink-0"
+                    onClick={() => handleCategoryClick(category.categoryID)}
+                  >
+                    <CategoryCard
+                      label={category.categoryName}
+                      imageSrc={category.image}
+                      active={activeCategory === category.categoryID}
+                    />
+                  </button>
+                ))
+              )}
+            </div>
+          </section>
+        </div>
 
-        <section className="mt-4">
+        <section className="mt-4 min-h-0 flex-1 overflow-y-auto pb-[108px]">
           {isCardListLoading ? (
             <HairStyleSkeleton count={4} />
           ) : filteredStyles.length > 0 ? (

@@ -17,7 +17,7 @@ public interface HistoryJpaRepository extends JpaRepository<HistoryEntity, Long>
             join fetch h.hair
             where h.user.userId = :userId
             and h.viewSeconds >= :minViewSec
-            order by h.viewedAt desc
+            order by h.viewedAt desc, h.id desc
             """)
     List<HistoryEntity> findRecentByUserIdWithHair(
             @Param("userId") String userId,

@@ -14,12 +14,14 @@ import com.example.beapp.config.AppInferenceProperties;
 import com.example.beapp.config.AppSecurityProperties;
 
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.MacAlgorithm;
 import io.jsonwebtoken.security.Keys;
 
 @Service
 public class InferenceConnectTicketService {
 
     private static final String TOKEN_TYPE = "INFERENCE_CONNECT";
+    private static final MacAlgorithm CONNECT_TICKET_ALGORITHM = Jwts.SIG.HS256;
 
     private final SecretKey secretKey;
     private final AppInferenceProperties appInferenceProperties;
@@ -56,10 +58,11 @@ public class InferenceConnectTicketService {
                 .claim("hid", hairId)
                 .claim("node", appInferenceProperties.nodeId())
                 .claim("ver", appInferenceProperties.featureSchemaVersion())
+                .claim("schema_version", appInferenceProperties.featureSchemaVersion())
                 .claim("single_use", Boolean.TRUE)
                 .claim("dataset_code", datasetCode)
                 .claim("representative_asset_id", representativeAssetId)
-                .signWith(secretKey)
+                .signWith(secretKey, CONNECT_TICKET_ALGORITHM)
                 .compact();
         return new IssuedInferenceTicket(token, expiresAt);
     }

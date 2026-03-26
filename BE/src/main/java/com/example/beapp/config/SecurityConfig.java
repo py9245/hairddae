@@ -75,14 +75,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET,
                                 "/api/hairs",
                                 "/api/hairs/",
-                                "/api/hairs/recommend",
-                                "/api/hairs/recommend/",
                                 "/api/hairs/*",
-                                "/api/hairs/*/asset-index",
-                                "/api/hairs/*/asset-index/").permitAll()
+                                "/api/hairs/*/*").permitAll()
                         .requestMatchers(
-                                "/api/me",
-                                "/api/me/",
                                 "/api/home/customrank",
                                 "/api/home/customrank/",
                                 "/api/mypage/**").authenticated()
@@ -93,6 +88,9 @@ public class SecurityConfig {
                                 "/api/home/categorylist/",
                                 "/api/home/categorycardlist",
                                 "/api/home/categorycardlist/").permitAll()
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/home/hairclick",
+                                "/api/home/hairclick/").authenticated()
                         .requestMatchers(HttpMethod.POST,
                                 "/api/home/hairapplybootstrap",
                                 "/api/home/hairapplybootstrap/",

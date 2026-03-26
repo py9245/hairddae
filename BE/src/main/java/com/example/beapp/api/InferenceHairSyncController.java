@@ -63,8 +63,20 @@ public class InferenceHairSyncController {
             @RequestParam(value = "description", required = false)
             @Size(max = 5000, message = "description은 5000자 이하여야 합니다.")
             String description,
+            @RequestParam(value = "dataset_root_url", required = false)
+            @Size(max = 500, message = "dataset_root_url은 500자 이하여야 합니다.")
+            String datasetRootUrl,
+            @RequestParam(value = "asset_index_url", required = false)
+            @Size(max = 500, message = "asset_index_url은 500자 이하여야 합니다.")
+            String assetIndexUrl,
+            @RequestParam(value = "representative_asset_id", required = false)
+            @Size(max = 255, message = "representative_asset_id는 255자 이하여야 합니다.")
+            String representativeAssetId,
+            @RequestParam(value = "preview_image_url", required = false)
+            @Size(max = 500, message = "preview_image_url은 500자 이하여야 합니다.")
+            String previewImageUrl,
             @RequestParam(value = "active", required = false) Boolean active,
-            @RequestPart("preview_image") MultipartFile previewImage) {
+            @RequestPart(value = "preview_image", required = false) MultipartFile previewImage) {
         validateSyncSecret(syncSecret);
         HairMetadataSyncRequest request = new HairMetadataSyncRequest(
                 datasetCode,
@@ -72,6 +84,10 @@ public class InferenceHairSyncController {
                 slug,
                 category,
                 description,
+                datasetRootUrl,
+                assetIndexUrl,
+                representativeAssetId,
+                previewImageUrl,
                 active);
         return ResponseEntity.ok(hairMetadataSyncService.upsert(request, previewImage));
     }

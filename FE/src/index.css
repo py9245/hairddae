@@ -277,6 +277,10 @@
     min-height: 100%;
   }
 
+  html {
+    overscroll-behavior: none;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
@@ -286,6 +290,7 @@
     font-family: var(--font-sans);
     overflow-x: hidden;
     min-height: 100dvh;
+    overscroll-behavior: none;
   }
 }
 

@@ -2,6 +2,7 @@ package com.example.beapp.api;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -26,6 +27,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import com.example.beapp.api.dto.hairs.HairMetadataSyncResponse;
 import com.example.beapp.security.AuthCookieManager;
+import com.example.beapp.service.CategoryMetadataSyncService;
 import com.example.beapp.service.HairMetadataSyncService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,9 +46,12 @@ class ApiSecurityIntegrationTest {
     @MockBean
     private HairMetadataSyncService hairMetadataSyncService;
 
+    @MockBean
+    private CategoryMetadataSyncService categoryMetadataSyncService;
+
     @Test
     void protectedEndpointRequiresJwt() throws Exception {
-        mockMvc.perform(get("/api/me"))
+        mockMvc.perform(get("/api/mypage/user"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(401));
     }
@@ -90,7 +95,7 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.code").value(200))
                 .andReturn();
 
-        mockMvc.perform(get("/api/me")
+        mockMvc.perform(get("/api/mypage/user")
                         .cookie(extractCookie(loginResult, AuthCookieManager.ACCESS_TOKEN_COOKIE)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userID").value("TestUser01"))
@@ -126,7 +131,7 @@ class ApiSecurityIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("로그아웃 완료"));
 
-        mockMvc.perform(get("/api/me")
+        mockMvc.perform(get("/api/mypage/user")
                         .cookie(accessTokenCookie))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(401));
@@ -272,7 +277,9 @@ class ApiSecurityIntegrationTest {
         mockMvc.perform(get("/api/home/normalrank"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.best").isArray())
-                .andExpect(jsonPath("$.latest").isArray());
+                .andExpect(jsonPath("$.best[0].datasetCode").isString())
+                .andExpect(jsonPath("$.latest").isArray())
+                .andExpect(jsonPath("$.latest[0].datasetCode").isString());
 
         mockMvc.perform(get("/api/home/categorylist"))
                 .andExpect(status().isOk())
@@ -283,7 +290,8 @@ class ApiSecurityIntegrationTest {
         mockMvc.perform(get("/api/home/categorycardlist").param("categoryId", "all"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.categoryID").value("all"))
-                .andExpect(jsonPath("$.cardList").isArray());
+                .andExpect(jsonPath("$.cardList").isArray())
+                .andExpect(jsonPath("$.cardList[0].datasetCode").isString());
     }
 
     @Test
@@ -304,14 +312,16 @@ class ApiSecurityIntegrationTest {
         mockMvc.perform(get("/api/mypage/appliedlist")
                         .cookie(accessTokenCookie))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userID").value("TestUser01"))
-                .andExpect(jsonPath("$.appliedList").isArray());
+                .andExpect(jsonPath("$.totalCount").isNumber())
+                .andExpect(jsonPath("$.hairList").isArray())
+                .andExpect(jsonPath("$.hairList[0].datasetCode").isString());
 
         mockMvc.perform(get("/api/mypage/likelist")
                         .cookie(accessTokenCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userID").value("TestUser01"))
-                .andExpect(jsonPath("$.likeList").isArray());
+                .andExpect(jsonPath("$.likeList").isArray())
+                .andExpect(jsonPath("$.likeList[0].datasetCode").isString());
     }
 
     @Test
@@ -351,12 +361,10 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.inference.ws_url").value(org.hamcrest.Matchers.containsString("/ws/inference/apply")))
                 .andExpect(jsonPath("$.inference.ws_auth_transport").value("sec-websocket-protocol.v1"))
                 .andExpect(jsonPath("$.inference.connect_ticket").isString())
+                .andExpect(jsonPath("$.inference.node_id").value("infer-gpu-01"))
                 .andExpect(jsonPath("$.rtc.enabled").value(true))
                 .andExpect(jsonPath("$.rtc.offer_url").value(org.hamcrest.Matchers.containsString("/rtc/inference/offer")))
-                .andExpect(jsonPath("$.rtc.connect_ticket").isString())
-                .andExpect(jsonPath("$.static.dataset_code").value("0001"))
-                .andExpect(jsonPath("$.static.asset_bundle_schema_version").value(1))
-                .andExpect(jsonPath("$.static.preload_asset_ids").isArray());
+                .andExpect(jsonPath("$.rtc.connect_ticket").isString());
     }
 
     @Test
@@ -473,6 +481,49 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.hair_id").value(3))
                 .andExpect(jsonPath("$.dataset_code").value("0003"))
                 .andExpect(jsonPath("$.created").value(true));
+    }
+
+    @Test
+    void inferenceHairSyncMissingRequiredParamReturnsBadRequest() throws Exception {
+        MockMultipartFile previewImage = new MockMultipartFile(
+                "preview_image",
+                "main.png",
+                "image/png",
+                "fake-image".getBytes());
+
+        mockMvc.perform(multipart("/api/internal/hairs/sync")
+                        .file(previewImage)
+                        .header("X-Inference-Sync-Secret", "test-inference-sync-secret")
+                        .param("dataset_code", "0010")
+                        .param("slug", "wolf-cut-0010")
+                        .param("category", "medium"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.errors[0].field").value("name"));
+
+        verifyNoInteractions(hairMetadataSyncService);
+    }
+
+    @Test
+    void inferenceHairSyncBlankRequiredParamReturnsBadRequest() throws Exception {
+        MockMultipartFile previewImage = new MockMultipartFile(
+                "preview_image",
+                "main.png",
+                "image/png",
+                "fake-image".getBytes());
+
+        mockMvc.perform(multipart("/api/internal/hairs/sync")
+                        .file(previewImage)
+                        .header("X-Inference-Sync-Secret", "test-inference-sync-secret")
+                        .param("dataset_code", "0011")
+                        .param("name", "")
+                        .param("slug", "wolf-cut-0011")
+                        .param("category", "medium"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value(400))
+                .andExpect(jsonPath("$.errors[0].field").value("name"));
+
+        verifyNoInteractions(hairMetadataSyncService);
     }
 
     private MockCookie extractCookie(MvcResult result, String cookieName) {

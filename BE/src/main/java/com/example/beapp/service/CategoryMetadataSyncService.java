@@ -12,71 +12,76 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.example.beapp.api.dto.hairs.HairMetadataSyncRequest;
-import com.example.beapp.api.dto.hairs.HairMetadataSyncResponse;
+import com.example.beapp.api.dto.categories.CategoryMetadataSyncRequest;
+import com.example.beapp.api.dto.categories.CategoryMetadataSyncResponse;
 import com.example.beapp.common.exception.ApiException;
 import com.example.beapp.common.exception.ErrorCode;
 import com.example.beapp.config.AppHairProperties;
-import com.example.beapp.persistence.entity.HairEntity;
-import com.example.beapp.persistence.repository.HairJpaRepository;
+import com.example.beapp.persistence.entity.HairCategoryEntity;
+import com.example.beapp.persistence.repository.HairCategoryJpaRepository;
 
 @Service
-public class HairMetadataSyncService {
+public class CategoryMetadataSyncService {
 
-    private static final String PREVIEW_DIRECTORY = "hair-preview";
+    private static final String PREVIEW_DIRECTORY = "category-preview";
 
-    private final HairJpaRepository hairJpaRepository;
+    private final HairCategoryJpaRepository hairCategoryJpaRepository;
     private final AppHairProperties appHairProperties;
 
-    public HairMetadataSyncService(HairJpaRepository hairJpaRepository, AppHairProperties appHairProperties) {
-        this.hairJpaRepository = hairJpaRepository;
+    public CategoryMetadataSyncService(
+            HairCategoryJpaRepository hairCategoryJpaRepository,
+            AppHairProperties appHairProperties
+    ) {
+        this.hairCategoryJpaRepository = hairCategoryJpaRepository;
         this.appHairProperties = appHairProperties;
     }
 
     @Transactional
-    public HairMetadataSyncResponse upsert(HairMetadataSyncRequest request, MultipartFile previewImage) {
-        HairEntity hair = hairJpaRepository.findByDatasetCode(request.datasetCode())
-                .or(() -> hairJpaRepository.findBySlug(request.slug()))
-                .orElseGet(() -> new HairEntity(
-                        request.name(),
-                        request.category(),
+    public CategoryMetadataSyncResponse upsert(CategoryMetadataSyncRequest request, MultipartFile previewImage) {
+        String categoryId = normalizeCategoryId(request.categoryId());
+        if (!StringUtils.hasText(categoryId) || "all".equalsIgnoreCase(categoryId)) {
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "category_id는 all 이외의 값이어야 합니다.");
+        }
+
+        HairCategoryEntity category = hairCategoryJpaRepository.findByCategoryIdIgnoreCase(categoryId)
+                .orElseGet(() -> new HairCategoryEntity(
+                        categoryId,
+                        request.categoryName().trim(),
                         null,
                         request.description()));
 
-        String previewImagePath = resolvePreviewImagePath(hair, request, previewImage);
-        boolean created = hair.getId() == null;
-        hair.applyCatalogMetadata(
-                request.name(),
-                request.slug(),
-                request.category(),
-                request.datasetCode(),
-                firstText(request.datasetRootUrl(), hair.getDatasetRootUrl()),
-                firstText(request.assetIndexUrl(), hair.getAssetIndexUrl()),
-                firstText(request.representativeAssetId(), hair.getRepresentativeAssetId()),
+        String previewImagePath = resolvePreviewImagePath(category, categoryId, request, previewImage);
+        boolean created = category.getId() == null;
+        category.applyMetadata(
+                categoryId,
+                request.categoryName().trim(),
                 previewImagePath,
-                request.description(),
+                firstText(request.description(), category.getDescription()),
+                request.displayOrder() == null ? safeDisplayOrder(category.getDisplayOrder()) : request.displayOrder(),
                 request.active() == null || request.active());
-        HairEntity saved = hairJpaRepository.save(hair);
-        return HairMetadataSyncResponse.ok(saved.getId().intValue(), saved.getDatasetCode(), created);
+        HairCategoryEntity saved = hairCategoryJpaRepository.save(category);
+        return CategoryMetadataSyncResponse.ok(saved.getCategoryId(), created);
     }
 
-    private String resolvePreviewImagePath(HairEntity hair, HairMetadataSyncRequest request, MultipartFile previewImage) {
+    private String resolvePreviewImagePath(
+            HairCategoryEntity category,
+            String categoryId,
+            CategoryMetadataSyncRequest request,
+            MultipartFile previewImage
+    ) {
         if (previewImage != null && !previewImage.isEmpty()) {
-            return storePreviewImage(request.datasetCode(), previewImage);
+            return storePreviewImage(categoryId, previewImage);
         }
         if (StringUtils.hasText(request.previewImageUrl())) {
             return request.previewImageUrl().trim();
         }
-        if (StringUtils.hasText(hair.getPreviewImageUrl())) {
-            return hair.getPreviewImageUrl();
+        if (StringUtils.hasText(category.getPreviewImageUrl())) {
+            return category.getPreviewImageUrl();
         }
         throw new ApiException(ErrorCode.INVALID_REQUEST, "preview_image 또는 preview_image_url 중 하나는 필수입니다.");
     }
 
-    private String storePreviewImage(String datasetCode, MultipartFile previewImage) {
-        if (previewImage == null || previewImage.isEmpty()) {
-            throw new ApiException(ErrorCode.INVALID_REQUEST, "preview_image는 필수입니다.");
-        }
+    private String storePreviewImage(String categoryId, MultipartFile previewImage) {
         String contentType = previewImage.getContentType();
         if (contentType == null || !contentType.startsWith("image/")) {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "preview_image는 이미지 파일이어야 합니다.");
@@ -85,7 +90,7 @@ public class HairMetadataSyncService {
         String extension = resolveExtension(previewImage.getOriginalFilename(), contentType);
         Path targetDirectory = appHairProperties.staticRootPath()
                 .resolve(PREVIEW_DIRECTORY)
-                .resolve(datasetCode);
+                .resolve(categoryId);
         Path targetPath = targetDirectory.resolve("main." + extension);
 
         try {
@@ -95,10 +100,10 @@ public class HairMetadataSyncService {
                 Files.copy(inputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException exception) {
-            throw new IllegalStateException("대표 헤어 이미지를 저장하지 못했습니다: " + targetPath, exception);
+            throw new IllegalStateException("대표 카테고리 이미지를 저장하지 못했습니다: " + targetPath, exception);
         }
 
-        return normalizeStaticPath(PREVIEW_DIRECTORY + "/" + datasetCode + "/main." + extension);
+        return normalizeStaticPath(PREVIEW_DIRECTORY + "/" + categoryId + "/main." + extension);
     }
 
     private void clearPreviousPreviewFiles(Path targetDirectory, String keepFileName) throws IOException {
@@ -112,7 +117,7 @@ public class HairMetadataSyncService {
                         try {
                             Files.deleteIfExists(path);
                         } catch (IOException exception) {
-                            throw new IllegalStateException("이전 대표 헤어 이미지를 정리하지 못했습니다: " + path, exception);
+                            throw new IllegalStateException("이전 대표 카테고리 이미지를 정리하지 못했습니다: " + path, exception);
                         }
                     });
         }
@@ -141,6 +146,14 @@ public class HairMetadataSyncService {
         return (baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl)
                 + "/"
                 + relativePath;
+    }
+
+    private String normalizeCategoryId(String categoryId) {
+        return categoryId == null ? null : categoryId.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private int safeDisplayOrder(Integer displayOrder) {
+        return displayOrder == null ? 0 : displayOrder;
     }
 
     private String firstText(String primary, String fallback) {

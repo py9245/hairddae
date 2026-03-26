@@ -1,10 +1,5 @@
 package com.example.beapp.service;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -15,6 +10,8 @@ import org.springframework.util.StringUtils;
 import com.example.beapp.api.dto.home.CategoryCardListResponse;
 import com.example.beapp.api.dto.home.CategoryListResponse;
 import com.example.beapp.api.dto.home.CustomRankResponse;
+import com.example.beapp.api.dto.home.HairClickRequest;
+import com.example.beapp.api.dto.home.HairClickResponse;
 import com.example.beapp.api.dto.home.HairApplyResumeV2Request;
 import com.example.beapp.api.dto.home.HairApplyStartV2Request;
 import com.example.beapp.api.dto.home.HairApplyV2Response;
@@ -23,15 +20,12 @@ import com.example.beapp.api.dto.home.RecodeHairRequest;
 import com.example.beapp.api.dto.home.RecodeHairResponse;
 import com.example.beapp.common.exception.ApiException;
 import com.example.beapp.common.exception.ErrorCode;
-import com.example.beapp.config.AppHairProperties;
 import com.example.beapp.model.UserAccount;
 import com.example.beapp.persistence.entity.HairEntity;
 import com.example.beapp.persistence.repository.HairJpaRepository;
 import com.example.beapp.repository.HairApplyJobRepository;
 import com.example.beapp.repository.SampleHairRepository;
 import com.example.beapp.repository.UserAccountRepository;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class HomeService {
@@ -42,8 +36,6 @@ public class HomeService {
     private final HairCatalogService hairCatalogService;
     private final HairJpaRepository hairJpaRepository;
     private final InferenceSessionBootstrapFactory inferenceSessionBootstrapFactory;
-    private final AppHairProperties appHairProperties;
-    private final ObjectMapper objectMapper;
 
     public HomeService(
             UserAccountRepository userAccountRepository,
@@ -51,34 +43,30 @@ public class HomeService {
             HairApplyJobRepository hairApplyJobRepository,
             ObjectProvider<HairCatalogService> hairCatalogServiceProvider,
             ObjectProvider<HairJpaRepository> hairJpaRepositoryProvider,
-            InferenceSessionBootstrapFactory inferenceSessionBootstrapFactory,
-            AppHairProperties appHairProperties,
-            ObjectMapper objectMapper) {
+            InferenceSessionBootstrapFactory inferenceSessionBootstrapFactory) {
         this.userAccountRepository = userAccountRepository;
         this.sampleHairRepository = sampleHairRepository;
         this.hairApplyJobRepository = hairApplyJobRepository;
         this.hairCatalogService = hairCatalogServiceProvider.getIfAvailable();
         this.hairJpaRepository = hairJpaRepositoryProvider.getIfAvailable();
         this.inferenceSessionBootstrapFactory = inferenceSessionBootstrapFactory;
-        this.appHairProperties = appHairProperties;
-        this.objectMapper = objectMapper;
     }
 
-    public CustomRankResponse getCustomRank(String userId, int size) {
+    public CustomRankResponse getCustomRank(String userId) {
         verifyUserExists(userId);
         return CustomRankResponse.ok(
                 hairCatalogService != null
-                        ? hairCatalogService.getCustomRankCards(userId, size)
+                        ? hairCatalogService.getCustomRankCards(userId)
                         : sampleHairRepository.findCustomRankCards());
     }
 
-    public NormalRankResponse getNormalRank(String userId, int size) {
+    public NormalRankResponse getNormalRank(String userId) {
         return NormalRankResponse.ok(
                 hairCatalogService != null
-                        ? hairCatalogService.getBestRankCards(userId, size)
+                        ? hairCatalogService.getBestRankCards(userId)
                         : sampleHairRepository.findBestRankCards(),
                 hairCatalogService != null
-                        ? hairCatalogService.getLatestRankCards(userId, size)
+                        ? hairCatalogService.getLatestRankCards(userId)
                         : sampleHairRepository.findLatestRankCards());
     }
 
@@ -89,14 +77,14 @@ public class HomeService {
                         : sampleHairRepository.findCategoryItems());
     }
 
-    public CategoryCardListResponse getCategoryCardList(String userId, String categoryId, int size) {
+    public CategoryCardListResponse getCategoryCardList(String userId, String categoryId) {
         String resolvedCategoryId = StringUtils.hasText(categoryId) ? categoryId : "all";
         String resolvedCategoryName = "all".equalsIgnoreCase(resolvedCategoryId) ? "전체" : resolvedCategoryId;
         return CategoryCardListResponse.ok(
                 resolvedCategoryId,
                 resolvedCategoryName,
                 hairCatalogService != null
-                        ? hairCatalogService.getCategoryCards(userId, resolvedCategoryId, size)
+                        ? hairCatalogService.getCategoryCards(userId, resolvedCategoryId)
                         : sampleHairRepository.findCategoryCards(resolvedCategoryId));
     }
 
@@ -136,6 +124,15 @@ public class HomeService {
         return RecodeHairResponse.ok();
     }
 
+    public HairClickResponse recordAppliedHair(HairClickRequest request, String userId) {
+        verifyUserExists(userId);
+        if (hairCatalogService == null) {
+            return HairClickResponse.ok(request.hairId());
+        }
+        hairCatalogService.recordHistory(userId, request.hairId(), request.viewSec());
+        return HairClickResponse.ok(request.hairId());
+    }
+
     private UUID parseJobId(String applySessionId) {
         try {
             return UUID.fromString(applySessionId);
@@ -163,13 +160,7 @@ public class HomeService {
                 inferenceSessionBootstrapFactory.featureSchemaVersion(),
                 inferenceSessionBootstrapFactory.transformVersion(),
                 inferenceSessionBootstrapFactory.buildInferenceConnection(ticket),
-                inferenceSessionBootstrapFactory.buildRtcConnection(ticket),
-                new HairApplyV2Response.StaticBootstrap(
-                        bootstrap.baseUrl(),
-                        bootstrap.datasetCode(),
-                        inferenceSessionBootstrapFactory.assetBundleSchemaVersion(),
-                        bootstrap.assetIndexUrl(),
-                        bootstrap.preloadAssetIds()));
+                inferenceSessionBootstrapFactory.buildRtcConnection(ticket));
     }
 
     private ResolvedHairBootstrap resolveHairBootstrap(Integer hairId) {
@@ -184,89 +175,13 @@ public class HomeService {
 
     private ResolvedHairBootstrap toResolvedHairBootstrap(HairEntity hair) {
         String datasetCode = StringUtils.hasText(hair.getDatasetCode()) ? hair.getDatasetCode() : "0001";
-        String baseUrl = StringUtils.hasText(hair.getDatasetRootUrl())
-                ? trimTrailingSlash(hair.getDatasetRootUrl())
-                : trimTrailingSlash(appHairProperties.staticBaseUrl()) + "/" + datasetCode;
-        String assetIndexUrl = StringUtils.hasText(hair.getAssetIndexUrl())
-                ? hair.getAssetIndexUrl()
-                : "/api/hairs/%d/asset-index".formatted(hair.getId());
-        List<String> preloadAssetIds = loadPreloadAssetIds(datasetCode, hair.getRepresentativeAssetId());
-
         return new ResolvedHairBootstrap(
-                hair.getId().intValue(),
                 datasetCode,
-                hair.getRepresentativeAssetId(),
-                baseUrl,
-                assetIndexUrl,
-                preloadAssetIds);
+                hair.getRepresentativeAssetId());
     }
 
     private ResolvedHairBootstrap fallbackBootstrap(Integer hairId) {
-        String datasetCode = "0001";
-        return new ResolvedHairBootstrap(
-                hairId,
-                datasetCode,
-                null,
-                trimTrailingSlash(appHairProperties.staticBaseUrl()) + "/" + datasetCode,
-                "/api/hairs/%d/asset-index".formatted(hairId),
-                loadPreloadAssetIds(datasetCode, null));
-    }
-
-    private List<String> loadPreloadAssetIds(String datasetCode, String representativeAssetId) {
-        Path assetIndexPath = appHairProperties.staticRootPath()
-                .resolve(datasetCode)
-                .resolve("manifests")
-                .resolve("asset_index_v0.json");
-        if (!Files.isRegularFile(assetIndexPath)) {
-            return representativeAssetId == null ? List.of() : List.of(representativeAssetId);
-        }
-
-        try {
-            JsonNode itemsNode = objectMapper.readTree(assetIndexPath.toFile()).path("items");
-            List<PreloadAssetCandidate> candidates = new ArrayList<>();
-            for (JsonNode itemNode : itemsNode) {
-                candidates.add(new PreloadAssetCandidate(
-                        itemNode.path("asset_id").asText(),
-                        itemNode.path("yaw_1deg").asInt(0),
-                        itemNode.path("pitch_1deg").asInt(0),
-                        itemNode.path("roll_1deg").asInt(0),
-                        itemNode.path("quality_score").asDouble(0.0),
-                        itemNode.path("approved").asBoolean(false)));
-            }
-
-            List<PreloadAssetCandidate> selectable = candidates.stream()
-                    .filter(PreloadAssetCandidate::approved)
-                    .toList();
-            List<PreloadAssetCandidate> source = selectable.isEmpty() ? candidates : selectable;
-            if (source.isEmpty()) {
-                return List.of();
-            }
-
-            PreloadAssetCandidate representative = source.stream()
-                    .filter(candidate -> StringUtils.hasText(representativeAssetId) && representativeAssetId.equals(candidate.assetId()))
-                    .findFirst()
-                    .orElse(source.getFirst());
-
-            return source.stream()
-                    .sorted(Comparator
-                            .comparingInt((PreloadAssetCandidate candidate) -> preloadPosePenalty(candidate, representative))
-                            .thenComparing(PreloadAssetCandidate::qualityScore, Comparator.reverseOrder()))
-                    .limit(3)
-                    .map(PreloadAssetCandidate::assetId)
-                    .toList();
-        } catch (IOException exception) {
-            return representativeAssetId == null ? List.of() : List.of(representativeAssetId);
-        }
-    }
-
-    private int preloadPosePenalty(PreloadAssetCandidate candidate, PreloadAssetCandidate representative) {
-        return Math.abs(candidate.yaw1deg() - representative.yaw1deg()) * 2
-                + Math.abs(candidate.pitch1deg() - representative.pitch1deg())
-                + Math.abs(candidate.roll1deg() - representative.roll1deg());
-    }
-
-    private String trimTrailingSlash(String value) {
-        return value != null && value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+        return new ResolvedHairBootstrap("0001", null);
     }
 
     private void verifyUserExists(String userId) {
@@ -279,22 +194,8 @@ public class HomeService {
     }
 
     private record ResolvedHairBootstrap(
-            Integer hairId,
             String datasetCode,
-            String representativeAssetId,
-            String baseUrl,
-            String assetIndexUrl,
-            List<String> preloadAssetIds
-    ) {
-    }
-
-    private record PreloadAssetCandidate(
-            String assetId,
-            int yaw1deg,
-            int pitch1deg,
-            int roll1deg,
-            double qualityScore,
-            boolean approved
+            String representativeAssetId
     ) {
     }
 }

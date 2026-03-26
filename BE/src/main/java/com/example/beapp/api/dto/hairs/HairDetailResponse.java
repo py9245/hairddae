@@ -14,11 +14,7 @@ public record HairDetailResponse(
         int hairDownloadCount,
         OffsetDateTime hairDownloadDate,
         boolean liked,
-        String description,
-        String datasetCode,
-        String datasetRootUrl,
-        String assetIndexUrl,
-        String representativeAssetId
+        String description
 ) {
     public static HairDetailResponse ok(
             int hairID,
@@ -30,11 +26,7 @@ public record HairDetailResponse(
             int hairDownloadCount,
             OffsetDateTime hairDownloadDate,
             boolean liked,
-            String description,
-            String datasetCode,
-            String datasetRootUrl,
-            String assetIndexUrl,
-            String representativeAssetId
+            String description
     ) {
         return new HairDetailResponse(
                 200,
@@ -48,10 +40,6 @@ public record HairDetailResponse(
                 hairDownloadCount,
                 hairDownloadDate,
                 liked,
-                description,
-                datasetCode,
-                datasetRootUrl,
-                assetIndexUrl,
-                representativeAssetId);
+                description);
     }
 }

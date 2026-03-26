@@ -72,6 +72,9 @@ public class HairEntity extends BaseTimeEntity {
             String slug,
             String category,
             String datasetCode,
+            String datasetRootUrl,
+            String assetIndexUrl,
+            String representativeAssetId,
             String previewImageUrl,
             String description,
             boolean active
@@ -80,9 +83,9 @@ public class HairEntity extends BaseTimeEntity {
         this.slug = slug;
         this.category = category;
         this.datasetCode = datasetCode;
-        this.datasetRootUrl = null;
-        this.assetIndexUrl = null;
-        this.representativeAssetId = null;
+        this.datasetRootUrl = datasetRootUrl;
+        this.assetIndexUrl = assetIndexUrl;
+        this.representativeAssetId = representativeAssetId;
         this.previewImageUrl = previewImageUrl;
         this.description = description;
         this.active = active;

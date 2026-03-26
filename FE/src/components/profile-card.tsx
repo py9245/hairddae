@@ -1,14 +1,24 @@
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import type { UserProfile } from '@/lib/mock/mock-profile'
+import type { MeResponse } from '@/lib/auth'
 
 interface ProfileCardProps {
-  profile: UserProfile
+  profile: MeResponse
   onLogout: () => void
 }
 
+function getAvatarVariant(userId: string): 1 | 2 | 3 | 4 | 5 {
+  let sum = 0
+  for (let i = 0; i < userId.length; i++) {
+    sum += userId.charCodeAt(i)
+  }
+  return ((sum % 5) + 1) as 1 | 2 | 3 | 4 | 5
+}
+
 export function ProfileCard({ profile, onLogout }: ProfileCardProps) {
-  const ageDisplay = profile.age == null ? '비공개' : `${profile.age}세`
+  const birthDateDisplay = profile.birthDate
+    ? profile.birthDate
+    : '생년월일 비공개'
 
   const genderMap: Record<string, string> = { F: '여자', M: '남자' }
   const mappedGender = profile.gender
@@ -16,18 +26,18 @@ export function ProfileCard({ profile, onLogout }: ProfileCardProps) {
     : null
 
   const genderDisplay =
-    mappedGender == null || mappedGender === '' ? '비공개' : mappedGender
+    mappedGender == null || mappedGender === '' ? '성별 비공개' : mappedGender
 
   return (
     <section className="rounded-3xl bg-card p-6">
       <div className="flex items-center gap-3">
-        <Avatar variant={profile.avatarVariant} />
+        <Avatar variant={getAvatarVariant(profile.userID)} />
         <div>
           <p className="text-lg font-bold text-labels-primary">
-            {profile.nickname}
+            {profile.userID}
           </p>
           <p className="mt-1 text-sm text-labels-secondary">
-            {ageDisplay} · {genderDisplay}
+            {birthDateDisplay} · {genderDisplay}
           </p>
         </div>
       </div>

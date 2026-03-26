@@ -43,7 +43,7 @@ export function StyleAdsCard({
   onLikeToggle,
   onApply,
 }: StyleAdsCardProps) {
-  const heartIconSrc = liked ? '/icon/heart-fill.svg' : '/icon/hair-empty.svg'
+  const heartIconSrc = liked ? '/icon/heart-fill.svg' : '/icon/heart-empty.svg'
   const heartLabel = liked ? '찜 해제' : '찜하기'
 
   return (
@@ -75,7 +75,7 @@ export function StyleAdsCard({
             )}
           </div>
         </div>
-        <div className="mt-3 flex items-center justify-between">
+        <div className="mt-3 flex items-center justify-start">
           <button
             type="button"
             aria-label="적용하기"
@@ -88,7 +88,7 @@ export function StyleAdsCard({
             type="button"
             aria-label={heartLabel}
             aria-pressed={liked}
-            className="relative z-30 ml-2 flex size-[18px] shrink-0 items-center justify-center rounded-full bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20 focus-visible:ring-offset-2"
+            className="relative z-30 ml-auto flex size-[18px] shrink-0 items-center justify-center rounded-full bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/20 focus-visible:ring-offset-2"
             onClick={(event) => {
               event.stopPropagation()
               onLikeToggle?.()

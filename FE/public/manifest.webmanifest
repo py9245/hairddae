@@ -1,0 +1,29 @@
+{
+  "name": "헤어때",
+  "short_name": "헤어때",
+  "description": "가상 헤어 체험과 스타일 탐색을 앱처럼 빠르게 실행할 수 있는 헤어때 PWA",
+  "lang": "ko",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fff5f6",
+  "theme_color": "#ea7589",
+  "icons": [
+    {
+      "src": "/pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/pwa-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

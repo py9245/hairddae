@@ -43,7 +43,7 @@ export function HairSelectorItem({
             )
           ) : (
             <img
-              src={item.thumb}
+              src={item.image}
               alt={item.label}
               className={clsx(
                 'select-none object-contain transition-all duration-300',

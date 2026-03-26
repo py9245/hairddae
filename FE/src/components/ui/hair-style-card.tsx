@@ -1,30 +1,48 @@
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
 
 type HairStyleCardProps = {
+  hairId: number
   imageSrc: string
   imageAlt: string
-  title: string
-  subtitle: string
+  hairName: string
+  hookText: string
   priority?: boolean
   liked?: boolean
   className?: string
   onLikeToggle?: () => void
-  onApply?: () => void
+  onApply?: (hairId: number) => void | Promise<void>
 }
 
 export function HairStyleCard({
+  hairId,
   imageSrc,
   imageAlt,
-  title,
-  subtitle,
+  hairName,
+  hookText,
   priority = false,
   liked = false,
   className,
   onLikeToggle,
   onApply,
 }: HairStyleCardProps) {
-  const heartIconSrc = liked ? '/icon/heart-fill.svg' : '/icon/hair-empty.svg'
+  const [isApplying, setIsApplying] = useState(false)
+  const heartIconSrc = liked ? '/icon/heart-fill.svg' : '/icon/heart-empty.svg'
   const heartLabel = liked ? '찜 해제' : '찜하기'
+
+  async function handleApplyClick() {
+    if (!onApply || isApplying) {
+      return
+    }
+
+    setIsApplying(true)
+
+    try {
+      await onApply(hairId)
+    } finally {
+      setIsApplying(false)
+    }
+  }
 
   return (
     <article
@@ -44,32 +62,38 @@ export function HairStyleCard({
           draggable={false}
         />
 
-        {/* Smoother Gradient Overlay with Brand Tint */}
         <div className="absolute inset-x-0 bottom-0 flex flex-col justify-end bg-gradient-to-t from-black/80 via-black/30 to-transparent p-[10px] pt-[40px]">
           <div className="flex flex-col gap-[10px]">
             <div className="flex flex-col items-start text-white">
-              <h3 className="font-medium w-full whitespace-pre-line text-[19px] leading-[1.2] font-bold tracking-tight drop-shadow-md">
-                {title}
-              </h3>
-              <p className="mt-[2px] text-[11px] font-medium text-white/90 drop-shadow-sm">
-                {subtitle}
+              <p className="text-[11px] font-medium text-white/90 drop-shadow-sm">
+                {hookText}
               </p>
+              <h3 className="mt-[2px] w-full whitespace-pre-line text-[19px] leading-[1.2] font-bold tracking-tight drop-shadow-md">
+                {hairName}
+              </h3>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-start">
               <button
                 type="button"
                 aria-label="적용하기"
-                className="rounded-full bg-brand px-[16px] py-[6px] text-[13px] font-bold text-white transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-                onClick={onApply}
+                disabled={isApplying}
+                className={cn(
+                  'rounded-full bg-brand px-[16px] py-[6px] text-[13px] font-bold text-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80',
+                  isApplying
+                    ? 'cursor-wait opacity-70'
+                    : 'hover:bg-primary-hover',
+                )}
+                onClick={handleApplyClick}
               >
                 적용하기
               </button>
+
               <button
                 type="button"
                 aria-label={heartLabel}
                 aria-pressed={liked}
-                className="relative z-30 flex items-center justify-center rounded-full bg-white/10 p-1.5 backdrop-blur-md transition-all hover:bg-white/20 active:scale-90"
+                className="relative z-30 ml-auto flex items-center justify-center rounded-full bg-white/10 p-1.5 backdrop-blur-md transition-all hover:bg-white/20 active:scale-90"
                 onClick={(event) => {
                   event.stopPropagation()
                   onLikeToggle?.()

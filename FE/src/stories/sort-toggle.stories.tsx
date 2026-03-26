@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useState } from 'react'
 import { SortToggle } from '@/components/ui/sort-toggle'
+import { SortToggleSkeleton } from '@/components/ui/sort-toggle-skeleton'
 
 const SORT_OPTIONS = [
   { value: 'popular', label: '인기순' },
@@ -61,4 +62,8 @@ export const Latest: Story = {
       />
     )
   },
+}
+
+export const Skeleton: StoryObj = {
+  render: () => <SortToggleSkeleton />,
 }

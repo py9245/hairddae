@@ -12,15 +12,19 @@ type VideoElementWithFrameCallback = HTMLVideoElement & {
 type UseViewportCaptureStreamArgs = {
   enabled?: boolean
   fps: number
+  width: number
+  height: number
+  mirror?: boolean
   sourceVideoRef: React.RefObject<HTMLVideoElement | null>
-  wrapRef: React.RefObject<HTMLDivElement | null>
 }
 
 export function useViewportCaptureStream({
   enabled = true,
   fps,
+  width,
+  height,
+  mirror = true,
   sourceVideoRef,
-  wrapRef,
 }: UseViewportCaptureStreamArgs) {
   const [stream, setStream] = useState<MediaStream | null>(null)
 
@@ -31,8 +35,7 @@ export function useViewportCaptureStream({
     }
 
     const sourceVideo = sourceVideoRef.current
-    const wrap = wrapRef.current
-    if (!sourceVideo || !wrap) {
+    if (!sourceVideo) {
       setStream(null)
       return
     }
@@ -76,9 +79,6 @@ export function useViewportCaptureStream({
 
     const drawFrame = (now: number) => {
       const nextSourceVideo = sourceVideoRef.current
-      const nextWrap = wrapRef.current
-      const width = Math.round(nextWrap?.clientWidth ?? 0)
-      const height = Math.round(nextWrap?.clientHeight ?? 0)
       const videoWidth = nextSourceVideo?.videoWidth ?? 0
       const videoHeight = nextSourceVideo?.videoHeight ?? 0
 
@@ -91,6 +91,7 @@ export function useViewportCaptureStream({
         now - lastDrawAt >= frameIntervalMs - 1
       ) {
         lastDrawAt = now
+
         if (canvas.width !== width || canvas.height !== height) {
           canvas.width = width
           canvas.height = height
@@ -103,8 +104,14 @@ export function useViewportCaptureStream({
           videoHeight,
         )
 
+        context.clearRect(0, 0, width, height)
         context.imageSmoothingEnabled = true
         context.imageSmoothingQuality = 'low'
+        if (mirror) {
+          context.save()
+          context.translate(width, 0)
+          context.scale(-1, 1)
+        }
         context.drawImage(
           nextSourceVideo,
           0,
@@ -116,6 +123,9 @@ export function useViewportCaptureStream({
           videoWidth * scale,
           videoHeight * scale,
         )
+        if (mirror) {
+          context.restore()
+        }
 
         if (!captureStream) {
           captureStream = canvas.captureStream(fps)
@@ -141,13 +151,17 @@ export function useViewportCaptureStream({
       ) {
         return
       }
-      frameCallbackId = videoWithFrameCallback.requestVideoFrameCallback((now) => {
-        drawFrame(now)
-        scheduleVideoFrameDraw()
-      })
+      frameCallbackId = videoWithFrameCallback.requestVideoFrameCallback(
+        (now) => {
+          drawFrame(now)
+          scheduleVideoFrameDraw()
+        },
+      )
     }
 
-    if (typeof videoWithFrameCallback.requestVideoFrameCallback === 'function') {
+    if (
+      typeof videoWithFrameCallback.requestVideoFrameCallback === 'function'
+    ) {
       scheduleVideoFrameDraw()
     } else {
       scheduleTimeoutDraw()
@@ -157,7 +171,7 @@ export function useViewportCaptureStream({
       cancelled = true
       stop()
     }
-  }, [enabled, fps, sourceVideoRef, wrapRef])
+  }, [enabled, fps, height, mirror, sourceVideoRef, width])
 
   return stream
 }

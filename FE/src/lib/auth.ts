@@ -1,12 +1,20 @@
-const AUTH_STORAGE_KEY = 'ssafy-authenticated'
-const ACCESS_TOKEN_STORAGE_KEY = 'ssafy-access-token'
-
 type AuthListener = () => void
+type CookieStoreCookie = {
+  name: string
+}
+type CookieStoreLike = {
+  getAll(): Promise<CookieStoreCookie[]>
+  delete(name: string): Promise<void>
+}
 
 const listeners = new Set<AuthListener>()
 const BaseUrl = '/api'
 const shouldSimulateSignup = import.meta.env.VITE_SIMULATE_SIGNUP === 'true'
 const shouldSimulateLogin = import.meta.env.VITE_SIMULATE_LOGIN === 'true'
+type AuthStatus = 'unknown' | 'authenticated' | 'anonymous'
+
+let authStatus: AuthStatus = 'unknown'
+let authCheckPromise: Promise<boolean> | null = null
 
 function notifyListeners() {
   for (const listener of listeners) {
@@ -14,37 +22,151 @@ function notifyListeners() {
   }
 }
 
-function readStorage() {
+async function clearClientCookies() {
   if (typeof window === 'undefined') {
-    return false
+    return
   }
 
-  return window.localStorage.getItem(AUTH_STORAGE_KEY) === 'true'
+  const cookieStore = (window as { cookieStore?: CookieStoreLike }).cookieStore
+  if (!cookieStore) {
+    return
+  }
+
+  const cookies = await cookieStore.getAll()
+
+  for (const cookie of cookies) {
+    try {
+      await cookieStore.delete(cookie.name)
+    } catch {}
+  }
 }
 
-export function getStoredAccessToken() {
-  if (typeof window === 'undefined') {
+async function clearSession() {
+  await clearClientCookies()
+  setAuthStatus('anonymous')
+}
+
+function setAuthStatus(nextStatus: AuthStatus) {
+  if (authStatus === nextStatus) {
+    return
+  }
+
+  authStatus = nextStatus
+  notifyListeners()
+}
+
+async function readErrorMessage(
+  response: Response,
+  fallbackMessage: string,
+): Promise<string> {
+  const data = await response.json().catch(() => null)
+  return data?.message ?? fallbackMessage
+}
+
+export type MeResponse = {
+  code: number
+  message: string
+  userID: string
+  birthDate: string | null
+  gender: string | null
+}
+
+export async function fetchMe(): Promise<MeResponse | null> {
+  const response = await fetch(`${BaseUrl}/mypage/user/`, {
+    credentials: 'include',
+  })
+
+  if (response.status === 401) {
     return null
   }
 
-  return window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(response, '인증 상태를 확인하지 못했습니다.'),
+    )
+  }
+
+  return response.json()
+}
+
+async function refreshSession(): Promise<boolean> {
+  const response = await fetch(`${BaseUrl}/accounts/refreshToken/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include',
+    body: JSON.stringify({ rotate: false }),
+  })
+
+  if (response.status === 401) {
+    return false
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(response, '세션을 갱신하지 못했습니다.'),
+    )
+  }
+
+  return true
+}
+
+async function resolveAuthStatus() {
+  const me = await fetchMe()
+  if (me) {
+    setAuthStatus('authenticated')
+    return true
+  }
+
+  const refreshed = await refreshSession()
+  if (!refreshed) {
+    await clearSession()
+    return false
+  }
+
+  const refreshedMe = await fetchMe()
+  const isAuthenticated = refreshedMe != null
+  setAuthStatus(isAuthenticated ? 'authenticated' : 'anonymous')
+  return isAuthenticated
 }
 
 export const auth = {
   isAuthenticated() {
-    return readStorage()
+    return authStatus === 'authenticated'
   },
-  login(accessToken?: string | null) {
-    window.localStorage.setItem(AUTH_STORAGE_KEY, 'true')
-    if (accessToken) {
-      window.localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, accessToken)
+  async ensureAuthenticated() {
+    if (authStatus === 'authenticated') {
+      return true
     }
-    notifyListeners()
+
+    if (authCheckPromise) {
+      return authCheckPromise
+    }
+
+    authCheckPromise = resolveAuthStatus().finally(() => {
+      authCheckPromise = null
+    })
+
+    return authCheckPromise
   },
-  logout() {
-    window.localStorage.removeItem(AUTH_STORAGE_KEY)
-    window.localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY)
-    notifyListeners()
+  login() {
+    setAuthStatus('authenticated')
+  },
+  async expireSession() {
+    await clearSession()
+  },
+  async logout() {
+    try {
+      await fetch(`${BaseUrl}/accounts/logout`, {
+        method: 'POST',
+        credentials: 'include',
+      })
+    } catch (error) {
+      console.error('Failed to call logout API.', error)
+    } finally {
+      await clearSession()
+    }
   },
   subscribe(listener: AuthListener) {
     listeners.add(listener)
@@ -107,8 +229,6 @@ export type LoginResponse = {
   code: number
   message: string
   userID: string
-  accessToken: string
-  refreshToken: string
 }
 
 export async function loginApi(payload: LoginRequest): Promise<LoginResponse> {
@@ -119,8 +239,6 @@ export async function loginApi(payload: LoginRequest): Promise<LoginResponse> {
       code: 200,
       message: '로그인에 성공했습니다.',
       userID: payload.userID,
-      accessToken: 'mock-access-token',
-      refreshToken: 'mock-refresh-token',
     }
   }
 

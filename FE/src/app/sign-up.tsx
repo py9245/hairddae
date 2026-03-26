@@ -63,14 +63,14 @@ export default function SignUp() {
   }
 
   return (
-    <main className="app-frame-page flex flex-col items-center justify-center bg-bg-primary px-6 py-10">
+    <main className="app-frame-page flex flex-col items-center justify-start overflow-y-auto bg-bg-primary px-6 py-6 md:justify-center md:py-10 [@media_(max-height:820px)]:justify-start [@media_(max-height:820px)]:py-4">
       <div className="w-full max-w-md">
-        <h1 className="mt-4 text-center text-3xl font-extrabold tracking-tight text-primary-300">
+        <h1 className="mt-1 text-center text-3xl font-extrabold tracking-tight text-primary-300 md:mt-4 [@media_(max-height:820px)]:mt-0">
           회원가입
         </h1>
 
         <form
-          className="mt-10 space-y-5"
+          className="mt-5 space-y-3 md:mt-10 md:space-y-5 [@media_(max-height:820px)]:mt-4 [@media_(max-height:820px)]:space-y-2.5"
           onSubmit={(e) =>
             handleSubmit(e, async (formValues) => {
               await signUpMutation.mutateAsync({
@@ -214,7 +214,7 @@ export default function SignUp() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-2 md:gap-3 [@media_(max-height:820px)]:gap-1.5">
             <div>
               <label
                 htmlFor="birthDate"
@@ -263,16 +263,23 @@ export default function SignUp() {
             </div>
           </div>
 
-          <AgreementCheckbox
-            checked={values.agreed}
-            onChange={(checked) => handleChange('agreed', checked)}
-            onBlur={() => handleBlur('agreed')}
-            label="이용약관 및 개인정보수집에 동의합니다."
-            requiredText="[필수]"
-          />
-          {errors.agreed && (
-            <p className="text-center text-sm text-error">{errors.agreed}</p>
-          )}
+          <div className="relative">
+            {errors.agreed && (
+              <p
+                className="absolute left-1/2 top-6 -translate-x-1/2 whitespace-nowrap text- 
+            sm text-error"
+              >
+                {errors.agreed}
+              </p>
+            )}
+            <AgreementCheckbox
+              checked={values.agreed}
+              onChange={(checked) => handleChange('agreed', checked)}
+              onBlur={() => handleBlur('agreed')}
+              label="이용약관 및 개인정보수집에 동의합니다."
+              requiredText="[필수]"
+            />
+          </div>
 
           {signUpMutation.isError && (
             <p className="text-center text-sm text-error">
@@ -289,7 +296,7 @@ export default function SignUp() {
           />
         </form>
 
-        <p className="mt-10 text-center text-sm font-medium text-slate-500">
+        <p className="mt-5 text-center text-sm font-medium text-slate-500 md:mt-10 [@media_(max-height:820px)]:mt-4">
           이미 계정이 있으신가요?{' '}
           <Link to="/auth/login" className="text-sm font-bold text-primary-300">
             로그인

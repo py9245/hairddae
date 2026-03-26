@@ -254,6 +254,22 @@ function RootLayout() {
           <Outlet />
         </div>
         <BottomNav />
+        {isReviewModalOpen ? (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+            <ReviewModal
+              open={isReviewModalOpen}
+              onClose={() => {
+                void deferReviewModal()
+              }}
+              onDefer={() => {
+                void deferReviewModal()
+              }}
+              onSubmit={() => {
+                void submitReviewModal()
+              }}
+            />
+          </div>
+        ) : null}
       </div>
       {isReviewModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">

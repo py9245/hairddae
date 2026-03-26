@@ -70,7 +70,7 @@ export default function SignUp() {
         </h1>
 
         <form
-          className="mt-5 space-y-3 md:mt-10 md:space-y-5 [@media_(max-height:820px)]:mt-4 [@media_(max-height:820px)]:space-y-2.5"
+          className="mt-4 space-y-2.5 md:mt-10 md:space-y-4 [@media_(max-height:820px)]:mt-3 [@media_(max-height:820px)]:space-y-2"
           onSubmit={(e) =>
             handleSubmit(e, async (formValues) => {
               await signUpMutation.mutateAsync({
@@ -86,7 +86,7 @@ export default function SignUp() {
           }
         >
           <div>
-            <div className="mb-2 flex items-center">
+            <div className="mb-1.5 flex items-center">
               <label
                 htmlFor="userId"
                 className="block text-base font-semibold text-slate-700"
@@ -108,7 +108,7 @@ export default function SignUp() {
                   : 'border-gray-200 focus:border-primary-200'
               }`}
             />
-            <div className="mt-2 flex items-center justify-between gap-3">
+            <div className="mt-1.5 flex items-center justify-between gap-3">
               <p className="min-h-[20px] text-sm text-error">
                 {errors.userId ?? ''}
               </p>
@@ -121,7 +121,7 @@ export default function SignUp() {
           <div>
             <label
               htmlFor="password"
-              className="mb-2 block text-base font-semibold text-slate-700"
+              className="mb-1.5 block text-base font-semibold text-slate-700"
             >
               비밀번호
             </label>
@@ -153,7 +153,7 @@ export default function SignUp() {
                 )}
               </button>
             </div>
-            <div className="mt-2 flex items-center justify-between gap-3">
+            <div className="mt-1.5 flex items-center justify-between gap-3">
               <p className="min-h-[20px] text-sm text-error">
                 {errors.password ?? ''}
               </p>
@@ -166,7 +166,7 @@ export default function SignUp() {
           <div>
             <label
               htmlFor="passwordConfirm"
-              className="mb-2 block text-base font-semibold text-slate-700"
+              className="mb-1.5 block text-base font-semibold text-slate-700"
             >
               비밀번호 확인
             </label>
@@ -204,7 +204,7 @@ export default function SignUp() {
                 )}
               </button>
             </div>
-            <div className="mt-2 flex items-center justify-between gap-3">
+            <div className="mt-1.5 flex items-center justify-between gap-3">
               <p className="min-h-[20px] text-sm text-error">
                 {errors.passwordConfirm ?? ''}
               </p>
@@ -214,11 +214,11 @@ export default function SignUp() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 md:gap-3 [@media_(max-height:820px)]:gap-1.5">
+          <div className="grid grid-cols-2 gap-1.5 md:gap-2.5 [@media_(max-height:820px)]:gap-1">
             <div>
               <label
                 htmlFor="birthDate"
-                className="mb-2 block text-base font-semibold text-slate-700"
+                className="mb-1.5 block text-base font-semibold text-slate-700"
               >
                 생년월일{' '}
                 <span className="text-sm font-medium text-gray-400">
@@ -232,13 +232,13 @@ export default function SignUp() {
                 hasError={!!errors.birthDate}
               />
               {errors.birthDate && (
-                <p className="mt-2 text-sm text-primary-300">
+                <p className="mt-1.5 text-sm text-primary-300">
                   {errors.birthDate}
                 </p>
               )}
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <label
                 htmlFor="gender"
                 className="block text-base font-semibold text-slate-700"
@@ -266,7 +266,7 @@ export default function SignUp() {
           <div className="relative">
             {errors.agreed && (
               <p
-                className="absolute left-1/2 top-6 -translate-x-1/2 whitespace-nowrap text- 
+                className="absolute left-1/2 top-5 -translate-x-1/2 whitespace-nowrap text- 
             sm text-error"
               >
                 {errors.agreed}
@@ -290,13 +290,13 @@ export default function SignUp() {
           )}
 
           <SignUpButton
-            className="mt-4"
+            className="mt-3"
             disabled={!isFormValid}
             isPending={signUpMutation.isPending}
           />
         </form>
 
-        <p className="mt-5 text-center text-sm font-medium text-slate-500 md:mt-10 [@media_(max-height:820px)]:mt-4">
+        <p className="mt-1 text-center text-sm font-medium text-slate-500 md:mt-10 [@media_(max-height:820px)]:mt-2">
           이미 계정이 있으신가요?{' '}
           <Link to="/auth/login" className="text-sm font-bold text-primary-300">
             로그인

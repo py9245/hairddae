@@ -58,6 +58,7 @@ export default function Login() {
               id="userID"
               type="text"
               value={input.userID}
+              maxLength={20}
               onChange={handleChange}
               placeholder="아이디를 입력하세요"
               className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
@@ -77,6 +78,7 @@ export default function Login() {
                 type={showPassword ? 'text' : 'password'}
                 value={input.password}
                 onChange={handleChange}
+                maxLength={20}
                 placeholder="비밀번호를 입력하세요"
                 className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
               />
@@ -97,7 +99,7 @@ export default function Login() {
 
           {loginMutation.isError && (
             <p className="text-center text-sm text-red-500">
-              {loginMutation.error.message}
+              아이디 또는 비밀번호가 올바르지 않습니다.
             </p>
           )}
 

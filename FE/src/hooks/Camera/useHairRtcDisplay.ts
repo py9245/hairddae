@@ -64,7 +64,7 @@ export function useHairRtcDisplay({
     remoteVideo.addEventListener('resize', markReady)
     remoteVideo.addEventListener('emptied', markWaiting)
 
-    if (remoteStream.getVideoTracks().length > 0 && !isFrameFrozen) {
+    if (remoteStream.getVideoTracks().length > 0) {
       void remoteVideo.play().catch(() => {})
     }
 
@@ -78,7 +78,7 @@ export function useHairRtcDisplay({
       setRemoteVideoSize(null)
       remoteVideo.srcObject = null
     }
-  }, [remoteStream, isFrameFrozen])
+  }, [remoteStream])
 
   useEffect(() => {
     if (!remoteVideoReady || !isRenderReady) {

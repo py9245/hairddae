@@ -10,6 +10,14 @@
 - inference 서버 IP 같은 민감한 운영 라우팅 값은 `VITE_*` 로 두지 않는다.
 - 브라우저는 항상 same-origin `/api`, `/ws/inference` 로만 통신하고, 실제 upstream host 는 nginx 또는 Vite proxy 가 대신 결정한다.
 
+## Static Deploy
+
+- 정적 배포 산출물은 `pnpm.cmd build` 후 생성되는 `FE/dist` 이다.
+- 운영 배포 시 브라우저는 same-origin 기준으로 `/api`, `/ws/inference`, `/rtc/inference` 로만 통신한다.
+- 운영 nginx 는 정적 파일을 서빙하면서 위 3개 경로를 각각 backend / inference upstream 으로 프록시해야 한다.
+- FE 단독 nginx 예시는 [`FE/nginx/default.conf`](/C:/Users/SSAFY/Desktop/TTT/S14P21M101/FE/nginx/default.conf) 에 있다.
+- 현재 레포 기준 운영 도메인은 `j14m101.p.ssafy.io` 이며, Jenkins 는 `FE/dist` 를 서버의 nginx html 디렉터리로 rsync 한다.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:

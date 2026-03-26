@@ -35,10 +35,21 @@ export function useHairSelectorController({
   const swipeThreshold = 40
   const showSkeleton = loading || items.length === 0
 
-  const selectedIndex = useMemo(
-    () => items.findIndex((item) => item.id === selectedId),
-    [items, selectedId],
-  )
+  const selectedIndex = useMemo(() => {
+    const matchedIndex = items.findIndex((item) => item.id === selectedId)
+
+    if (matchedIndex >= 0) {
+      return matchedIndex
+    }
+
+    // If the requested hair id is not present in the loaded list yet,
+    // keep the "none" option on the left by centering the first real item.
+    if (selectedId > 0 && items.length > 1) {
+      return 1
+    }
+
+    return 0
+  }, [items, selectedId])
 
   useEffect(() => {
     const update = () => {

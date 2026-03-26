@@ -77,6 +77,7 @@ export function HairSelector(props: HairSelectorProps) {
                 variant="hair-download"
                 size="camera-download"
                 onClick={handleDownloadClick}
+                data-testid="camera-download-button"
                 aria-label="캡처 다운로드"
               >
                 <Download className="size-12 text-slate-700" />

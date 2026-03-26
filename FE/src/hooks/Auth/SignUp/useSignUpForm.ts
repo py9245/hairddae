@@ -15,6 +15,8 @@ export type FormValues = {
   agreed: boolean
 }
 
+type TouchedFields = Partial<Record<keyof FormValues, boolean>>
+
 const initialValues: FormValues = {
   userId: '',
   password: '',
@@ -27,6 +29,7 @@ const initialValues: FormValues = {
 export function useSignUpForm() {
   const [values, setValues] = useState<FormValues>(initialValues)
   const [errors, setErrors] = useState<FormErrors>({})
+  const [touchedFields, setTouchedFields] = useState<TouchedFields>({})
 
   function handleChange<K extends keyof FormValues>(
     key: K,
@@ -38,24 +41,42 @@ export function useSignUpForm() {
         [key]: value,
       }
 
-      if (key === 'agreed') {
-        setErrors((prevErrors) => ({
-          ...prevErrors,
-          agreed: validateField('agreed', nextValues),
-        }))
-      }
+      setErrors((prevErrors) => ({
+        ...prevErrors,
+        ...(touchedFields[key]
+          ? {
+              [key]: validateField(key, nextValues),
+            }
+          : {}),
+        ...(key === 'password' && touchedFields.passwordConfirm
+          ? {
+              passwordConfirm: validateField('passwordConfirm', nextValues),
+            }
+          : {}),
+      }))
 
       return nextValues
     })
+
+    setTouchedFields((prev) => ({
+      ...prev,
+      [key]: true,
+    }))
   }
 
   function handleBlur<K extends keyof FormValues>(key: K) {
+    const nextTouchedFields = {
+      ...touchedFields,
+      [key]: true,
+    }
     const message = validateField(key, values)
+
+    setTouchedFields(nextTouchedFields)
 
     setErrors((prev) => ({
       ...prev,
       [key]: message,
-      ...(key === 'password' && values.passwordConfirm
+      ...(key === 'password' && nextTouchedFields.passwordConfirm
         ? {
             passwordConfirm: validateField('passwordConfirm', values),
           }
@@ -82,6 +103,14 @@ export function useSignUpForm() {
     e.preventDefault()
 
     const nextErrors = validateForm(values)
+    setTouchedFields({
+      userId: true,
+      password: true,
+      passwordConfirm: true,
+      birthDate: true,
+      gender: true,
+      agreed: true,
+    })
     setErrors(nextErrors)
 
     const hasError = Object.values(nextErrors).some(Boolean)

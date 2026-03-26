@@ -44,7 +44,7 @@ export default function SignUp() {
 
   if (isSignUpComplete) {
     return (
-      <main className="app-frame-page flex flex-col items-center justify-center bg-bg-primary px-6 mb-20">
+      <main className="app-frame-page h-full flex flex-col items-center justify-center bg-bg-primary px-6">
         <h1 className="h-[54px] whitespace-pre-line px-8 text-center text-[20px] leading-[1.35] font-semibold tracking-[-0.03em] text-text-dar mb-20">
           헤어 어때와 함께 다양한 <br />
           헤어스타일로 꾸며보아요
@@ -63,7 +63,7 @@ export default function SignUp() {
   }
 
   return (
-    <main className="app-frame-page flex flex-col items-center justify-start overflow-y-auto bg-bg-primary px-6 py-6 md:justify-center md:py-10 [@media_(max-height:820px)]:justify-start [@media_(max-height:820px)]:py-4">
+    <main className="app-frame-page h-full flex flex-col items-center justify-start overflow-y-auto bg-bg-primary px-6 py-6 md:justify-center md:py-10 [@media_(max-height:820px)]:justify-start [@media_(max-height:820px)]:py-4">
       <div className="w-full max-w-md">
         <h1 className="mt-1 text-center text-3xl font-extrabold tracking-tight text-primary-300 md:mt-4 [@media_(max-height:820px)]:mt-0">
           회원가입

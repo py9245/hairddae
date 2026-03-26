@@ -47,7 +47,7 @@ export default function Splash() {
 
   return (
     <main className="app-frame-page h-full overflow-y-auto bg-bg-primary px-6 pt-12 text-text-dark">
-      <div className="mx-auto flex min-h-full w-full max-w-[390px] flex-col pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
+      <div className="mx-auto flex min-h-full w-full max-w-[390px] flex-col pb-[5.5rem]">
         <div className="w-full overflow-hidden" ref={emblaRef}>
           <div className="flex">
             {slides.map((slide, index) => (

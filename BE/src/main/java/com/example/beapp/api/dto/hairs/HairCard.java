@@ -8,6 +8,7 @@ public record HairCard(
         boolean liked,
         String hookText,
         String hairName,
+        String datasetCode,
         String category,
         OffsetDateTime createdAt
 ) {

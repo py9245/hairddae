@@ -56,6 +56,7 @@ public class SampleHairRepository {
                 liked,
                 "%s 추천 스타일".formatted(name),
                 name,
+                "%04d".formatted(id),
                 category,
                 OffsetDateTime.now().minusDays(daysAgo));
     }

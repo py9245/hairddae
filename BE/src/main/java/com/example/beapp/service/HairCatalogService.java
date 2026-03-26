@@ -211,6 +211,7 @@ public class HairCatalogService {
                 liked,
                 buildHookText(hair),
                 hair.getName(),
+                resolveHairDatasetCode(hair),
                 hair.getCategory(),
                 hair.getCreatedAt());
     }
@@ -307,6 +308,10 @@ public class HairCatalogService {
 
     private String normalizeCategoryKey(String category) {
         return category == null ? "" : category.trim().toLowerCase();
+    }
+
+    private String resolveHairDatasetCode(HairEntity hair) {
+        return StringUtils.hasText(hair.getDatasetCode()) ? hair.getDatasetCode() : "0001";
     }
 
     private int safeCount(Integer value) {

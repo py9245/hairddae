@@ -62,7 +62,7 @@ app:
     metadata-sync-secret: ${APP_INFERENCE_METADATA_SYNC_SECRET:}
     ws-auth-transport: ${APP_INFERENCE_WS_AUTH_TRANSPORT:sec-websocket-protocol.v1}
     audience: ${APP_INFERENCE_AUDIENCE:inference}
-    node-id: ${APP_INFERENCE_NODE_ID:infer-a-01}
+    node-id: ${APP_INFERENCE_NODE_ID:infer-gpu-01}
     connect-ticket-expiry-seconds: ${APP_INFERENCE_CONNECT_TICKET_EXPIRY_SECONDS:30}
     processed-timeout-ms: ${APP_INFERENCE_PROCESSED_TIMEOUT_MS:250}
     heartbeat-interval-ms: ${APP_INFERENCE_HEARTBEAT_INTERVAL_MS:5000}

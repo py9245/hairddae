@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import com.example.beapp.api.dto.hairs.HairMetadataSyncResponse;
 import com.example.beapp.security.AuthCookieManager;
+import com.example.beapp.service.CategoryMetadataSyncService;
 import com.example.beapp.service.HairMetadataSyncService;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,6 +45,9 @@ class ApiSecurityIntegrationTest {
 
     @MockBean
     private HairMetadataSyncService hairMetadataSyncService;
+
+    @MockBean
+    private CategoryMetadataSyncService categoryMetadataSyncService;
 
     @Test
     void protectedEndpointRequiresJwt() throws Exception {
@@ -273,7 +277,9 @@ class ApiSecurityIntegrationTest {
         mockMvc.perform(get("/api/home/normalrank"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.best").isArray())
-                .andExpect(jsonPath("$.latest").isArray());
+                .andExpect(jsonPath("$.best[0].datasetCode").isString())
+                .andExpect(jsonPath("$.latest").isArray())
+                .andExpect(jsonPath("$.latest[0].datasetCode").isString());
 
         mockMvc.perform(get("/api/home/categorylist"))
                 .andExpect(status().isOk())
@@ -284,7 +290,8 @@ class ApiSecurityIntegrationTest {
         mockMvc.perform(get("/api/home/categorycardlist").param("categoryId", "all"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.categoryID").value("all"))
-                .andExpect(jsonPath("$.cardList").isArray());
+                .andExpect(jsonPath("$.cardList").isArray())
+                .andExpect(jsonPath("$.cardList[0].datasetCode").isString());
     }
 
     @Test
@@ -306,13 +313,15 @@ class ApiSecurityIntegrationTest {
                         .cookie(accessTokenCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalCount").isNumber())
-                .andExpect(jsonPath("$.hairList").isArray());
+                .andExpect(jsonPath("$.hairList").isArray())
+                .andExpect(jsonPath("$.hairList[0].datasetCode").isString());
 
         mockMvc.perform(get("/api/mypage/likelist")
                         .cookie(accessTokenCookie))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userID").value("TestUser01"))
-                .andExpect(jsonPath("$.likeList").isArray());
+                .andExpect(jsonPath("$.likeList").isArray())
+                .andExpect(jsonPath("$.likeList[0].datasetCode").isString());
     }
 
     @Test
@@ -352,6 +361,7 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.inference.ws_url").value(org.hamcrest.Matchers.containsString("/ws/inference/apply")))
                 .andExpect(jsonPath("$.inference.ws_auth_transport").value("sec-websocket-protocol.v1"))
                 .andExpect(jsonPath("$.inference.connect_ticket").isString())
+                .andExpect(jsonPath("$.inference.node_id").value("infer-gpu-01"))
                 .andExpect(jsonPath("$.rtc.enabled").value(true))
                 .andExpect(jsonPath("$.rtc.offer_url").value(org.hamcrest.Matchers.containsString("/rtc/inference/offer")))
                 .andExpect(jsonPath("$.rtc.connect_ticket").isString());

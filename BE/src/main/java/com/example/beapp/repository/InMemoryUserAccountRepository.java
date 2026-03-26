@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Repository;
 
+import com.example.beapp.model.LoginType;
 import com.example.beapp.model.UserAccount;
 
 @Repository
@@ -19,6 +20,7 @@ public class InMemoryUserAccountRepository implements UserAccountRepository {
 
     public InMemoryUserAccountRepository(PasswordEncoder passwordEncoder) {
         save(new UserAccount("TestUser01", passwordEncoder.encode("P@ssw0rd1"), LocalDate.of(2000, 1, 1), "M"));
+        save(new UserAccount("GoogleUser01", passwordEncoder.encode("G00gle!1"), LocalDate.of(1999, 5, 20), "F", LoginType.GOOGLE));
     }
 
     @Override

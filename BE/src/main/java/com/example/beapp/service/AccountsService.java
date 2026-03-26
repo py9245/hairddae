@@ -12,6 +12,7 @@ import com.example.beapp.api.dto.accounts.SimpleResponse;
 import com.example.beapp.api.dto.accounts.TokenRefreshRequest;
 import com.example.beapp.common.exception.ApiException;
 import com.example.beapp.common.exception.ErrorCode;
+import com.example.beapp.model.LoginType;
 import com.example.beapp.model.UserAccount;
 import com.example.beapp.repository.RefreshTokenRepository;
 import com.example.beapp.repository.UserAccountRepository;
@@ -40,6 +41,10 @@ public class AccountsService {
         UserAccount userAccount = userAccountRepository.findByUserId(request.userID())
                 .orElseThrow(() -> new ApiException(ErrorCode.INVALID_CREDENTIALS));
 
+        if (!userAccount.loginType().isLocal()) {
+            throw new ApiException(ErrorCode.INVALID_CREDENTIALS, "일반 로그인 계정이 아닙니다.");
+        }
+
         if (!passwordEncoder.matches(request.password(), userAccount.encodedPassword())) {
             throw new ApiException(ErrorCode.INVALID_CREDENTIALS);
         }
@@ -63,7 +68,8 @@ public class AccountsService {
                 request.userID(),
                 passwordEncoder.encode(request.password()),
                 request.birthDate(),
-                request.gender()));
+                request.gender(),
+                LoginType.LOCAL));
 
         return new AuthTokens(
                 savedUserAccount.userID(),

@@ -35,14 +35,22 @@ public class UserEntity extends BaseTimeEntity {
     @Column(name = "gender", length = 1)
     private String gender;
 
+    @Column(name = "login_type", nullable = false)
+    private short loginType;
+
     protected UserEntity() {
     }
 
     public UserEntity(String userId, String passwordHash, LocalDate birthDate, String gender) {
+        this(userId, passwordHash, birthDate, gender, (short) 0);
+    }
+
+    public UserEntity(String userId, String passwordHash, LocalDate birthDate, String gender, short loginType) {
         this.userId = userId;
         this.passwordHash = passwordHash;
         this.birthDate = birthDate;
         this.gender = gender;
+        this.loginType = loginType;
     }
 
     public Long getId() {
@@ -65,10 +73,15 @@ public class UserEntity extends BaseTimeEntity {
         return gender;
     }
 
-    public UserEntity update(String passwordHash, LocalDate birthDate, String gender) {
+    public short getLoginType() {
+        return loginType;
+    }
+
+    public UserEntity update(String passwordHash, LocalDate birthDate, String gender, short loginType) {
         this.passwordHash = passwordHash;
         this.birthDate = birthDate;
         this.gender = gender;
+        this.loginType = loginType;
         return this;
     }
 }

@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Repository;
 
+import com.example.beapp.model.LoginType;
 import com.example.beapp.model.UserAccount;
 import com.example.beapp.persistence.entity.UserEntity;
 import com.example.beapp.repository.UserAccountRepository;
@@ -37,12 +38,14 @@ public class JpaUserAccountRepositoryAdapter implements UserAccountRepository {
                 .map(existing -> existing.update(
                         userAccount.encodedPassword(),
                         userAccount.birthDate(),
-                        userAccount.gender()))
+                        userAccount.gender(),
+                        userAccount.loginType().code()))
                 .orElseGet(() -> new UserEntity(
                         userAccount.userID(),
                         userAccount.encodedPassword(),
                         userAccount.birthDate(),
-                        userAccount.gender()));
+                        userAccount.gender(),
+                        userAccount.loginType().code()));
 
         UserEntity saved = userJpaRepository.save(entity);
         return toModel(saved);
@@ -58,6 +61,7 @@ public class JpaUserAccountRepositoryAdapter implements UserAccountRepository {
                 entity.getUserId(),
                 entity.getPasswordHash(),
                 entity.getBirthDate(),
-                entity.getGender());
+                entity.getGender(),
+                LoginType.fromCode(entity.getLoginType()));
     }
 }

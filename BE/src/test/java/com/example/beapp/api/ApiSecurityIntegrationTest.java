@@ -242,7 +242,7 @@ class ApiSecurityIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "userID": "NewUser01",
+                                  "userID": "SignupMismatch01",
                                   "password": "P@ssw0rd1",
                                   "passwordConfirm": "P@ssw0rd2",
                                   "birthDate": "1998-03-14",
@@ -260,7 +260,7 @@ class ApiSecurityIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "userID": "NewUser01",
+                                  "userID": "SignupSuccess01",
                                   "password": "P@ssw0rd1",
                                   "passwordConfirm": "P@ssw0rd1",
                                   "birthDate": "1998-03-14",
@@ -274,9 +274,24 @@ class ApiSecurityIntegrationTest {
         mockMvc.perform(get("/api/mypage/user")
                         .cookie(extractCookie(signupResult, AuthCookieManager.ACCESS_TOKEN_COOKIE)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.userID").value("NewUser01"))
+                .andExpect(jsonPath("$.userID").value("SignupSuccess01"))
                 .andExpect(jsonPath("$.birthDate").value("1998-03-14"))
                 .andExpect(jsonPath("$.gender").value("F"));
+    }
+
+    @Test
+    void localLoginRejectsGoogleLoginAccount() throws Exception {
+        mockMvc.perform(post("/api/accounts/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "userID": "GoogleUser01",
+                                  "password": "G00gle!1"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.message").value("일반 로그인 계정이 아닙니다."));
     }
 
     @Test

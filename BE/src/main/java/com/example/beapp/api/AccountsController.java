@@ -60,7 +60,12 @@ public class AccountsController {
                     content = @Content(schema = @Schema(implementation = SignupResponse.class)))
     })
     public ResponseEntity<SignupResponse> signup(@Valid @RequestBody SignupRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(accountsService.signup(request));
+        AccountsService.AuthTokens authTokens = accountsService.signup(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header(HttpHeaders.SET_COOKIE, authCookieManager.accessTokenCookie(authTokens.accessToken()).toString())
+                .header(HttpHeaders.SET_COOKIE, authCookieManager.refreshTokenCookie(authTokens.refreshToken()).toString())
+                .body(SignupResponse.created(authTokens.userId()));
     }
 
     @PostMapping({"/logout", "/logout/"})

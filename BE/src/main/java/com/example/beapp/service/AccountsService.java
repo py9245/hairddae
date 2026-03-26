@@ -5,14 +5,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import com.example.beapp.api.dto.accounts.LoginRequest;
-import com.example.beapp.api.dto.accounts.LoginResponse;
 import com.example.beapp.api.dto.accounts.LogoutRequest;
 import com.example.beapp.api.dto.accounts.SignoutRequest;
 import com.example.beapp.api.dto.accounts.SignupRequest;
-import com.example.beapp.api.dto.accounts.SignupResponse;
 import com.example.beapp.api.dto.accounts.SimpleResponse;
 import com.example.beapp.api.dto.accounts.TokenRefreshRequest;
-import com.example.beapp.api.dto.accounts.TokenRefreshResponse;
 import com.example.beapp.common.exception.ApiException;
 import com.example.beapp.common.exception.ErrorCode;
 import com.example.beapp.model.UserAccount;
@@ -53,7 +50,7 @@ public class AccountsService {
                 issueAndStoreRefreshToken(userAccount.userID()));
     }
 
-    public SignupResponse signup(SignupRequest request) {
+    public AuthTokens signup(SignupRequest request) {
         if (userAccountRepository.existsByUserId(request.userID())) {
             throw new ApiException(ErrorCode.DUPLICATE_USER, "이미 사용 중인 아이디입니다.");
         }
@@ -62,13 +59,16 @@ public class AccountsService {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "비밀번호 확인이 일치하지 않습니다.");
         }
 
-        userAccountRepository.save(new UserAccount(
+        UserAccount savedUserAccount = userAccountRepository.save(new UserAccount(
                 request.userID(),
                 passwordEncoder.encode(request.password()),
                 request.birthDate(),
                 request.gender()));
 
-        return SignupResponse.created(request.userID());
+        return new AuthTokens(
+                savedUserAccount.userID(),
+                jwtTokenService.issueAccessToken(savedUserAccount.userID()),
+                issueAndStoreRefreshToken(savedUserAccount.userID()));
     }
 
     public SimpleResponse logout(String accessToken, String refreshToken, LogoutRequest request) {

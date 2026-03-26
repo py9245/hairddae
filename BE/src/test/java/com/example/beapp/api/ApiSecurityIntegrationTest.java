@@ -255,6 +255,31 @@ class ApiSecurityIntegrationTest {
     }
 
     @Test
+    void signupIssuesJwtAndProtectedEndpointAcceptsIt() throws Exception {
+        MvcResult signupResult = mockMvc.perform(post("/api/accounts/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "userID": "NewUser01",
+                                  "password": "P@ssw0rd1",
+                                  "passwordConfirm": "P@ssw0rd1",
+                                  "birthDate": "1998-03-14",
+                                  "gender": "F"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.code").value(201))
+                .andReturn();
+
+        mockMvc.perform(get("/api/mypage/user")
+                        .cookie(extractCookie(signupResult, AuthCookieManager.ACCESS_TOKEN_COOKIE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userID").value("NewUser01"))
+                .andExpect(jsonPath("$.birthDate").value("1998-03-14"))
+                .andExpect(jsonPath("$.gender").value("F"));
+    }
+
+    @Test
     void signupReturnsDuplicateIdMessageWithoutSeparateCheckApi() throws Exception {
         mockMvc.perform(post("/api/accounts/signup")
                         .contentType(MediaType.APPLICATION_JSON)

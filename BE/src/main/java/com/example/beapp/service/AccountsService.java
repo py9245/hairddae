@@ -19,6 +19,7 @@ import com.example.beapp.model.LoginType;
 import com.example.beapp.model.UserAccount;
 import com.example.beapp.repository.RefreshTokenRepository;
 import com.example.beapp.repository.UserAccountRepository;
+import com.example.beapp.security.GoogleIdTokenVerifier;
 import com.example.beapp.security.JwtTokenService;
 
 @Service
@@ -28,16 +29,19 @@ public class AccountsService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenService jwtTokenService;
+    private final GoogleIdTokenVerifier googleIdTokenVerifier;
 
     public AccountsService(
             UserAccountRepository userAccountRepository,
             RefreshTokenRepository refreshTokenRepository,
             PasswordEncoder passwordEncoder,
-            JwtTokenService jwtTokenService) {
+            JwtTokenService jwtTokenService,
+            GoogleIdTokenVerifier googleIdTokenVerifier) {
         this.userAccountRepository = userAccountRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenService = jwtTokenService;
+        this.googleIdTokenVerifier = googleIdTokenVerifier;
     }
 
     public AuthTokens login(LoginRequest request) {
@@ -59,20 +63,39 @@ public class AccountsService {
     }
 
     public AuthTokens googleLogin(GoogleLoginRequest request) {
-        String normalizedEmail = request.normalizedEmail();
-        UserAccount userAccount = userAccountRepository.findByUserId(normalizedEmail)
-                .map(existingUserAccount -> {
-                    if (existingUserAccount.loginType() != LoginType.GOOGLE) {
-                        throw new ApiException(ErrorCode.DUPLICATE_USER, "이미 일반 로그인으로 가입된 계정입니다.");
-                    }
-                    return existingUserAccount;
-                })
-                .orElseGet(() -> userAccountRepository.save(new UserAccount(
+        GoogleIdTokenVerifier.GoogleIdentity googleIdentity = googleIdTokenVerifier.verify(request.idToken());
+        String normalizedEmail = googleIdentity.email();
+        String providerSubject = googleIdentity.subject();
+
+        UserAccount userAccount = userAccountRepository.findByProviderSubject(providerSubject)
+                .map(existingUserAccount -> userAccountRepository.save(new UserAccount(
                         normalizedEmail,
-                        passwordEncoder.encode(UUID.randomUUID().toString()),
-                        null,
-                        null,
-                        LoginType.GOOGLE)));
+                        existingUserAccount.encodedPassword(),
+                        existingUserAccount.birthDate(),
+                        existingUserAccount.gender(),
+                        LoginType.GOOGLE,
+                        providerSubject)))
+                .orElseGet(() -> userAccountRepository.findByUserId(normalizedEmail)
+                        .map(existingUserAccount -> {
+                            if (existingUserAccount.loginType() != LoginType.GOOGLE) {
+                                throw new ApiException(ErrorCode.DUPLICATE_USER, "이미 일반 로그인으로 가입된 계정입니다.");
+                            }
+
+                            return userAccountRepository.save(new UserAccount(
+                                    normalizedEmail,
+                                    existingUserAccount.encodedPassword(),
+                                    existingUserAccount.birthDate(),
+                                    existingUserAccount.gender(),
+                                    LoginType.GOOGLE,
+                                    providerSubject));
+                        })
+                        .orElseGet(() -> userAccountRepository.save(new UserAccount(
+                                normalizedEmail,
+                                passwordEncoder.encode(UUID.randomUUID().toString()),
+                                null,
+                                null,
+                                LoginType.GOOGLE,
+                                providerSubject))));
 
         return new AuthTokens(
                 userAccount.userID(),

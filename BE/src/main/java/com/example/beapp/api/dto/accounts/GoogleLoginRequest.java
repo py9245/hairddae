@@ -1,21 +1,14 @@
 package com.example.beapp.api.dto.accounts;
 
-import java.util.Locale;
-
 import com.fasterxml.jackson.annotation.JsonAlias;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 public record GoogleLoginRequest(
-        @JsonAlias({"userID", "googleEmail"})
+        @JsonAlias({"credential", "id_token"})
         @NotBlank
-        @Email
-        @Size(max = 50)
-        String email
+        @Size(max = 4096)
+        String idToken
 ) {
-    public String normalizedEmail() {
-        return email.trim().toLowerCase(Locale.ROOT);
-    }
 }

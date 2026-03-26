@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import com.example.beapp.api.dto.hairs.HairMetadataSyncResponse;
 import com.example.beapp.security.AuthCookieManager;
+import com.example.beapp.security.GoogleIdTokenVerifier;
 import com.example.beapp.service.CategoryMetadataSyncService;
 import com.example.beapp.service.HairMetadataSyncService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -48,6 +49,9 @@ class ApiSecurityIntegrationTest {
 
     @MockBean
     private CategoryMetadataSyncService categoryMetadataSyncService;
+
+    @MockBean
+    private GoogleIdTokenVerifier googleIdTokenVerifier;
 
     @Test
     void protectedEndpointRequiresJwt() throws Exception {
@@ -105,11 +109,16 @@ class ApiSecurityIntegrationTest {
 
     @Test
     void googleLoginIssuesJwtAndProtectedEndpointAcceptsIt() throws Exception {
+        given(googleIdTokenVerifier.verify("valid-google-id-token"))
+                .willReturn(new GoogleIdTokenVerifier.GoogleIdentity(
+                        "google-sub-01",
+                        "google-user-01@example.com"));
+
         MvcResult googleLoginResult = mockMvc.perform(post("/api/accounts/google-login")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "email": "google-user-01@example.com"
+                                  "idToken": "valid-google-id-token"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -314,6 +323,25 @@ class ApiSecurityIntegrationTest {
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value(401))
                 .andExpect(jsonPath("$.message").value("일반 로그인 계정이 아닙니다."));
+    }
+
+    @Test
+    void googleLoginRejectsLocalAccountEmail() throws Exception {
+        given(googleIdTokenVerifier.verify("local-account-google-token"))
+                .willReturn(new GoogleIdTokenVerifier.GoogleIdentity(
+                        "google-sub-local-conflict",
+                        "TestUser01"));
+
+        mockMvc.perform(post("/api/accounts/google-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "idToken": "local-account-google-token"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("이미 일반 로그인으로 가입된 계정입니다."));
     }
 
     @Test

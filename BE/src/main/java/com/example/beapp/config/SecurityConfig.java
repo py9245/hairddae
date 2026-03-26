@@ -32,7 +32,13 @@ import jakarta.servlet.http.HttpServletResponse;
 
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties({AppSecurityProperties.class, AppCorsProperties.class, AppHairProperties.class, AppInferenceProperties.class})
+@EnableConfigurationProperties({
+        AppSecurityProperties.class,
+        AppCorsProperties.class,
+        AppHairProperties.class,
+        AppInferenceProperties.class,
+        AppGoogleSecurityProperties.class
+})
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;

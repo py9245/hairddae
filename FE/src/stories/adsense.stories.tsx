@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import Adsense from '@/app/adsense'
+import Adsense from '@/components/adsense'
 
 const meta = {
   title: 'UI/Adsense',

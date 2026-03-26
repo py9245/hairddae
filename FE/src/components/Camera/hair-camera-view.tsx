@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { HairCameraStage } from '@/components/Camera/hair-camera-stage'
 import { HairSelector } from '@/components/Camera/hair-selector'
 import { ApplyStyleModal, CameraNoticeModal } from '@/components/Camera/modal'
+import { GuideModal } from '@/components/guide-modal'
 import { Header } from '@/components/header'
 import { Button } from '@/components/ui/button'
 import { useHairRtcDisplay } from '@/hooks/Camera/useHairRtcDisplay'
@@ -32,6 +33,8 @@ type HairCameraViewProps = {
   autoSelectFirstHair?: boolean
 }
 
+const CAMERA_GUIDE_DISMISSED_KEY = 'camera-guide-dismissed'
+
 export function HairCameraView({
   videoRef,
   cameraStream: _cameraStream,
@@ -53,6 +56,7 @@ export function HairCameraView({
     title: string
     description: string[]
   } | null>(null)
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false)
   const [isFrameFrozen, setIsFrameFrozen] = useState(false)
   const [uiScale, setUiScale] = useState(1)
 
@@ -104,6 +108,16 @@ export function HairCameraView({
     return () => {
       observer.disconnect()
     }
+  }, [])
+
+  useEffect(() => {
+    const dismissed = window.localStorage.getItem(CAMERA_GUIDE_DISMISSED_KEY)
+
+    if (dismissed === 'true') {
+      return
+    }
+
+    setIsGuideModalOpen(true)
   }, [])
 
   useEffect(() => {
@@ -268,6 +282,15 @@ export function HairCameraView({
     }
   }, [handleModalFinish, rtcApplyReady])
 
+  const handleGuideModalClose = useCallback(() => {
+    setIsGuideModalOpen(false)
+  }, [])
+
+  const handleGuideModalDismiss = useCallback(() => {
+    window.localStorage.setItem(CAMERA_GUIDE_DISMISSED_KEY, 'true')
+    setIsGuideModalOpen(false)
+  }, [])
+
   return (
     <main className="app-frame-page relative flex min-h-full items-center justify-center overflow-hidden bg-black text-white">
       <div className="relative flex h-full min-h-full w-full items-center justify-center overflow-hidden px-0">
@@ -307,6 +330,17 @@ export function HairCameraView({
             onCapture={handleCapture}
             onFreezeChange={setIsFrameFrozen}
           />
+
+          {isGuideModalOpen ? (
+            <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
+              <GuideModal
+                open={isGuideModalOpen}
+                onClose={handleGuideModalClose}
+                onDismiss={handleGuideModalDismiss}
+                scale={uiScale}
+              />
+            </div>
+          ) : null}
 
           {modalOpen ? (
             <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-black/20 px-4">

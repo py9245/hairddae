@@ -8,6 +8,8 @@ import { SignUpButton } from '@/components/Auth/sign-up-button'
 import { useSignUpForm } from '@/hooks/Auth/SignUp/useSignUpForm'
 import { useSignUpMutation } from '@/hooks/Auth/SignUp/useSignUpMutation'
 
+const USER_ID_INPUT_REGEX = /[^A-Za-z0-9]/g
+
 export default function SignUp() {
   const [showPassword, setShowPassword] = useState(false)
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false)
@@ -99,9 +101,14 @@ export default function SignUp() {
               type="text"
               value={values.userId}
               maxLength={20}
-              onChange={(e) => handleChange('userId', e.target.value)}
+              onChange={(e) =>
+                handleChange(
+                  'userId',
+                  e.target.value.replace(USER_ID_INPUT_REGEX, ''),
+                )
+              }
               onBlur={() => handleBlur('userId')}
-              placeholder="사용하실 아이디를 입력하세요"
+              placeholder="영어, 숫자를 사용하여 6~20자로 입력하세요"
               className={`h-12 w-full rounded-2xl border bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
                 errors.userId
                   ? 'border-primary-300 focus:border-error'
@@ -133,7 +140,7 @@ export default function SignUp() {
                 maxLength={20}
                 onChange={(e) => handleChange('password', e.target.value)}
                 onBlur={() => handleBlur('password')}
-                placeholder="비밀번호 입력"
+                placeholder="영어, 숫자, 특수기호를 포함한 8~20자로 입력하세요"
                 className={`h-12 w-full rounded-2xl border bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
                   errors.password
                     ? 'border-error focus:border-error'
@@ -153,7 +160,7 @@ export default function SignUp() {
                 )}
               </button>
             </div>
-            <div className="mt-1.5 flex items-center justify-between gap-3">
+            <div className="mt-1.5 flex items-center justify-between gap-2">
               <p className="min-h-[20px] text-sm text-error">
                 {errors.password ?? ''}
               </p>

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { useHairRtcDisplay } from '@/hooks/Camera/useHairRtcDisplay'
 import { useHairRtcSession } from '@/hooks/Camera/useHairRtcSession'
 import { useViewportCaptureStream } from '@/hooks/Camera/useViewportCaptureStream'
+import { fetchMe } from '@/lib/auth'
 import { captureCompositedImage } from '@/lib/Camera/capture'
 import {
   fetchHairItems,
@@ -31,6 +32,10 @@ type HairCameraViewProps = {
   cameraError: unknown
   initialHairId?: number | null
   autoSelectFirstHair?: boolean
+}
+
+type CameraGuidePreference = {
+  dismissed?: boolean
 }
 
 const CAMERA_GUIDE_DISMISSED_KEY = 'camera-guide-dismissed'
@@ -59,6 +64,31 @@ export function HairCameraView({
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false)
   const [isFrameFrozen, setIsFrameFrozen] = useState(false)
   const [uiScale, setUiScale] = useState(1)
+
+  const readGuidePreferences = useCallback(() => {
+    try {
+      const raw = window.localStorage.getItem(CAMERA_GUIDE_DISMISSED_KEY)
+      if (!raw) {
+        return {}
+      }
+
+      return JSON.parse(raw) as Record<string, CameraGuidePreference>
+    } catch {
+      return {}
+    }
+  }, [])
+
+  const writeGuidePreference = useCallback(
+    (userId: string, nextPreference: CameraGuidePreference) => {
+      const preferences = readGuidePreferences()
+      preferences[userId] = nextPreference
+      window.localStorage.setItem(
+        CAMERA_GUIDE_DISMISSED_KEY,
+        JSON.stringify(preferences),
+      )
+    },
+    [readGuidePreferences],
+  )
 
   const displayHairId = pendingHairId ?? selectedHairId
   const selectedHairItem =
@@ -111,14 +141,20 @@ export function HairCameraView({
   }, [])
 
   useEffect(() => {
-    const dismissed = window.localStorage.getItem(CAMERA_GUIDE_DISMISSED_KEY)
+    void (async () => {
+      const me = await fetchMe().catch(() => null)
+      if (!me) {
+        return
+      }
 
-    if (dismissed === 'true') {
-      return
-    }
+      const dismissed = readGuidePreferences()[me.userID]?.dismissed
+      if (dismissed) {
+        return
+      }
 
-    setIsGuideModalOpen(true)
-  }, [])
+      setIsGuideModalOpen(true)
+    })()
+  }, [readGuidePreferences])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -287,9 +323,17 @@ export function HairCameraView({
   }, [])
 
   const handleGuideModalDismiss = useCallback(() => {
-    window.localStorage.setItem(CAMERA_GUIDE_DISMISSED_KEY, 'true')
-    setIsGuideModalOpen(false)
-  }, [])
+    void (async () => {
+      const me = await fetchMe().catch(() => null)
+      if (me) {
+        writeGuidePreference(me.userID, {
+          dismissed: true,
+        })
+      }
+
+      setIsGuideModalOpen(false)
+    })()
+  }, [writeGuidePreference])
 
   return (
     <main className="app-frame-page relative flex min-h-full items-center justify-center overflow-hidden bg-black text-white">

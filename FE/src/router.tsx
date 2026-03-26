@@ -157,8 +157,9 @@ function createProtectedRoute<
 
 function RootLayout() {
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
-  const hasStartedReviewTimerRef = useRef(false)
   const reviewTimerRef = useRef<number | null>(null)
+  const reviewTimerUserIdRef = useRef<string | null>(null)
+  const startedReviewTimerUserIdRef = useRef<string | null>(null)
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
@@ -208,43 +209,76 @@ function RootLayout() {
     setIsReviewModalOpen(false)
   }, [writeReviewModalPreference])
 
+  const resetReviewModalTimer = useCallback(() => {
+    if (reviewTimerRef.current != null) {
+      window.clearTimeout(reviewTimerRef.current)
+      reviewTimerRef.current = null
+    }
+
+    reviewTimerUserIdRef.current = null
+    startedReviewTimerUserIdRef.current = null
+    setIsReviewModalOpen(false)
+  }, [])
+
   useEffect(() => {
-    if (pathname !== '/main' || hasStartedReviewTimerRef.current) {
+    if (pathname !== '/main') {
       return
     }
 
-    hasStartedReviewTimerRef.current = true
-    reviewTimerRef.current = window.setTimeout(() => {
-      void (async () => {
-        const me = await fetchMe().catch(() => null)
-        if (!me) {
-          return
-        }
+    void (async () => {
+      const me = await fetchMe().catch(() => null)
+      if (!me) {
+        return
+      }
 
-        const preference = readReviewModalPreferences()[me.userID]
-        if (preference?.completed) {
-          return
-        }
+      if (startedReviewTimerUserIdRef.current === me.userID) {
+        return
+      }
 
-        if (
-          preference?.dismissedUntil != null &&
-          preference.dismissedUntil > Date.now()
-        ) {
-          return
-        }
-
-        setIsReviewModalOpen(true)
-      })()
-    }, REVIEW_MODAL_DELAY_MS)
-  }, [pathname, readReviewModalPreferences])
-
-  useEffect(() => {
-    return () => {
       if (reviewTimerRef.current != null) {
         window.clearTimeout(reviewTimerRef.current)
       }
+
+      startedReviewTimerUserIdRef.current = me.userID
+      reviewTimerUserIdRef.current = me.userID
+      reviewTimerRef.current = window.setTimeout(() => {
+        void (async () => {
+          const currentMe = await fetchMe().catch(() => null)
+          if (!currentMe || currentMe.userID !== reviewTimerUserIdRef.current) {
+            return
+          }
+
+          const preference = readReviewModalPreferences()[currentMe.userID]
+          if (preference?.completed) {
+            return
+          }
+
+          if (
+            preference?.dismissedUntil != null &&
+            preference.dismissedUntil > Date.now()
+          ) {
+            return
+          }
+
+          setIsReviewModalOpen(true)
+        })()
+      }, REVIEW_MODAL_DELAY_MS)
+    })()
+  }, [pathname, readReviewModalPreferences])
+
+  useEffect(() => {
+    return auth.subscribe(() => {
+      if (!auth.isAuthenticated()) {
+        resetReviewModalTimer()
+      }
+    })
+  }, [resetReviewModalTimer])
+
+  useEffect(() => {
+    return () => {
+      resetReviewModalTimer()
     }
-  }, [])
+  }, [resetReviewModalTimer])
 
   return (
     <div className="app-frame-shell flex items-center justify-center gap-10">

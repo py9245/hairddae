@@ -277,6 +277,10 @@
     min-height: 100%;
   }
 
+  html {
+    overscroll-behavior: none;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
@@ -286,6 +290,7 @@
     font-family: var(--font-sans);
     overflow-x: hidden;
     min-height: 100dvh;
+    overscroll-behavior: none;
   }
 }
 
@@ -357,8 +362,8 @@
   .app-frame {
     width: 100%;
     max-width: var(--app-frame-width);
-    min-height: 100dvh;
-    height: 100dvh;
+    min-height: 100%;
+    height: 100%;
     position: relative;
     flex: 1 1 auto;
     background: var(--bg-primary);
@@ -366,7 +371,7 @@
   }
 
   .app-frame-content {
-    height: 100dvh;
+    height: 100%;
     overflow: hidden;
   }
 

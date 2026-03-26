@@ -77,7 +77,7 @@ export function GuideModal({
               <div className="space-y-2">
                 <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-50">
                   <img
-                    src="/guide/images/bad-case.png"
+                    src="/guide/images/bad-case.svg"
                     alt="잘못된 촬영 예시"
                     className="h-auto w-full object-cover"
                   />
@@ -90,7 +90,7 @@ export function GuideModal({
               <div className="space-y-2">
                 <div className="overflow-hidden rounded-2xl border border-gray-200 bg-gray-50">
                   <img
-                    src="/guide/images/good-case.png"
+                    src="/guide/images/good-case.svg"
                     alt="올바른 촬영 예시"
                     className="h-auto w-full object-cover"
                   />

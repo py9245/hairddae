@@ -4,8 +4,15 @@ import {
   createRouter,
   Outlet,
   redirect,
+  useRouterState,
 } from '@tanstack/react-router'
-import type { ReactElement } from 'react'
+import {
+  type ReactElement,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import { z } from 'zod'
 import Camera from '@/app/camera'
 import HairList from '@/app/hairlist'
@@ -18,11 +25,21 @@ import Splash from '@/app/splash'
 import Adsense from '@/components/adsense'
 import { BottomNav } from '@/components/bottom-nav'
 import { NotFoundPage } from '@/components/not-found-page'
-import { type AuthStore, auth } from '@/lib/auth'
+import { ReviewModal } from '@/components/review-modal'
+import { type AuthStore, auth, fetchMe } from '@/lib/auth'
 
 type RouterContext = {
   auth: AuthStore
 }
+
+type ReviewModalPreference = {
+  dismissedUntil?: number
+  completed?: boolean
+}
+
+const REVIEW_MODAL_STORAGE_KEY = 'review-modal-preferences'
+const REVIEW_MODAL_DELAY_MS = 60_000
+const REVIEW_MODAL_DEFER_MS = 14 * 24 * 60 * 60 * 1000
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
@@ -139,6 +156,96 @@ function createProtectedRoute<
 }
 
 function RootLayout() {
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
+  const hasStartedReviewTimerRef = useRef(false)
+  const reviewTimerRef = useRef<number | null>(null)
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
+
+  const readReviewModalPreferences = useCallback(() => {
+    try {
+      const raw = window.localStorage.getItem(REVIEW_MODAL_STORAGE_KEY)
+      if (!raw) {
+        return {}
+      }
+
+      return JSON.parse(raw) as Record<string, ReviewModalPreference>
+    } catch {
+      return {}
+    }
+  }, [])
+
+  const writeReviewModalPreference = useCallback(
+    (userId: string, nextPreference: ReviewModalPreference) => {
+      const preferences = readReviewModalPreferences()
+      preferences[userId] = nextPreference
+      window.localStorage.setItem(
+        REVIEW_MODAL_STORAGE_KEY,
+        JSON.stringify(preferences),
+      )
+    },
+    [readReviewModalPreferences],
+  )
+
+  const deferReviewModal = useCallback(async () => {
+    const me = await fetchMe().catch(() => null)
+    if (me) {
+      writeReviewModalPreference(me.userID, {
+        dismissedUntil: Date.now() + REVIEW_MODAL_DEFER_MS,
+      })
+    }
+    setIsReviewModalOpen(false)
+  }, [writeReviewModalPreference])
+
+  const submitReviewModal = useCallback(async () => {
+    const me = await fetchMe().catch(() => null)
+    if (me) {
+      writeReviewModalPreference(me.userID, {
+        completed: true,
+      })
+    }
+    setIsReviewModalOpen(false)
+  }, [writeReviewModalPreference])
+
+  useEffect(() => {
+    if (pathname !== '/main' || hasStartedReviewTimerRef.current) {
+      return
+    }
+
+    hasStartedReviewTimerRef.current = true
+    reviewTimerRef.current = window.setTimeout(() => {
+      void (async () => {
+        const me = await fetchMe().catch(() => null)
+        if (!me) {
+          return
+        }
+
+        const preference = readReviewModalPreferences()[me.userID]
+        if (preference?.completed) {
+          return
+        }
+
+        if (
+          preference?.dismissedUntil != null &&
+          preference.dismissedUntil > Date.now()
+        ) {
+          return
+        }
+
+        setIsReviewModalOpen(true)
+      })()
+    }, REVIEW_MODAL_DELAY_MS)
+  }, [pathname, readReviewModalPreferences])
+
+  useEffect(() => {
+    return () => {
+      if (reviewTimerRef.current != null) {
+        window.clearTimeout(reviewTimerRef.current)
+      }
+    }
+  }, [])
+
   return (
     <div className="app-frame-shell flex items-center justify-center gap-10">
       <Adsense />
@@ -148,6 +255,22 @@ function RootLayout() {
         </div>
         <BottomNav />
       </div>
+      {isReviewModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <ReviewModal
+            open={isReviewModalOpen}
+            onClose={() => {
+              void deferReviewModal()
+            }}
+            onDefer={() => {
+              void deferReviewModal()
+            }}
+            onSubmit={() => {
+              void submitReviewModal()
+            }}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -185,7 +185,7 @@ export function GoogleLoginButton({
       <div className={cn('relative h-14 w-full overflow-hidden', className)}>
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 inline-flex items-center justify-between rounded-[8px] border border-[#747775] bg-white px-4 text-[#1f1f1f] shadow-none"
+          className="pointer-events-none absolute inset-0 inline-flex items-center justify-between rounded-[8px] border border-gray-200 bg-white px-4 text-[#1f1f1f] shadow-none"
         >
           <span className="flex h-5 w-5 items-center justify-center">
             <GoogleIcon />

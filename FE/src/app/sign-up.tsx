@@ -5,8 +5,10 @@ import { AgreementCheckbox } from '@/components/Auth/agreement-checkbox'
 import { BirthDatePicker } from '@/components/Auth/birth-date-picker'
 import { GenderSelect } from '@/components/Auth/gender-select'
 import { SignUpButton } from '@/components/Auth/sign-up-button'
+import { useLoginMutation } from '@/hooks/Auth/Login/useLoginMutation'
 import { useSignUpForm } from '@/hooks/Auth/SignUp/useSignUpForm'
 import { useSignUpMutation } from '@/hooks/Auth/SignUp/useSignUpMutation'
+import { auth } from '@/lib/auth'
 
 const USER_ID_INPUT_REGEX = /[^A-Za-z0-9]/g
 
@@ -17,6 +19,7 @@ export default function SignUp() {
 
   const router = useRouter()
   const signUpMutation = useSignUpMutation()
+  const loginMutation = useLoginMutation()
 
   const {
     values,
@@ -29,6 +32,7 @@ export default function SignUp() {
   const userIdLength = values.userId.length
   const passwordLength = values.password.length
   const passwordConfirmLength = values.passwordConfirm.length
+  const submitError = loginMutation.error ?? signUpMutation.error
 
   useEffect(() => {
     if (!isSignUpComplete) {
@@ -36,7 +40,7 @@ export default function SignUp() {
     }
 
     const timeoutId = window.setTimeout(() => {
-      void router.navigate({ to: '/auth/login' })
+      void router.navigate({ to: '/main' })
     }, 3000)
 
     return () => {
@@ -47,7 +51,7 @@ export default function SignUp() {
   if (isSignUpComplete) {
     return (
       <main className="app-frame-page h-full flex flex-col items-center justify-center bg-bg-primary px-6">
-        <h1 className="h-[54px] whitespace-pre-line px-8 text-center text-[20px] leading-[1.35] font-semibold tracking-[-0.03em] text-text-dar mb-20">
+        <h1 className="animate-signup-success-copy h-[54px] whitespace-pre-line px-8 text-center text-[20px] leading-[1.35] font-semibold tracking-[-0.03em] text-text-dar mb-20">
           헤어 어때와 함께 다양한 <br />
           헤어스타일로 꾸며보아요
         </h1>
@@ -58,7 +62,7 @@ export default function SignUp() {
           width={398}
           height={320}
           decoding="async"
-          className="h-auto w-full max-w-[398px] object-contain select-none"
+          className="animate-signup-success-visual h-auto w-full max-w-[398px] object-contain select-none"
         />
       </main>
     )
@@ -75,14 +79,20 @@ export default function SignUp() {
           className="mt-4 space-y-2.5 md:mt-10 md:space-y-4 [@media_(max-height:820px)]:mt-3 [@media_(max-height:820px)]:space-y-2"
           onSubmit={(e) =>
             handleSubmit(e, async (formValues) => {
-              await signUpMutation.mutateAsync({
+              const credentials = {
                 userID: formValues.userId,
                 password: formValues.password,
+              }
+
+              await signUpMutation.mutateAsync({
+                ...credentials,
                 passwordCheck: formValues.passwordConfirm,
                 birthDate: formValues.birthDate || undefined,
                 gender: formValues.gender ?? undefined,
               })
+              await loginMutation.mutateAsync(credentials)
 
+              auth.login()
               setIsSignUpComplete(true)
             })
           }
@@ -288,10 +298,10 @@ export default function SignUp() {
             />
           </div>
 
-          {signUpMutation.isError && (
+          {(signUpMutation.isError || loginMutation.isError) && (
             <p className="text-center text-sm text-error">
-              {signUpMutation.error instanceof Error
-                ? signUpMutation.error.message
+              {submitError instanceof Error
+                ? submitError.message
                 : '회원가입 처리 중 오류가 발생했습니다.'}
             </p>
           )}
@@ -299,7 +309,7 @@ export default function SignUp() {
           <SignUpButton
             className="mt-3"
             disabled={!isFormValid}
-            isPending={signUpMutation.isPending}
+            isPending={signUpMutation.isPending || loginMutation.isPending}
           />
         </form>
 

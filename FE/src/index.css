@@ -66,9 +66,7 @@
   --shadow-pink-card: 0 4px 12px rgba(227, 194, 194, 0.32);
   --shadow-dark-sm: 0 4px 12px rgba(15, 23, 42, 0.15);
   --shadow-dark-md: 0 4px 12px rgba(15, 23, 42, 0.28);
-  
-  
-  
+
   --adsense-panel-border: #ffe3e8;
   --adsense-panel-surface: #fffafb;
   --adsense-card-border: #f4dfe4;
@@ -89,7 +87,6 @@
   --adsense-instagram-start: #ff9f5a;
   --adsense-instagram-mid: #f06292;
   --adsense-instagram-end: #8b5cf6;
-
 }
 
 .dark {
@@ -143,7 +140,6 @@
   --adsense-link-hover: #ff9aad;
   --adsense-indicator-active: #ff9aad;
   --adsense-indicator-inactive: #5b4750;
-
 }
 
 @theme inline {
@@ -234,7 +230,7 @@
     "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
   --font-display: "Hakgyoansim Byeolbichhaneul", sans-serif;
 
-    --color-adsense-panel-border: var(--adsense-panel-border);
+  --color-adsense-panel-border: var(--adsense-panel-border);
   --color-adsense-panel-surface: var(--adsense-panel-surface);
   --color-adsense-card-border: var(--adsense-card-border);
   --color-adsense-card-surface: var(--adsense-card-surface);
@@ -254,7 +250,6 @@
   --color-adsense-instagram-mid: var(--adsense-instagram-mid);
   --color-adsense-instagram-end: var(--adsense-instagram-end);
 
-  
   --animate-heartbeat: heartbeat 1.5s ease-in-out;
   @keyframes heartbeat {
     0% {

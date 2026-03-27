@@ -14,7 +14,13 @@ if (!rootElement) {
 }
 
 const queryClient = new QueryClient()
-const publicPaths = new Set(['/', '/landing', '/auth/login', '/auth/signup'])
+const publicPaths = new Set([
+  '/',
+  '/landing',
+  '/auth/login',
+  '/auth/signup',
+  '/auth/google-callback',
+])
 
 auth.subscribe(() => {
   if (auth.isAuthenticated()) {

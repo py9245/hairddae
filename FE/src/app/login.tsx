@@ -1,6 +1,7 @@
 import { Link, useRouter } from '@tanstack/react-router'
 import { Eye, EyeClosed } from 'lucide-react'
 import { useState } from 'react'
+import { GoogleLoginButton } from '@/components/Auth/google-login-button'
 import { LoginButton } from '@/components/Auth/login-button'
 import { useLoginMutation } from '@/hooks/Auth/Login/useLoginMutation'
 import { auth } from '@/lib/auth'
@@ -109,6 +110,10 @@ export default function Login() {
             isPending={loginMutation.isPending}
           />
         </form>
+
+        <div className="mt-4">
+          <GoogleLoginButton />
+        </div>
 
         <p className="mt-10 text-center text-sm font-medium text-slate-500">
           아직 계정이 없으신가요?{' '}

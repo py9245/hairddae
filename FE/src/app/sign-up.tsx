@@ -137,10 +137,10 @@ export default function SignUp() {
                 id="password"
                 type={showPassword ? 'text' : 'password'}
                 value={values.password}
-                maxLength={20}
+                maxLength={16}
                 onChange={(e) => handleChange('password', e.target.value)}
                 onBlur={() => handleBlur('password')}
-                placeholder="영어, 숫자, 특수기호를 포함한 8~20자로 입력하세요"
+                placeholder="영어, 숫자, 특수기호를 포함한 8~16자로 입력하세요"
                 className={`h-12 w-full rounded-2xl border bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none ${
                   errors.password
                     ? 'border-error focus:border-error'
@@ -165,7 +165,7 @@ export default function SignUp() {
                 {errors.password ?? ''}
               </p>
               <span className="shrink-0 text-sm text-gray-400">
-                {passwordLength}/20자
+                {passwordLength}/16자
               </span>
             </div>
           </div>
@@ -181,7 +181,7 @@ export default function SignUp() {
               <input
                 id="passwordConfirm"
                 type={showPasswordConfirm ? 'text' : 'password'}
-                maxLength={20}
+                maxLength={16}
                 value={values.passwordConfirm}
                 onChange={(e) =>
                   handleChange('passwordConfirm', e.target.value)
@@ -216,7 +216,7 @@ export default function SignUp() {
                 {errors.passwordConfirm ?? ''}
               </p>
               <span className="shrink-0 text-sm text-gray-400">
-                {passwordConfirmLength}/20자
+                {passwordConfirmLength}/16자
               </span>
             </div>
           </div>

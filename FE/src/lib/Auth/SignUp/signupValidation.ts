@@ -26,7 +26,7 @@ export const signupFormSchema = z
       .string()
       .min(1, '비밀번호를 입력해주세요.')
       .min(8, '비밀번호는 8자 이상이어야 합니다.')
-      .max(20, '비밀번호는 20자 이하여야 합니다.')
+      .max(16, '비밀번호는 16자 이하여야 합니다.')
       .regex(
         PASSWORD_ALLOWED_REGEX,
         '비밀번호는 영문, 숫자, 특수문자만 사용할 수 있습니다.',

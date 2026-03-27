@@ -15,6 +15,7 @@ import {
 } from 'react'
 import { z } from 'zod'
 import Camera from '@/app/camera'
+import GoogleCallback from '@/app/google-callback'
 import HairList from '@/app/hairlist'
 import Landing from '@/app/landing'
 import Login from '@/app/login'
@@ -87,6 +88,23 @@ const signupRoute = createRoute({
   component: SignUp,
 })
 
+const googleCallbackSearchSchema = z.object({
+  idToken: z.string().optional(),
+  state: z.string().optional(),
+  error: z.string().optional(),
+  refresh: z.string().optional(),
+  userid: z.string().optional(),
+  isonboarding: z.string().optional(),
+  is_superuser: z.string().optional(),
+})
+
+const googleCallbackRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: 'google-callback',
+  validateSearch: (search) => googleCallbackSearchSchema.parse(search),
+  component: GoogleCallback,
+})
+
 const hairListSearchSchema = z.object({
   category: z.string().catch('').optional(),
 })
@@ -108,7 +126,7 @@ const hairListRoute = createProtectedRoute('hairlist', HairList, (search) =>
 const routeTree = rootRoute.addChildren([
   splashRoute,
   landingRoute,
-  authRoute.addChildren([loginRoute, signupRoute]),
+  authRoute.addChildren([loginRoute, signupRoute, googleCallbackRoute]),
   mainRoute,
   cameraRoute,
   myPageRoute,

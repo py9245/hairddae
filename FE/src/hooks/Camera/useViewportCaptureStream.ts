@@ -106,7 +106,7 @@ export function useViewportCaptureStream({
 
         context.clearRect(0, 0, width, height)
         context.imageSmoothingEnabled = true
-        context.imageSmoothingQuality = 'low'
+        context.imageSmoothingQuality = 'medium'
         if (mirror) {
           context.save()
           context.translate(width, 0)

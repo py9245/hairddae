@@ -43,7 +43,7 @@ public class GoogleIdTokenVerifier {
 
     public GoogleIdentity verify(String idToken) {
         if (!StringUtils.hasText(appGoogleSecurityProperties.clientId())) {
-            throw new IllegalStateException("Google client ID is not configured.");
+            throw new ApiException(ErrorCode.INVALID_REQUEST, "APP_SECURITY_GOOGLE_CLIENT_ID 설정이 필요합니다.");
         }
 
         try {

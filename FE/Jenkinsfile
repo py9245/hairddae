@@ -8,6 +8,7 @@ pipeline {
 
   environment {
     DEPLOY_DIR = '/home/ubuntu/S14P21M101/BE/nginx/html'
+    FE_ENV_SOURCE = '/home/ubuntu/S14P21M101/FE/.env'
   }
 
   stages {
@@ -89,12 +90,13 @@ pipeline {
               run_pnpm install --no-frozen-lockfile
             fi
 
-            if [ ! -f .env ]; then
-              echo "ERROR: FE/.env not found in workspace. This deployment expects a server-local FE/.env file." >&2
+            if [ ! -f "$FE_ENV_SOURCE" ]; then
+              echo "ERROR: server-local FE env not found at $FE_ENV_SOURCE" >&2
               exit 1
             fi
 
-            echo "Using server-local FE/.env for Vite build."
+            cp "$FE_ENV_SOURCE" .env
+            echo "Using server-local FE env from $FE_ENV_SOURCE"
             run_pnpm run build
           '''
         }

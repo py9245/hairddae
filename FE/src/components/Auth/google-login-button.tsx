@@ -1,6 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
-import { GoogleButton } from '@/components/google-button'
+import { cn } from '@/lib/utils'
 
 declare global {
   interface Window {
@@ -33,6 +33,36 @@ declare global {
 
 const GOOGLE_IDENTITY_SCRIPT_SRC = 'https://accounts.google.com/gsi/client'
 
+type GoogleLoginButtonProps = {
+  clientId?: string
+  label?: string
+  className?: string
+  labelClassName?: string
+}
+
+function GoogleIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 18 18" className="h-5 w-5 shrink-0">
+      <path
+        fill="#4285F4"
+        d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.56 2.68-3.86 2.68-6.62Z"
+      />
+      <path
+        fill="#34A853"
+        d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.33-1.58-5.04-3.7H.96v2.32A9 9 0 0 0 9 18Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M3.96 10.72A5.4 5.4 0 0 1 3.68 9c0-.6.1-1.18.28-1.72V4.96H.96A9 9 0 0 0 0 9c0 1.45.35 2.82.96 4.04l3-2.32Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M9 3.58c1.32 0 2.5.46 3.44 1.36l2.58-2.58C13.46.9 11.43 0 9 0A9 9 0 0 0 .96 4.96l3 2.32c.7-2.12 2.7-3.7 5.04-3.7Z"
+      />
+    </svg>
+  )
+}
+
 function loadGoogleIdentityScript(): Promise<void> {
   if (typeof window === 'undefined') {
     return Promise.resolve()
@@ -51,7 +81,7 @@ function loadGoogleIdentityScript(): Promise<void> {
       existing.addEventListener('load', () => resolve(), { once: true })
       existing.addEventListener(
         'error',
-        () => reject(new Error('Google 스크립트를 불러오지 못했습니다.')),
+        () => reject(new Error('Failed to load Google Identity Services.')),
         { once: true },
       )
     })
@@ -64,12 +94,17 @@ function loadGoogleIdentityScript(): Promise<void> {
     script.defer = true
     script.onload = () => resolve()
     script.onerror = () =>
-      reject(new Error('Google 스크립트를 불러오지 못했습니다.'))
+      reject(new Error('Failed to load Google Identity Services.'))
     document.head.appendChild(script)
   })
 }
 
-export function GoogleLoginButton() {
+export function GoogleLoginButton({
+  clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined,
+  label = 'Google로 로그인하기',
+  className,
+  labelClassName,
+}: GoogleLoginButtonProps) {
   const navigate = useNavigate()
   const buttonContainerRef = useRef<HTMLDivElement | null>(null)
   const buttonScaleRef = useRef<HTMLDivElement | null>(null)
@@ -78,10 +113,8 @@ export function GoogleLoginButton() {
   useEffect(() => {
     let cancelled = false
 
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined
-
     if (!clientId?.trim()) {
-      setError('Google Client ID가 설정되지 않았습니다.')
+      setError('Google Client ID is not configured.')
       return
     }
 
@@ -99,6 +132,8 @@ export function GoogleLoginButton() {
         }
 
         buttonContainerRef.current.innerHTML = ''
+        setError(null)
+
         const targetWidth = buttonScaleRef.current.clientWidth
         const scale = 56 / 40
         const renderedWidth = Math.max(240, Math.floor(targetWidth / scale))
@@ -107,7 +142,7 @@ export function GoogleLoginButton() {
           client_id: clientId.trim(),
           callback: ({ credential }) => {
             if (!credential) {
-              setError('Google ID 토큰을 받지 못했습니다.')
+              setError('Failed to receive Google ID token.')
               return
             }
 
@@ -133,7 +168,7 @@ export function GoogleLoginButton() {
         setError(
           nextError instanceof Error
             ? nextError.message
-            : 'Google 로그인 버튼을 초기화하지 못했습니다.',
+            : 'Failed to initialize Google login button.',
         )
       }
     }
@@ -143,23 +178,31 @@ export function GoogleLoginButton() {
     return () => {
       cancelled = true
     }
-  }, [navigate])
+  }, [clientId, navigate])
 
   return (
     <div className="space-y-2">
-      <div className="relative h-14 w-full overflow-hidden">
-        <div className="absolute inset-0">
-          <GoogleButton
-            disabled
-            aria-hidden="true"
-            tabIndex={-1}
-            className="pointer-events-none h-full max-w-none opacity-0"
-            label="Google로 로그인"
-          />
+      <div className={cn('relative h-14 w-full overflow-hidden', className)}>
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 inline-flex items-center justify-between rounded-[8px] border border-[#747775] bg-white px-4 text-[#1f1f1f] shadow-none"
+        >
+          <span className="flex h-5 w-5 items-center justify-center">
+            <GoogleIcon />
+          </span>
+          <span
+            className={cn(
+              'grow text-center font-["Roboto",arial,sans-serif] text-sm font-medium tracking-[0.25px]',
+              labelClassName,
+            )}
+          >
+            {label}
+          </span>
+          <span className="h-5 w-5 shrink-0" />
         </div>
         <div
           ref={buttonScaleRef}
-          className="absolute inset-0 flex items-center justify-center overflow-hidden"
+          className="absolute inset-0 z-10 flex items-center justify-center overflow-hidden opacity-0"
         >
           <div
             ref={buttonContainerRef}

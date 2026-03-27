@@ -2,7 +2,6 @@ import { Link } from '@tanstack/react-router'
 import Autoplay from 'embla-carousel-autoplay'
 import useEmblaCarousel from 'embla-carousel-react'
 import { useCallback, useEffect, useState } from 'react'
-import { GoogleLoginButton } from '@/components/Auth/google-login-button'
 import { PwaBanner } from '@/components/pwa-banner'
 import { SplashStartButton } from '@/components/splash-start-button'
 
@@ -95,9 +94,6 @@ export default function Splash() {
           <SplashStartButton asChild>
             <Link to="/auth/login">헤어 어때 시작하기</Link>
           </SplashStartButton>
-          <div className="mt-4">
-            <GoogleLoginButton />
-          </div>
         </div>
       </div>
     </main>

@@ -120,7 +120,7 @@ export function BottomNavBase({
   return (
     <nav
       aria-label="Primary"
-      className="absolute right-0 bottom-0 left-0 z-10 h-[62px] rounded-t-[16px] bg-white px-10 py-4 border border-nav-inactive"
+      className="fixed bottom-0 left-1/2 z-10 h-[62px] w-full max-w-[var(--app-frame-width)] -translate-x-1/2 rounded-t-[16px] border border-nav-inactive bg-white px-10 py-4"
     >
       <ul className="flex h-full items-center justify-between">
         {items.map(({ label, to, icon: Icon, match }) => {

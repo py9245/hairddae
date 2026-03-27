@@ -281,19 +281,14 @@ export function HairCameraView({
 
   const modalOpen = pendingHairId != null && pendingHairId > 0
   const hairItemsErrorOpen = hairItemsError != null
-  const hasAppliedPendingHair =
-    modalOpen &&
-    pendingHairId != null &&
-    hairRtc.appliedHairId === pendingHairId
-  const hasHelloApplied =
-    modalOpen && pendingHairId != null && hairRtc.hasHelloApplied
+  const shouldShowGuideModal =
+    isGuideModalOpen && !modalOpen && !hairItemsErrorOpen
   const hasRenderedPendingHair =
     modalOpen &&
     pendingHairId != null &&
     hairRtc.isRenderReady &&
     remoteDisplayReady
-  const rtcApplyReady =
-    hasAppliedPendingHair || hasHelloApplied || hasRenderedPendingHair
+  const rtcApplyReady = hasRenderedPendingHair
 
   useEffect(() => {
     if (finishTimerRef.current != null) {
@@ -375,10 +370,10 @@ export function HairCameraView({
             onFreezeChange={setIsFrameFrozen}
           />
 
-          {isGuideModalOpen ? (
+          {shouldShowGuideModal ? (
             <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
               <GuideModal
-                open={isGuideModalOpen}
+                open={shouldShowGuideModal}
                 onClose={handleGuideModalClose}
                 onDismiss={handleGuideModalDismiss}
                 scale={uiScale}

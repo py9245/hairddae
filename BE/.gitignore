@@ -48,6 +48,7 @@ WBS_템플릿_INFRA_v2.xlsx
 nginx/certs/**
 !nginx/certs/.gitkeep
 
+
 ### Frontend Deploy Artifacts ###
 nginx/html/**
 !nginx/html/.gitkeep

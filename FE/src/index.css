@@ -302,6 +302,17 @@
     animation: hair-list-page-out 220ms cubic-bezier(0.4, 0, 0.2, 1) both;
   }
 
+  .animate-signup-success-copy {
+    animation: signup-success-copy-in 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  .animate-signup-success-visual {
+    transform-origin: center bottom;
+    animation:
+      signup-success-visual-in 720ms cubic-bezier(0.22, 1, 0.36, 1) both,
+      signup-success-visual-float 3.2s ease-in-out 820ms infinite;
+  }
+
   @keyframes hair-list-bottom-nav-in {
     0% {
       opacity: 0;
@@ -340,6 +351,54 @@
     100% {
       opacity: 0.86;
       transform: translate3d(0, 10px, 0);
+    }
+  }
+
+  @keyframes signup-success-copy-in {
+    0% {
+      opacity: 0;
+      transform: translate3d(0, 18px, 0);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  @keyframes signup-success-visual-in {
+    0% {
+      opacity: 0;
+      transform: translate3d(0, 28px, 0) scale(0.94);
+    }
+
+    65% {
+      opacity: 1;
+      transform: translate3d(0, -4px, 0) scale(1.02);
+    }
+
+    100% {
+      opacity: 1;
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+  }
+
+  @keyframes signup-success-visual-float {
+    0%,
+    100% {
+      transform: translate3d(0, 0, 0);
+    }
+
+    50% {
+      transform: translate3d(0, -8px, 0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-signup-success-copy,
+    .animate-signup-success-visual {
+      animation: none;
+      transform: none;
     }
   }
 

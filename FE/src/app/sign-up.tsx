@@ -51,7 +51,7 @@ export default function SignUp() {
   if (isSignUpComplete) {
     return (
       <main className="app-frame-page h-full flex flex-col items-center justify-center bg-bg-primary px-6">
-        <h1 className="h-[54px] whitespace-pre-line px-8 text-center text-[20px] leading-[1.35] font-semibold tracking-[-0.03em] text-text-dar mb-20">
+        <h1 className="animate-signup-success-copy h-[54px] whitespace-pre-line px-8 text-center text-[20px] leading-[1.35] font-semibold tracking-[-0.03em] text-text-dar mb-20">
           헤어 어때와 함께 다양한 <br />
           헤어스타일로 꾸며보아요
         </h1>
@@ -62,7 +62,7 @@ export default function SignUp() {
           width={398}
           height={320}
           decoding="async"
-          className="h-auto w-full max-w-[398px] object-contain select-none"
+          className="animate-signup-success-visual h-auto w-full max-w-[398px] object-contain select-none"
         />
       </main>
     )

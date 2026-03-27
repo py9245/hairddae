@@ -8,7 +8,6 @@ pipeline {
 
   environment {
     DEPLOY_DIR = '/home/ubuntu/S14P21M101/BE/nginx/html'
-    VITE_WS_BASE_URL = 'wss://j14m101.p.ssafy.io/'
   }
 
   stages {
@@ -89,6 +88,13 @@ pipeline {
               echo "WARN: lockfile mismatch, retrying with --no-frozen-lockfile"
               run_pnpm install --no-frozen-lockfile
             fi
+
+            if [ ! -f .env ]; then
+              echo "ERROR: FE/.env not found in workspace. This deployment expects a server-local FE/.env file." >&2
+              exit 1
+            fi
+
+            echo "Using server-local FE/.env for Vite build."
             run_pnpm run build
           '''
         }

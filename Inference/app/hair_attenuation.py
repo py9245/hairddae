@@ -1366,14 +1366,14 @@ class HairAttenuator:
         cv2.ellipse(mask, center, axes, roll_deg, 0, 360, 255, -1)
 
         wing_axes = (
-            max(1, int(round(face_width * 0.18))),
-            max(1, int(round(face_height * 0.23))),
+            max(1, int(round(face_width * 0.27))),
+            max(1, int(round(face_height * 0.32))),
         )
         left_wing_center = _clip_point(
             np.array(
                 [
-                    left_temple[0] * 0.88 + left_ear_root[0] * 0.12 - face_width * 0.01,
-                    left_temple[1] * 0.88 + left_ear_root[1] * 0.12 - face_height * 0.05,
+                    left_temple[0] * 0.78 + left_ear_root[0] * 0.22 - face_width * 0.02,
+                    left_temple[1] * 0.78 + left_ear_root[1] * 0.22 - face_height * 0.06,
                 ],
                 dtype=np.float32,
             ),
@@ -1383,8 +1383,8 @@ class HairAttenuator:
         right_wing_center = _clip_point(
             np.array(
                 [
-                    right_temple[0] * 0.88 + right_ear_root[0] * 0.12 + face_width * 0.01,
-                    right_temple[1] * 0.88 + right_ear_root[1] * 0.12 - face_height * 0.05,
+                    right_temple[0] * 0.78 + right_ear_root[0] * 0.22 + face_width * 0.02,
+                    right_temple[1] * 0.78 + right_ear_root[1] * 0.22 - face_height * 0.06,
                 ],
                 dtype=np.float32,
             ),
@@ -1398,11 +1398,11 @@ class HairAttenuator:
             [
                 [
                     center[0] - axes[0] * 0.84,
-                    center[1] - axes[1] * 0.50,
+                    center[1] - axes[1] * 0.56,
                 ],
                 [
                     left_wing_center[0] + wing_axes[0] * 0.60,
-                    left_wing_center[1] - wing_axes[1] * 0.52,
+                    left_wing_center[1] - wing_axes[1] * 0.62,
                 ],
                 [
                     left_wing_center[0] + wing_axes[0] * 0.60,
@@ -1419,11 +1419,11 @@ class HairAttenuator:
             [
                 [
                     center[0] + axes[0] * 0.84,
-                    center[1] - axes[1] * 0.50,
+                    center[1] - axes[1] * 0.56,
                 ],
                 [
                     right_wing_center[0] - wing_axes[0] * 0.60,
-                    right_wing_center[1] - wing_axes[1] * 0.52,
+                    right_wing_center[1] - wing_axes[1] * 0.62,
                 ],
                 [
                     right_wing_center[0] - wing_axes[0] * 0.60,

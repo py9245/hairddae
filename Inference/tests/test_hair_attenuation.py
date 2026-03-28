@@ -263,13 +263,17 @@ def test_forehead_fringe_mask_extends_to_temple_sides() -> None:
     assert fringe_mask[62, 140] > 0
     assert fringe_mask[76, 48] > 0
     assert fringe_mask[76, 144] > 0
-    assert fringe_mask[84, 40] == 0
-    assert fringe_mask[84, 152] == 0
+    assert fringe_mask[84, 40] > 0
+    assert fringe_mask[84, 152] > 0
+    assert fringe_mask[56, 152] > 0
     assert fringe_mask[92, 52] > 0
     assert fringe_mask[92, 140] > 0
     assert fringe_mask[76, 36] == 0
     assert fringe_mask[76, 156] == 0
     assert fringe_mask[72, 160] == 0
+    assert fringe_mask[104, 44] > 0
+    assert fringe_mask[104, 148] > 0
+    assert fringe_mask[120, 148] == 0
     assert fringe_mask[110, 120] == 0
     assert fringe_mask[176, 18] == 0
 

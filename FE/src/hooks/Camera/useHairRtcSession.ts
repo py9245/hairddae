@@ -57,174 +57,11 @@ type HairSelection = {
   datasetCode: string | null
 }
 
-type IterableElement<T> = T extends Iterable<infer Element> ? Element : never
-type RtcCodecPreference = IterableElement<
-  Parameters<RTCRtpTransceiver['setCodecPreferences']>[0]
->
-
 const RECONNECT_DELAY_MS = 800
 const ICE_GATHERING_TIMEOUT_MS = 1500
 const HEARTBEAT_INTERVAL_MS = 5000
 const STATS_POLL_INTERVAL_MS = 1000
 const RTC_SESSION_VERSION = 1
-const H264_MIME_TYPE = 'video/h264'
-const H264_PROFILE_LEVEL_ID_PRIORITY = [
-  '42e01f',
-  '42c01f',
-  '42001f',
-  '4d001f',
-  '640c1f',
-]
-
-function parseFmtpParameters(sdpFmtpLine?: string): Record<string, string> {
-  if (!sdpFmtpLine) {
-    return {}
-  }
-
-  return sdpFmtpLine
-    .split(';')
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0)
-    .reduce<Record<string, string>>((result, item) => {
-      const separatorIndex = item.indexOf('=')
-      if (separatorIndex === -1) {
-        result[item.toLowerCase()] = ''
-        return result
-      }
-
-      const key = item.slice(0, separatorIndex).trim().toLowerCase()
-      const value = item
-        .slice(separatorIndex + 1)
-        .trim()
-        .toLowerCase()
-      result[key] = value
-      return result
-    }, {})
-}
-
-function getH264CodecPriority(codec: RtcCodecPreference): number {
-  const parameters = parseFmtpParameters(codec.sdpFmtpLine)
-  const packetizationMode = parameters['packetization-mode']
-  const profileLevelId = parameters['profile-level-id'] ?? ''
-  const packetizationPriority = packetizationMode === '1' ? 0 : 1
-  const profilePriority = H264_PROFILE_LEVEL_ID_PRIORITY.indexOf(profileLevelId)
-
-  return (
-    packetizationPriority * 100 +
-    (profilePriority === -1
-      ? H264_PROFILE_LEVEL_ID_PRIORITY.length
-      : profilePriority)
-  )
-}
-
-function buildPreferredVideoCodecs(): RtcCodecPreference[] | null {
-  if (
-    typeof RTCRtpSender === 'undefined' ||
-    typeof RTCRtpSender.getCapabilities !== 'function'
-  ) {
-    return null
-  }
-
-  const capabilities = RTCRtpSender.getCapabilities('video')
-  const codecs = capabilities?.codecs ?? []
-  const h264Codecs = codecs.filter(
-    (codec) => codec.mimeType.trim().toLowerCase() === H264_MIME_TYPE,
-  )
-
-  if (h264Codecs.length === 0) {
-    return null
-  }
-
-  const orderedH264Codecs = [...h264Codecs].sort(
-    (left, right) => getH264CodecPriority(left) - getH264CodecPriority(right),
-  )
-
-  return [
-    ...orderedH264Codecs,
-    ...codecs.filter(
-      (codec) => codec.mimeType.trim().toLowerCase() !== H264_MIME_TYPE,
-    ),
-  ]
-}
-
-function applyH264CodecPreference(
-  peerConnection: RTCPeerConnection,
-  sender: RTCRtpSender,
-) {
-  const preferredCodecs = buildPreferredVideoCodecs()
-  if (!preferredCodecs || preferredCodecs.length === 0) {
-    console.warn('RTC H264 codec preference unavailable in this browser.')
-    return
-  }
-
-  const transceiver = peerConnection
-    .getTransceivers()
-    .find((candidate) => candidate.sender === sender)
-
-  if (!transceiver || typeof transceiver.setCodecPreferences !== 'function') {
-    console.warn('RTC transceiver codec preference is not supported.')
-    return
-  }
-
-  transceiver.setCodecPreferences(preferredCodecs)
-
-  const preferredH264Codec = preferredCodecs.find(
-    (codec) => codec.mimeType.trim().toLowerCase() === H264_MIME_TYPE,
-  )
-  console.info(
-    'RTC H264 codec preference applied:',
-    preferredH264Codec?.sdpFmtpLine ?? 'default',
-  )
-}
-
-function getOfferVideoCodecs(sdp: string): string[] {
-  const videoPayloadTypes = new Set<string>()
-  const payloadTypeToCodec = new Map<string, string>()
-  let currentMediaSection: string | null = null
-
-  for (const rawLine of sdp.split(/\r?\n/)) {
-    const line = rawLine.trim()
-    if (!line) {
-      continue
-    }
-
-    if (line.startsWith('m=')) {
-      const parts = line.split(/\s+/)
-      currentMediaSection = parts[0]?.slice(2) ?? null
-      if (currentMediaSection === 'video') {
-        for (const payloadType of parts.slice(3)) {
-          videoPayloadTypes.add(payloadType)
-        }
-      }
-      continue
-    }
-
-    if (currentMediaSection !== 'video') {
-      continue
-    }
-
-    const rtpMapMatch = /^a=rtpmap:(\d+)\s+([^/\s]+)\/\d+/i.exec(line)
-    if (!rtpMapMatch) {
-      continue
-    }
-
-    const payloadType = rtpMapMatch[1]
-    const codecName = rtpMapMatch[2]?.toUpperCase()
-    if (payloadType && codecName && videoPayloadTypes.has(payloadType)) {
-      payloadTypeToCodec.set(payloadType, codecName)
-    }
-  }
-
-  const codecNames: string[] = []
-  for (const payloadType of videoPayloadTypes) {
-    const codecName = payloadTypeToCodec.get(payloadType)
-    if (codecName && !codecNames.includes(codecName)) {
-      codecNames.push(codecName)
-    }
-  }
-
-  return codecNames
-}
 async function configureRtcSender(sender: RTCRtpSender) {
   const track = sender.track
   if (!track || track.kind !== 'video') {
@@ -897,7 +734,6 @@ export function useHairRtcSession({
 
         for (const track of videoTracks) {
           const sender = peerConnection.addTrack(track, localStream)
-          applyH264CodecPreference(peerConnection, sender)
           void configureRtcSender(sender)
         }
 
@@ -906,15 +742,6 @@ export function useHairRtcSession({
         await waitForIceGatheringComplete(peerConnection)
 
         const localOffer = peerConnection.localDescription ?? offer
-        if (localOffer.sdp) {
-          const offerVideoCodecs = getOfferVideoCodecs(localOffer.sdp)
-          console.info('RTC offer video codecs:', offerVideoCodecs.join(', '))
-          if (!offerVideoCodecs.includes('H264')) {
-            console.warn(
-              'RTC offer does not include H264; the session may negotiate VP8/VP9.',
-            )
-          }
-        }
 
         const answer = await postRtcOffer({
           offerUrl: nextBootstrap.rtc.offerUrl,

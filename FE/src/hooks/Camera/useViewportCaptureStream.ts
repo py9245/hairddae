@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { describeMediaStream, logRtcDebug } from '@/lib/Camera/debug'
 import { getVideoCoverLayout } from '@/lib/Camera/layout'
 
 type VideoElementWithFrameCallback = HTMLVideoElement & {
@@ -30,12 +31,14 @@ export function useViewportCaptureStream({
 
   useEffect(() => {
     if (!enabled) {
+      logRtcDebug('viewport capture disabled')
       setStream(null)
       return
     }
 
     const sourceVideo = sourceVideoRef.current
     if (!sourceVideo) {
+      logRtcDebug('viewport capture source missing')
       setStream(null)
       return
     }
@@ -46,6 +49,7 @@ export function useViewportCaptureStream({
       desynchronized: true,
     })
     if (!context) {
+      logRtcDebug('viewport capture context unavailable')
       setStream(null)
       return
     }
@@ -59,6 +63,9 @@ export function useViewportCaptureStream({
     const videoWithFrameCallback = sourceVideo as VideoElementWithFrameCallback
 
     const stop = () => {
+      logRtcDebug('viewport capture stop', {
+        stream: describeMediaStream(captureStream),
+      })
       if (timerId != null) {
         window.clearTimeout(timerId)
         timerId = null
@@ -129,6 +136,14 @@ export function useViewportCaptureStream({
 
         if (!captureStream) {
           captureStream = canvas.captureStream(fps)
+          logRtcDebug('viewport capture stream created', {
+            width,
+            height,
+            fps,
+            sourceVideoWidth: videoWidth,
+            sourceVideoHeight: videoHeight,
+            stream: describeMediaStream(captureStream),
+          })
           setStream(captureStream)
         }
       }

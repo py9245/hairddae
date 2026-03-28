@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-
+import {
+  describeMediaStream,
+  describeMediaTrack,
+  logRtcDebug,
+} from '@/lib/Camera/debug'
 import {
   getOrCreateDeviceId,
   type HairApplyV2Response,
@@ -55,6 +59,11 @@ type HairRtcMetrics = {
 type HairSelection = {
   hairId: number | null
   datasetCode: string | null
+}
+
+type RtcCodecSnapshot = {
+  outboundVideoCodec: string | null
+  inboundVideoCodec: string | null
 }
 
 type IterableElement<T> = T extends Iterable<infer Element> ? Element : never
@@ -225,6 +234,75 @@ function getOfferVideoCodecs(sdp: string): string[] {
 
   return codecNames
 }
+
+function getCodecLabel(
+  codec: RTCStats & Record<string, unknown>,
+): string | null {
+  const mimeType =
+    typeof codec.mimeType === 'string' ? codec.mimeType.toUpperCase() : null
+  const sdpFmtpLine =
+    typeof codec.sdpFmtpLine === 'string' && codec.sdpFmtpLine.length > 0
+      ? codec.sdpFmtpLine
+      : null
+
+  if (!mimeType) {
+    return null
+  }
+
+  return sdpFmtpLine ? `${mimeType} ${sdpFmtpLine}` : mimeType
+}
+
+function getSelectedVideoCodecs(report: RTCStatsReport): RtcCodecSnapshot {
+  const codecEntries = new Map<string, RTCStats & Record<string, unknown>>()
+  let outboundCodecId: string | null = null
+  let inboundCodecId: string | null = null
+
+  report.forEach((entry) => {
+    const value = entry as RTCStats & Record<string, unknown>
+    const mediaType =
+      typeof value.kind === 'string'
+        ? value.kind
+        : typeof value.mediaType === 'string'
+          ? value.mediaType
+          : null
+
+    if (value.type === 'codec') {
+      codecEntries.set(entry.id, value)
+      return
+    }
+
+    if (
+      value.type === 'outbound-rtp' &&
+      mediaType === 'video' &&
+      value.isRemote !== true &&
+      typeof value.codecId === 'string'
+    ) {
+      outboundCodecId = value.codecId
+      return
+    }
+
+    if (
+      value.type === 'inbound-rtp' &&
+      mediaType === 'video' &&
+      value.isRemote !== true &&
+      typeof value.codecId === 'string'
+    ) {
+      inboundCodecId = value.codecId
+    }
+  })
+
+  const outboundCodec = outboundCodecId
+    ? codecEntries.get(outboundCodecId)
+    : undefined
+  const inboundCodec = inboundCodecId
+    ? codecEntries.get(inboundCodecId)
+    : undefined
+
+  return {
+    outboundVideoCodec: outboundCodec ? getCodecLabel(outboundCodec) : null,
+    inboundVideoCodec: inboundCodec ? getCodecLabel(inboundCodec) : null,
+  }
+}
 async function configureRtcSender(sender: RTCRtpSender) {
   const track = sender.track
   if (!track || track.kind !== 'video') {
@@ -315,6 +393,7 @@ export function useHairRtcSession({
   const bootstrapRequestRef = useRef(0)
   const heartbeatSentAtRef = useRef<number | null>(null)
   const statsSnapshotRef = useRef<StatsSnapshot | null>(null)
+  const codecSnapshotRef = useRef<string>('')
   const latestEnabledRef = useRef(enabled)
   const latestHairIdRef = useRef<number | null>(hairId ?? null)
   const latestDatasetCodeRef = useRef<string | null>(datasetCode ?? null)
@@ -396,6 +475,13 @@ export function useHairRtcSession({
 
   const teardownConnection = useCallback(
     (manual: boolean) => {
+      logRtcDebug('teardown connection', {
+        manual,
+        peerConnectionState: peerConnectionRef.current?.connectionState ?? null,
+        dataChannelState: dataChannelRef.current?.readyState ?? null,
+        session: sessionRef.current?.applySessionId ?? null,
+        remoteStream: describeMediaStream(remoteStreamRef.current),
+      })
       manualCloseRef.current = manual
       channelReadyRef.current = false
       clearHeartbeat()
@@ -424,11 +510,16 @@ export function useHairRtcSession({
 
   const resetRuntime = useCallback(
     ({ clearSession }: { clearSession: boolean }) => {
+      logRtcDebug('reset runtime', {
+        clearSession,
+        reconnecting: reconnectingRef.current,
+      })
       clearReconnect()
       reconnectingRef.current = false
       teardownConnection(true)
       heartbeatSentAtRef.current = null
       statsSnapshotRef.current = null
+      codecSnapshotRef.current = ''
       setIsRenderReady(false)
       setAppliedHairId(null)
       setHasHelloApplied(false)
@@ -591,6 +682,24 @@ export function useHairRtcSession({
         inboundFramesDecoded,
       }
 
+      const codecSnapshot = getSelectedVideoCodecs(report)
+      const codecSnapshotKey = JSON.stringify(codecSnapshot)
+      if (codecSnapshotKey !== codecSnapshotRef.current) {
+        codecSnapshotRef.current = codecSnapshotKey
+        logRtcDebug('selected codecs', codecSnapshot)
+      }
+
+      logRtcDebug('peer stats snapshot', {
+        senderFps,
+        receiverFps,
+        senderBitrateKbps,
+        senderFrameWidth,
+        senderFrameHeight,
+        senderQualityLimitationReason,
+        roundTripTimeMs,
+        packetsLost,
+      })
+
       setMetrics((current) => ({
         ...current,
         senderFps: senderFps ?? current.senderFps,
@@ -694,6 +803,11 @@ export function useHairRtcSession({
         hairId: nextHairId,
         datasetCode: nextDatasetCode,
       }
+      logRtcDebug('send select hair', {
+        force,
+        previousSelection,
+        nextSelection: currentSelectionRef.current,
+      })
       setAppliedHairId(null)
       setIsRenderReady(false)
       sendControlMessage(buildSelectHairMessage(nextHairId, nextDatasetCode))
@@ -704,6 +818,15 @@ export function useHairRtcSession({
 
   const scheduleReconnect = useCallback(
     (reason: string) => {
+      logRtcDebug('schedule reconnect', {
+        reason,
+        reconnecting: reconnectingRef.current,
+        enabled: latestEnabledRef.current,
+        hairId: latestHairIdRef.current,
+        hasStream: latestStreamRef.current != null,
+        peerConnectionState: peerConnectionRef.current?.connectionState ?? null,
+        dataChannelState: dataChannelRef.current?.readyState ?? null,
+      })
       if (
         reconnectingRef.current ||
         !latestEnabledRef.current ||
@@ -733,6 +856,12 @@ export function useHairRtcSession({
     ) => {
       const requestId = bootstrapRequestRef.current + 1
       bootstrapRequestRef.current = requestId
+      logRtcDebug('open session requested', {
+        requestId,
+        hairId: nextHairId,
+        datasetCode: _nextDatasetCode,
+        localStream: describeMediaStream(localStream),
+      })
       resetRuntime({ clearSession: false })
 
       try {
@@ -746,6 +875,16 @@ export function useHairRtcSession({
         if (bootstrapRequestRef.current !== requestId) {
           return
         }
+
+        logRtcDebug('bootstrap resolved', {
+          requestId,
+          applySessionId: nextBootstrap.applySessionId,
+          rtcEnabled: nextBootstrap.rtc.enabled,
+          offerUrl: nextBootstrap.rtc.offerUrl,
+          iceServers: nextBootstrap.rtc.iceServers.map((server) => ({
+            urls: server.urls,
+          })),
+        })
 
         if (!nextBootstrap.rtc.enabled) {
           setError('RTC is disabled.')
@@ -779,8 +918,19 @@ export function useHairRtcSession({
         setConnectionState(peerConnection.connectionState)
         setError(null)
 
+        logRtcDebug('peer connection created', {
+          requestId,
+          applySessionId: nextBootstrap.applySessionId,
+          localStream: describeMediaStream(localStream),
+          remoteStream: describeMediaStream(remoteMediaStream),
+        })
+
         peerConnection.addEventListener('connectionstatechange', () => {
           const nextState = peerConnection.connectionState
+          logRtcDebug('peer connection state change', {
+            requestId,
+            state: nextState,
+          })
           setConnectionState(nextState)
           if (
             manualCloseRef.current ||
@@ -793,14 +943,46 @@ export function useHairRtcSession({
           scheduleReconnect('RTC connection lost.')
         })
 
+        peerConnection.addEventListener('iceconnectionstatechange', () => {
+          logRtcDebug('ice connection state change', {
+            requestId,
+            state: peerConnection.iceConnectionState,
+          })
+        })
+
+        peerConnection.addEventListener('icegatheringstatechange', () => {
+          logRtcDebug('ice gathering state change', {
+            requestId,
+            state: peerConnection.iceGatheringState,
+          })
+        })
+
+        peerConnection.addEventListener('signalingstatechange', () => {
+          logRtcDebug('signaling state change', {
+            requestId,
+            state: peerConnection.signalingState,
+          })
+        })
+
         peerConnection.addEventListener('track', (event) => {
           const currentRemoteStream = remoteStreamRef.current
           if (!currentRemoteStream) {
             return
           }
+          logRtcDebug('remote track received', {
+            requestId,
+            track: describeMediaTrack(event.track),
+            eventStreams: event.streams.map((item) =>
+              describeMediaStream(item),
+            ),
+          })
           currentRemoteStream.addTrack(event.track)
           setRemoteStream(new MediaStream(currentRemoteStream.getTracks()))
           event.track.addEventListener('ended', () => {
+            logRtcDebug('remote track ended', {
+              requestId,
+              track: describeMediaTrack(event.track),
+            })
             currentRemoteStream.removeTrack(event.track)
             setRemoteStream(new MediaStream(currentRemoteStream.getTracks()))
           })
@@ -810,11 +992,21 @@ export function useHairRtcSession({
         dataChannelRef.current = dataChannel
 
         dataChannel.addEventListener('open', () => {
+          logRtcDebug('data channel open', {
+            requestId,
+            label: dataChannel.label,
+            readyState: dataChannel.readyState,
+          })
           setError(null)
           sendControlMessage(buildHelloMessage())
         })
 
         dataChannel.addEventListener('close', () => {
+          logRtcDebug('data channel close', {
+            requestId,
+            label: dataChannel.label,
+            readyState: dataChannel.readyState,
+          })
           channelReadyRef.current = false
           if (!manualCloseRef.current) {
             scheduleReconnect('RTC data channel closed.')
@@ -830,6 +1022,18 @@ export function useHairRtcSession({
             }
 
             if (message.type === 'connected') {
+              logRtcDebug('data channel message connected', {
+                requestId,
+                applySessionId: message.applySessionId,
+                expectedInputWidth: message.expectedInputWidth,
+                expectedInputHeight: message.expectedInputHeight,
+                expectedInputFps: message.expectedInputFps,
+                expectedInputMirrored: message.expectedInputMirrored,
+                expectedOutputWidth: message.expectedOutputWidth,
+                expectedOutputHeight: message.expectedOutputHeight,
+                expectedOutputFps: message.expectedOutputFps,
+                expectedOutputMirrored: message.expectedOutputMirrored,
+              })
               channelReadyRef.current = true
               setError(null)
               startHeartbeat()
@@ -847,6 +1051,12 @@ export function useHairRtcSession({
             }
 
             if (message.type === 'hair_applied') {
+              logRtcDebug('data channel message hair applied', {
+                requestId,
+                hairId: message.hairId,
+                source: message.source,
+                serverTsMs: message.serverTsMs,
+              })
               setAppliedHairId(message.hairId)
               setHasHelloApplied(message.source === 'hello')
               setIsRenderReady(true)
@@ -866,6 +1076,17 @@ export function useHairRtcSession({
             }
 
             if (message.type === 'stats') {
+              logRtcDebug('data channel message stats', {
+                requestId,
+                queueDepth: message.queueDepth,
+                droppedPendingCount: message.droppedPendingCount,
+                decodeMs: message.decodeMs,
+                trackingMs: message.trackingMs,
+                inferMs: message.inferMs,
+                renderMs: message.renderMs,
+                encodeMs: message.encodeMs,
+                e2eEstimateMs: message.e2eEstimateMs,
+              })
               setMetrics((current) => ({
                 ...current,
                 queueDepth: message.queueDepth,
@@ -885,6 +1106,11 @@ export function useHairRtcSession({
             }
 
             if (message.type === 'error') {
+              logRtcDebug('data channel message error', {
+                requestId,
+                code: message.code,
+                message: message.message,
+              })
               setError(message.message)
             }
           } catch (caught) {
@@ -893,6 +1119,10 @@ export function useHairRtcSession({
         })
 
         for (const track of videoTracks) {
+          logRtcDebug('add local track', {
+            requestId,
+            track: describeMediaTrack(track),
+          })
           const sender = peerConnection.addTrack(track, localStream)
           applyH264CodecPreference(peerConnection, sender)
           void configureRtcSender(sender)
@@ -906,6 +1136,11 @@ export function useHairRtcSession({
         if (localOffer.sdp) {
           const offerVideoCodecs = getOfferVideoCodecs(localOffer.sdp)
           console.info('RTC offer video codecs:', offerVideoCodecs.join(', '))
+          logRtcDebug('local offer prepared', {
+            requestId,
+            type: localOffer.type,
+            codecs: offerVideoCodecs,
+          })
           if (!offerVideoCodecs.includes('H264')) {
             console.warn(
               'RTC offer does not include H264; the session may negotiate VP8/VP9.',
@@ -924,11 +1159,22 @@ export function useHairRtcSession({
         }
 
         await peerConnection.setRemoteDescription(answer)
+        if (answer.sdp) {
+          logRtcDebug('remote answer applied', {
+            requestId,
+            type: answer.type,
+            codecs: getOfferVideoCodecs(answer.sdp),
+          })
+        }
         startStatsPolling()
       } catch (caught) {
         if (bootstrapRequestRef.current !== requestId) {
           return
         }
+        logRtcDebug('open session failed', {
+          requestId,
+          error: caught instanceof Error ? caught.message : String(caught),
+        })
         setError(
           caught instanceof Error ? caught.message : 'RTC session start failed',
         )

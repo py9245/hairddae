@@ -7,6 +7,8 @@ import com.example.beapp.model.UserAccount;
 public interface UserAccountRepository {
     Optional<UserAccount> findByUserId(String userId);
 
+    Optional<UserAccount> findByProviderSubject(String providerSubject);
+
     boolean existsByUserId(String userId);
 
     UserAccount save(UserAccount userAccount);

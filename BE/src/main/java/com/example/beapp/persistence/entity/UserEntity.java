@@ -14,7 +14,8 @@ import jakarta.persistence.UniqueConstraint;
 @Table(
         name = "users",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uq_users_user_id", columnNames = "user_id")
+                @UniqueConstraint(name = "uq_users_user_id", columnNames = "user_id"),
+                @UniqueConstraint(name = "uq_users_provider_subject", columnNames = "provider_subject")
         }
 )
 public class UserEntity extends BaseTimeEntity {
@@ -35,14 +36,36 @@ public class UserEntity extends BaseTimeEntity {
     @Column(name = "gender", length = 1)
     private String gender;
 
+    @Column(name = "login_type", nullable = false)
+    private short loginType;
+
+    @Column(name = "provider_subject", length = 255)
+    private String providerSubject;
+
     protected UserEntity() {
     }
 
     public UserEntity(String userId, String passwordHash, LocalDate birthDate, String gender) {
+        this(userId, passwordHash, birthDate, gender, (short) 0, null);
+    }
+
+    public UserEntity(String userId, String passwordHash, LocalDate birthDate, String gender, short loginType) {
+        this(userId, passwordHash, birthDate, gender, loginType, null);
+    }
+
+    public UserEntity(
+            String userId,
+            String passwordHash,
+            LocalDate birthDate,
+            String gender,
+            short loginType,
+            String providerSubject) {
         this.userId = userId;
         this.passwordHash = passwordHash;
         this.birthDate = birthDate;
         this.gender = gender;
+        this.loginType = loginType;
+        this.providerSubject = providerSubject;
     }
 
     public Long getId() {
@@ -65,10 +88,21 @@ public class UserEntity extends BaseTimeEntity {
         return gender;
     }
 
-    public UserEntity update(String passwordHash, LocalDate birthDate, String gender) {
+    public short getLoginType() {
+        return loginType;
+    }
+
+    public String getProviderSubject() {
+        return providerSubject;
+    }
+
+    public UserEntity update(String userId, String passwordHash, LocalDate birthDate, String gender, short loginType, String providerSubject) {
+        this.userId = userId;
         this.passwordHash = passwordHash;
         this.birthDate = birthDate;
         this.gender = gender;
+        this.loginType = loginType;
+        this.providerSubject = providerSubject;
         return this;
     }
 }

@@ -106,13 +106,18 @@ pipeline {
         sh '''
           set -eu
 
-          if [ -f "$DEPLOY_ROOT/.env" ]; then
-            set -a
-            . "$DEPLOY_ROOT/.env"
-            set +a
+          PUBLIC_HOST="${APP_PUBLIC_PRIMARY_HOST:-}"
+          if [ -z "$PUBLIC_HOST" ] && [ -f "$DEPLOY_ROOT/.env" ]; then
+            PUBLIC_HOST="$(
+              grep -E '^[[:space:]]*APP_PUBLIC_PRIMARY_HOST[[:space:]]*=' "$DEPLOY_ROOT/.env" \
+                | tail -n 1 \
+                | sed 's/^[^=]*=[[:space:]]*//' \
+                | sed 's/[[:space:]]*$//' \
+                | tr -d '\r'
+            )"
           fi
 
-          PUBLIC_HOST="${APP_PUBLIC_PRIMARY_HOST:-hairddae.store}"
+          PUBLIC_HOST="${PUBLIC_HOST:-hairddae.store}"
 
           rtc_offer_headers() {
             rtc_headers_file="$(mktemp)"

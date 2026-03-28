@@ -1,4 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
+import useEmblaCarousel from 'embla-carousel-react'
 import { useState } from 'react'
 
 import { Header } from '@/components/header'
@@ -30,11 +31,13 @@ function HairSection({
   onLikeToggle,
   onApply,
 }: HairSectionProps) {
+  const [emblaRef] = useEmblaCarousel()
+
   return (
     <div className="mt-8">
       <h2 className="mb-3 text-base font-bold text-text-primary">{title}</h2>
       {isLoading ? (
-        <div className="flex gap-3 overflow-x-auto pb-2">
+        <div className="flex gap-3 overflow-hidden px-1 py-1">
           {[0, 1, 2].map((skeletonId) => (
             <div
               key={skeletonId}
@@ -43,21 +46,23 @@ function HairSection({
           ))}
         </div>
       ) : items.length > 0 ? (
-        <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {items.map((item) => (
-            <div key={item.hairID} className="shrink-0">
-              <HairStyleCard
-                hairId={item.hairID}
-                imageSrc={item.image}
-                imageAlt={item.hairName}
-                hairName={item.hairName}
-                hookText={item.hookText}
-                liked={likedIds[item.hairID.toString()] ?? item.liked}
-                onLikeToggle={() => onLikeToggle(item)}
-                onApply={onApply}
-              />
-            </div>
-          ))}
+        <div className="overflow-hidden px-1 py-1" ref={emblaRef}>
+          <div className="flex gap-3">
+            {items.map((item) => (
+              <div key={item.hairID} className="shrink-0">
+                <HairStyleCard
+                  hairId={item.hairID}
+                  imageSrc={item.image}
+                  imageAlt={item.hairName}
+                  hairName={item.hairName}
+                  hookText={item.hookText}
+                  liked={likedIds[item.hairID.toString()] ?? item.liked}
+                  onLikeToggle={() => onLikeToggle(item)}
+                  onApply={onApply}
+                />
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <div className="rounded-3xl bg-card p-6 text-center text-sm text-text-warm-300">

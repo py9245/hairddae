@@ -1225,6 +1225,86 @@ def test_apply_overlay_postprocess_preserves_face_protect_region() -> None:
     assert np.array_equal(postprocessed[4:7, 1:3], output[4:7, 1:3])
     assert not np.array_equal(postprocessed[4:7, 5:7], output[4:7, 5:7])
 
+
+def test_apply_overlay_postprocess_backgroundizes_outer_side_fringe_residual() -> None:
+    runtime = build_runtime_stub()
+    output = np.full((24, 24, 3), 50, dtype=np.uint8)
+    base = np.full((24, 24, 3), 30, dtype=np.uint8)
+    base[:, :12] = np.array([220, 210, 200], dtype=np.uint8)
+    base[:, 12:] = np.array([140, 170, 220], dtype=np.uint8)
+    hair_mask = np.zeros((24, 24), dtype=np.uint8)
+    hair_mask[2:10, 4:20] = 255
+    fringe_mask = np.array(hair_mask, copy=True)
+    coverage = np.zeros((24, 24), dtype=np.uint8)
+    coverage[4:10, 9:15] = 255
+    user_row = {
+        "_hair_binary_mask": hair_mask,
+        "_hair_fringe_mask": fringe_mask,
+        "_hair_background_color": np.array([220.0, 210.0, 200.0], dtype=np.float32),
+        "face_bbox": {"x": 7, "y": 6, "w": 10, "h": 10},
+        "anchors": {
+            "left_temple": {"x": 8.0, "y": 7.0},
+            "right_temple": {"x": 15.0, "y": 7.0},
+            "left_ear_root": {"x": 7.0, "y": 14.0},
+            "right_ear_root": {"x": 16.0, "y": 14.0},
+            "forehead_center": {"x": 11.5, "y": 6.0},
+            "crown": {"x": 11.5, "y": 4.0},
+        },
+    }
+
+    postprocessed = runtime._apply_overlay_postprocess(
+        output,
+        base,
+        user_row,
+        renderer_name="bundle_render",
+        coverage_mask=coverage,
+    )
+
+    left_region = postprocessed[3:8, 4:8].astype(np.float32).mean(axis=(0, 1))
+    right_region = postprocessed[3:8, 16:20].astype(np.float32).mean(axis=(0, 1))
+    left_bg = base[3:8, 4:8].astype(np.float32).mean(axis=(0, 1))
+    right_bg = base[3:8, 16:20].astype(np.float32).mean(axis=(0, 1))
+    original_region = output[3:8, 4:8].astype(np.float32).mean(axis=(0, 1))
+
+    assert float(np.abs(left_region - left_bg).mean()) < float(np.abs(original_region - left_bg).mean())
+    assert float(np.abs(right_region - right_bg).mean()) < float(np.abs(original_region - right_bg).mean())
+
+
+def test_apply_overlay_postprocess_preserves_central_face_attached_fringe_residual() -> None:
+    runtime = build_runtime_stub()
+    output = np.full((24, 24, 3), 50, dtype=np.uint8)
+    base = np.full((24, 24, 3), 30, dtype=np.uint8)
+    hair_mask = np.zeros((24, 24), dtype=np.uint8)
+    hair_mask[2:10, 4:20] = 255
+    fringe_mask = np.array(hair_mask, copy=True)
+    coverage = np.zeros((24, 24), dtype=np.uint8)
+    coverage[4:10, 9:15] = 255
+    user_row = {
+        "_hair_binary_mask": hair_mask,
+        "_hair_fringe_mask": fringe_mask,
+        "_hair_background_color": np.array([220.0, 210.0, 200.0], dtype=np.float32),
+        "face_bbox": {"x": 7, "y": 6, "w": 10, "h": 10},
+        "anchors": {
+            "left_temple": {"x": 8.0, "y": 7.0},
+            "right_temple": {"x": 15.0, "y": 7.0},
+            "left_ear_root": {"x": 7.0, "y": 14.0},
+            "right_ear_root": {"x": 16.0, "y": 14.0},
+            "forehead_center": {"x": 11.5, "y": 6.0},
+            "crown": {"x": 11.5, "y": 4.0},
+        },
+    }
+
+    postprocessed = runtime._apply_overlay_postprocess(
+        output,
+        base,
+        user_row,
+        renderer_name="bundle_render",
+        coverage_mask=coverage,
+    )
+
+    assert np.array_equal(postprocessed[2:4, 10:14], output[2:4, 10:14])
+
+
 def test_apply_overlay_postprocess_adds_outer_n_ring_from_residual_seed_without_touching_face_interior() -> None:
     runtime = build_runtime_stub()
     output = np.full((24, 24, 3), 50, dtype=np.uint8)

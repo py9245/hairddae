@@ -10,3 +10,4 @@ performance
 debug/
 .cache
 .logs
+artifacts

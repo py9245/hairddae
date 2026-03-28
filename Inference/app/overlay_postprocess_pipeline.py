@@ -249,6 +249,140 @@ def _build_directional_outer_ring_gate(
     return directional_gate
 
 
+def _mask_components_touching_seed(
+    mask: np.ndarray,
+    seed_mask: np.ndarray,
+) -> np.ndarray:
+    if mask.shape != seed_mask.shape:
+        return np.zeros_like(mask, dtype=np.uint8)
+    active_mask = np.where(mask > 0, np.uint8(255), np.uint8(0))
+    active_seed = np.where(seed_mask > 0, np.uint8(255), np.uint8(0))
+    if int(np.count_nonzero(active_mask)) < 8 or int(np.count_nonzero(active_seed)) < 1:
+        return np.zeros_like(mask, dtype=np.uint8)
+
+    label_count, labels = cv2.connectedComponents(active_mask, connectivity=8)
+    if label_count <= 1:
+        return np.zeros_like(mask, dtype=np.uint8)
+
+    selected_labels = np.unique(labels[active_seed > 0])
+    if selected_labels.size == 0:
+        return np.zeros_like(mask, dtype=np.uint8)
+
+    selected_mask = np.zeros_like(mask, dtype=np.uint8)
+    for label_index in selected_labels:
+        if int(label_index) <= 0:
+            continue
+        selected_mask[labels == int(label_index)] = 255
+    return selected_mask
+
+
+def _build_outer_side_fringe_gates(
+    user_row: dict[str, Any],
+    shape: tuple[int, int],
+) -> tuple[np.ndarray | None, np.ndarray | None]:
+    frame_height, frame_width = shape
+    face_bbox = user_row.get("face_bbox")
+    if not isinstance(face_bbox, dict):
+        return None, None
+    try:
+        face_x = float(face_bbox["x"])
+        face_y = float(face_bbox["y"])
+        face_w = float(face_bbox["w"])
+        face_h = float(face_bbox["h"])
+    except (KeyError, TypeError, ValueError):
+        return None, None
+    if face_w <= 1.0 or face_h <= 1.0:
+        return None, None
+
+    anchors = user_row.get("anchors")
+    left_temple = _anchor_xy(anchors, "left_temple")
+    right_temple = _anchor_xy(anchors, "right_temple")
+    left_ear_root = _anchor_xy(anchors, "left_ear_root")
+    right_ear_root = _anchor_xy(anchors, "right_ear_root")
+    forehead_center = _anchor_xy(anchors, "forehead_center")
+    crown = _anchor_xy(anchors, "crown")
+
+    left_temple_x = left_temple[0] if left_temple is not None else face_x + face_w * 0.18
+    right_temple_x = right_temple[0] if right_temple is not None else face_x + face_w * 0.82
+    temple_y = (
+        (left_temple[1] + right_temple[1]) * 0.5
+        if left_temple is not None and right_temple is not None
+        else face_y + face_h * 0.16
+    )
+    forehead_y = forehead_center[1] if forehead_center is not None else face_y
+    crown_y = crown[1] if crown is not None else max(0.0, forehead_y - face_h * 0.22)
+    left_ear_y = left_ear_root[1] if left_ear_root is not None else temple_y + face_h * 0.28
+    right_ear_y = right_ear_root[1] if right_ear_root is not None else temple_y + face_h * 0.28
+
+    x_coords = np.broadcast_to(
+        np.arange(frame_width, dtype=np.float32)[None, :],
+        (frame_height, frame_width),
+    )
+    y_coords = np.broadcast_to(
+        np.arange(frame_height, dtype=np.float32)[:, None],
+        (frame_height, frame_width),
+    )
+
+    side_seed_gate = (
+        (
+            (x_coords <= left_temple_x + face_w * 0.16)
+            & (y_coords >= crown_y - face_h * 0.08)
+            & (y_coords <= left_ear_y + face_h * 0.08)
+        )
+        | (
+            (x_coords >= right_temple_x - face_w * 0.16)
+            & (y_coords >= crown_y - face_h * 0.08)
+            & (y_coords <= right_ear_y + face_h * 0.08)
+        )
+    )
+    central_keep_gate = (
+        (x_coords >= left_temple_x + face_w * 0.02)
+        & (x_coords <= right_temple_x - face_w * 0.02)
+        & (y_coords >= crown_y - face_h * 0.24)
+        & (y_coords <= temple_y + face_h * 0.24)
+    )
+    if int(np.count_nonzero(side_seed_gate)) < 8:
+        return None, None
+    return (
+        np.where(side_seed_gate, np.uint8(255), np.uint8(0)),
+        np.where(central_keep_gate, np.uint8(255), np.uint8(0)),
+    )
+
+
+def _build_outer_side_fringe_cleanup_mask(
+    fringe_mask: np.ndarray,
+    coverage_mask: np.ndarray,
+    face_protect_mask: np.ndarray | None,
+    user_row: dict[str, Any],
+) -> np.ndarray:
+    fringe_residual_mask = opencv_bitwise_and(fringe_mask, opencv_bitwise_not(coverage_mask))
+    if face_protect_mask is not None:
+        fringe_residual_mask = opencv_bitwise_and(
+            fringe_residual_mask,
+            opencv_bitwise_not(face_protect_mask),
+        )
+    if int(np.count_nonzero(fringe_residual_mask)) < 8:
+        return np.zeros_like(fringe_mask, dtype=np.uint8)
+
+    side_seed_gate, central_keep_gate = _build_outer_side_fringe_gates(
+        user_row,
+        fringe_mask.shape,
+    )
+    if side_seed_gate is None:
+        return np.zeros_like(fringe_mask, dtype=np.uint8)
+
+    outer_candidate_mask = np.array(fringe_residual_mask, copy=True)
+    if central_keep_gate is not None:
+        outer_candidate_mask = opencv_bitwise_and(
+            outer_candidate_mask,
+            opencv_bitwise_not(central_keep_gate),
+        )
+    side_seed_mask = opencv_bitwise_and(outer_candidate_mask, side_seed_gate)
+    if int(np.count_nonzero(side_seed_mask)) < 8:
+        return np.zeros_like(fringe_mask, dtype=np.uint8)
+    return _mask_components_touching_seed(outer_candidate_mask, side_seed_mask)
+
+
 def _build_outer_background_ring_mask(
     cleanup_seed_mask: np.ndarray,
     hair_binary_mask: np.ndarray,
@@ -364,16 +498,36 @@ def apply_overlay_postprocess(
     if coverage is None:
         return output_frame_bgr
 
-    if int(np.count_nonzero(candidate_mask)) < 8:
-        return output_frame_bgr
-
-    residual_mask = opencv_bitwise_and(candidate_mask, opencv_bitwise_not(coverage))
+    residual_mask = (
+        opencv_bitwise_and(candidate_mask, opencv_bitwise_not(coverage))
+        if int(np.count_nonzero(candidate_mask)) >= 8
+        else np.zeros_like(hair_binary_mask, dtype=np.uint8)
+    )
+    fringe_central_keep_gate: np.ndarray | None = None
+    fringe_outer_cleanup_mask = np.zeros_like(hair_binary_mask, dtype=np.uint8)
+    if fringe_mask is not None:
+        _, fringe_central_keep_gate = _build_outer_side_fringe_gates(
+            user_row,
+            frame_shape,
+        )
+        fringe_outer_cleanup_mask = _build_outer_side_fringe_cleanup_mask(
+            fringe_mask,
+            coverage,
+            face_protect_mask,
+            user_row,
+        )
+    cleanup_seed_mask = opencv_bitwise_or(residual_mask, fringe_outer_cleanup_mask)
     outer_ring_mask = _build_outer_background_ring_mask(
-        residual_mask,
+        cleanup_seed_mask,
         hair_binary_mask,
         user_row,
     )
-    cleanup_mask = opencv_bitwise_or(residual_mask, outer_ring_mask)
+    if fringe_central_keep_gate is not None:
+        outer_ring_mask = opencv_bitwise_and(
+            outer_ring_mask,
+            opencv_bitwise_not(fringe_central_keep_gate),
+        )
+    cleanup_mask = opencv_bitwise_or(cleanup_seed_mask, outer_ring_mask)
     if int(np.count_nonzero(cleanup_mask)) < 8:
         return output_frame_bgr
 

@@ -249,10 +249,13 @@ async function configureRtcSender(sender: RTCRtpSender) {
   }
 
   try {
-    await sender.setParameters({
+    const nextParameters = {
       ...parameters,
       encodings,
-    })
+      degradationPreference: 'maintain-resolution' as RTCDegradationPreference,
+    }
+
+    await sender.setParameters(nextParameters)
   } catch (error) {
     console.warn('RTC sender parameter update failed:', error)
   }

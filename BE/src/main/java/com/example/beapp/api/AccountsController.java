@@ -15,6 +15,7 @@ import com.example.beapp.api.dto.accounts.LoginRequest;
 import com.example.beapp.api.dto.accounts.LoginResponse;
 import com.example.beapp.api.dto.accounts.LogoutRequest;
 import com.example.beapp.api.dto.accounts.SignoutRequest;
+import com.example.beapp.api.dto.accounts.GoogleLoginRequest;
 import com.example.beapp.api.dto.accounts.SignupRequest;
 import com.example.beapp.api.dto.accounts.SignupResponse;
 import com.example.beapp.api.dto.accounts.SimpleResponse;
@@ -52,6 +53,16 @@ public class AccountsController {
                 .body(LoginResponse.ok(authTokens.userId()));
     }
 
+    @PostMapping({"/google-login", "/google-login/"})
+    public ResponseEntity<LoginResponse> googleLogin(@Valid @RequestBody GoogleLoginRequest request) {
+        AccountsService.AuthTokens authTokens = accountsService.googleLogin(request);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header(HttpHeaders.SET_COOKIE, authCookieManager.accessTokenCookie(authTokens.accessToken()).toString())
+                .header(HttpHeaders.SET_COOKIE, authCookieManager.refreshTokenCookie(authTokens.refreshToken()).toString())
+                .body(LoginResponse.ok(authTokens.userId()));
+    }
+
     @PostMapping({"/signup", "/signup/"})
     @ApiResponses({
             @ApiResponse(
@@ -60,7 +71,12 @@ public class AccountsController {
                     content = @Content(schema = @Schema(implementation = SignupResponse.class)))
     })
     public ResponseEntity<SignupResponse> signup(@Valid @RequestBody SignupRequest request) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(accountsService.signup(request));
+        AccountsService.AuthTokens authTokens = accountsService.signup(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header(HttpHeaders.SET_COOKIE, authCookieManager.accessTokenCookie(authTokens.accessToken()).toString())
+                .header(HttpHeaders.SET_COOKIE, authCookieManager.refreshTokenCookie(authTokens.refreshToken()).toString())
+                .body(SignupResponse.created(authTokens.userId()));
     }
 
     @PostMapping({"/logout", "/logout/"})

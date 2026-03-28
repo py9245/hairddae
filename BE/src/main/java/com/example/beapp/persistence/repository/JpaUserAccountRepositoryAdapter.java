@@ -5,7 +5,9 @@ import java.util.Optional;
 import org.springframework.context.annotation.Profile;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Repository;
+import org.springframework.util.StringUtils;
 
+import com.example.beapp.model.LoginType;
 import com.example.beapp.model.UserAccount;
 import com.example.beapp.persistence.entity.UserEntity;
 import com.example.beapp.repository.UserAccountRepository;
@@ -27,22 +29,40 @@ public class JpaUserAccountRepositoryAdapter implements UserAccountRepository {
     }
 
     @Override
+    public Optional<UserAccount> findByProviderSubject(String providerSubject) {
+        return userJpaRepository.findByProviderSubject(providerSubject).map(this::toModel);
+    }
+
+    @Override
     public boolean existsByUserId(String userId) {
         return userJpaRepository.existsByUserId(userId);
     }
 
     @Override
     public UserAccount save(UserAccount userAccount) {
-        UserEntity entity = userJpaRepository.findByUserId(userAccount.userID())
+        Optional<UserEntity> existingEntity = StringUtils.hasText(userAccount.providerSubject())
+                ? userJpaRepository.findByProviderSubject(userAccount.providerSubject())
+                : Optional.empty();
+
+        if (existingEntity.isEmpty()) {
+            existingEntity = userJpaRepository.findByUserId(userAccount.userID());
+        }
+
+        UserEntity entity = existingEntity
                 .map(existing -> existing.update(
+                        userAccount.userID(),
                         userAccount.encodedPassword(),
                         userAccount.birthDate(),
-                        userAccount.gender()))
+                        userAccount.gender(),
+                        userAccount.loginType().code(),
+                        userAccount.providerSubject()))
                 .orElseGet(() -> new UserEntity(
                         userAccount.userID(),
                         userAccount.encodedPassword(),
                         userAccount.birthDate(),
-                        userAccount.gender()));
+                        userAccount.gender(),
+                        userAccount.loginType().code(),
+                        userAccount.providerSubject()));
 
         UserEntity saved = userJpaRepository.save(entity);
         return toModel(saved);
@@ -58,6 +78,8 @@ public class JpaUserAccountRepositoryAdapter implements UserAccountRepository {
                 entity.getUserId(),
                 entity.getPasswordHash(),
                 entity.getBirthDate(),
-                entity.getGender());
+                entity.getGender(),
+                LoginType.fromCode(entity.getLoginType()),
+                entity.getProviderSubject());
     }
 }

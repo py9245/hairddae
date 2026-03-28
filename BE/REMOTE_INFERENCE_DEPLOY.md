@@ -11,7 +11,7 @@
 ## 왜 이렇게 구성하는가
 
 - FE는 `https://...` 로 서빙된다.
-- 이 상태에서 브라우저가 `http://3.35.4.105/rtc/inference/offer` 로 직접 `fetch` 하면 mixed-content 로 막힌다.
+- 이 상태에서 브라우저가 `http://13.209.49.195/rtc/inference/offer` 로 직접 `fetch` 하면 mixed-content 로 막힌다.
 - 그래서 offer/signaling 은 메인 서버 `nginx` 가 같은 origin 인 `/rtc/inference/*`, `/ws/inference/*` 로 받고, 그 뒤에서 원격 inference 서버로 HTTP 프록시한다.
 - 실제 RTC 미디어는 answer/ICE candidate 교환 이후 inference 서버와 직접 연결된다.
 
@@ -24,7 +24,7 @@
 예시는 [`BE/.env.remote-inference.example`](/home/yusin/S14P21M101/BE/.env.remote-inference.example) 를 참고하면 된다.
 
 ```env
-INFERENCE_UPSTREAM_HOST=3.35.4.105
+INFERENCE_UPSTREAM_HOST=13.209.49.195
 INFERENCE_UPSTREAM_PORT=8090
 
 APP_INFERENCE_WS_BASE_URL=wss://j14m101.p.ssafy.io/ws/inference/apply

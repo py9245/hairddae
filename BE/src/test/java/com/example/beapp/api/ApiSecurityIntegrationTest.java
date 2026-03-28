@@ -27,6 +27,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 import com.example.beapp.api.dto.hairs.HairMetadataSyncResponse;
 import com.example.beapp.security.AuthCookieManager;
+import com.example.beapp.security.GoogleIdTokenVerifier;
 import com.example.beapp.service.CategoryMetadataSyncService;
 import com.example.beapp.service.HairMetadataSyncService;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -48,6 +49,9 @@ class ApiSecurityIntegrationTest {
 
     @MockBean
     private CategoryMetadataSyncService categoryMetadataSyncService;
+
+    @MockBean
+    private GoogleIdTokenVerifier googleIdTokenVerifier;
 
     @Test
     void protectedEndpointRequiresJwt() throws Exception {
@@ -101,6 +105,33 @@ class ApiSecurityIntegrationTest {
                 .andExpect(jsonPath("$.userID").value("TestUser01"))
                 .andExpect(jsonPath("$.birthDate").value("2000-01-01"))
                 .andExpect(jsonPath("$.gender").value("M"));
+    }
+
+    @Test
+    void googleLoginIssuesJwtAndProtectedEndpointAcceptsIt() throws Exception {
+        given(googleIdTokenVerifier.verify("valid-google-id-token"))
+                .willReturn(new GoogleIdTokenVerifier.GoogleIdentity(
+                        "google-sub-01",
+                        "google-user-01@example.com"));
+
+        MvcResult googleLoginResult = mockMvc.perform(post("/api/accounts/google-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "idToken": "valid-google-id-token"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200))
+                .andExpect(jsonPath("$.userID").value("google-user-01@example.com"))
+                .andReturn();
+
+        mockMvc.perform(get("/api/mypage/user")
+                        .cookie(extractCookie(googleLoginResult, AuthCookieManager.ACCESS_TOKEN_COOKIE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userID").value("google-user-01@example.com"))
+                .andExpect(jsonPath("$.birthDate").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.gender").value(org.hamcrest.Matchers.nullValue()));
     }
 
     @Test
@@ -242,7 +273,7 @@ class ApiSecurityIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "userID": "NewUser01",
+                                  "userID": "SignupMismatch01",
                                   "password": "P@ssw0rd1",
                                   "passwordConfirm": "P@ssw0rd2",
                                   "birthDate": "1998-03-14",
@@ -252,6 +283,72 @@ class ApiSecurityIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value(400))
                 .andExpect(jsonPath("$.message").value("비밀번호 확인이 일치하지 않습니다."));
+    }
+
+    @Test
+    void signupIssuesJwtAndProtectedEndpointAcceptsIt() throws Exception {
+        MvcResult signupResult = mockMvc.perform(post("/api/accounts/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "userID": "SignupSuccess01",
+                                  "password": "P@ssw0rd1",
+                                  "passwordConfirm": "P@ssw0rd1",
+                                  "birthDate": "1998-03-14",
+                                  "gender": "F"
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.code").value(201))
+                .andReturn();
+
+        mockMvc.perform(get("/api/mypage/user")
+                        .cookie(extractCookie(signupResult, AuthCookieManager.ACCESS_TOKEN_COOKIE)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userID").value("SignupSuccess01"))
+                .andExpect(jsonPath("$.birthDate").value("1998-03-14"))
+                .andExpect(jsonPath("$.gender").value("F"));
+    }
+
+    @Test
+    void localLoginRejectsGoogleLoginAccount() throws Exception {
+        mockMvc.perform(post("/api/accounts/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "userID": "GoogleUser01",
+                                  "password": "G00gle!1"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value(401))
+                .andExpect(jsonPath("$.message").value("일반 로그인 계정이 아닙니다."));
+    }
+
+    @Test
+    void googleLoginRejectsLocalAccountEmail() throws Exception {
+        given(googleIdTokenVerifier.verify("local-account-google-token"))
+                .willReturn(new GoogleIdTokenVerifier.GoogleIdentity(
+                        "google-sub-local-conflict",
+                        "TestUser01"));
+
+        mockMvc.perform(post("/api/accounts/google-login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "idToken": "local-account-google-token"
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value(409))
+                .andExpect(jsonPath("$.message").value("이미 일반 로그인으로 가입된 계정입니다."));
+    }
+
+    @Test
+    void openApiIncludesGoogleLoginEndpoint() throws Exception {
+        mockMvc.perform(get("/api/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paths['/api/accounts/google-login/']").exists());
     }
 
     @Test

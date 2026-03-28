@@ -11,6 +11,7 @@ from PIL import Image
 from app.catalog import AssetBundle
 from app.models import FeatureMessageModel
 from app.server_render import compose_bundle_frame
+from cv2_cuda_utils import opencv_cvt_color
 
 
 @dataclass(frozen=True)
@@ -40,16 +41,16 @@ def render_bundle_fallback_frame(
         return BundleFallbackRenderResult(rendered_bgr=None, bundle=None, latency_ms=0.0)
 
     try:
-        frame_image = Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+        frame_image = Image.fromarray(opencv_cvt_color(frame_bgr, cv2.COLOR_BGR2RGB))
         original_frame_image = None
         if isinstance(original_frame_bgr, np.ndarray) and original_frame_bgr.shape == frame_bgr.shape:
-            original_frame_image = Image.fromarray(cv2.cvtColor(original_frame_bgr, cv2.COLOR_BGR2RGB))
+            original_frame_image = Image.fromarray(opencv_cvt_color(original_frame_bgr, cv2.COLOR_BGR2RGB))
         rendered_image = compose_bundle_frame(
             frame_image,
             bundle,
             original_frame_image=original_frame_image,
         )
-        rendered_bgr = cv2.cvtColor(np.asarray(rendered_image), cv2.COLOR_RGB2BGR)
+        rendered_bgr = opencv_cvt_color(np.asarray(rendered_image), cv2.COLOR_RGB2BGR)
     except Exception:
         return BundleFallbackRenderResult(rendered_bgr=None, bundle=None, latency_ms=0.0)
 

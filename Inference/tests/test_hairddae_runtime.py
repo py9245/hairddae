@@ -4,6 +4,7 @@ import json
 import threading
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 
@@ -12,6 +13,7 @@ pytest.importorskip("mediapipe")
 pytest.importorskip("torch")
 pytest.importorskip("torchvision")
 
+import app.overlay_postprocess_pipeline as overlay_postprocess_pipeline
 from app.hairddae_runtime import HairOverlayRuntime, RuntimeBundleRenderEntry
 from hairddae_tools.run_hair_overlay_poc import asset_rank_score, pose_distance
 
@@ -47,6 +49,11 @@ def build_runtime_stub() -> HairOverlayRuntime:
     runtime.render_cost_blend_disable_ratio = 0.118
     runtime.render_cost_renderer_downgrade_ratio = 0.108
     runtime.render_cost_preference_score_gap = 2.4
+    runtime.switch_cooldown_frames = 3
+    runtime.switch_hold_margin_bias = 0.8
+    runtime.switch_significant_improvement_bias = 0.8
+    runtime.angle_priority_enabled = False
+    runtime.pose_smoothing_enabled = True
     runtime.bundle_render_enabled = True
     runtime.bundle_render_latency_only = True
     runtime.bundle_render_render_cost_ratio = 0.098
@@ -65,6 +72,181 @@ def build_runtime_stub() -> HairOverlayRuntime:
     runtime.pitch_range = {"min": 0, "max": 0, "high_pitch_pose_count": 0}
     runtime._bundle_render_entry_cache = {}
     return runtime
+
+
+def test_smooth_user_row_can_disable_pose_smoothing() -> None:
+    runtime = build_runtime_stub()
+    runtime.pose_smoothing_enabled = False
+    runtime._current_session = runtime._get_or_create_session("no-smooth")
+    try:
+        first_row = {
+            "pose": {
+                "yaw_float": 0.0,
+                "pitch_float": 0.0,
+                "roll_float": 0.0,
+                "yaw_1deg": 0,
+                "pitch_1deg": 0,
+                "roll_1deg": 0,
+            },
+            "face_bbox": {"x": 10, "y": 12, "w": 100, "h": 120},
+            "anchors": {"left_eye": {"x": 35.0, "y": 48.0}},
+            "face_ratio": 0.41,
+        }
+        second_row = {
+            "pose": {
+                "yaw_float": 6.0,
+                "pitch_float": 2.0,
+                "roll_float": 1.0,
+                "yaw_1deg": 6,
+                "pitch_1deg": 2,
+                "roll_1deg": 1,
+            },
+            "face_bbox": {"x": 24, "y": 20, "w": 110, "h": 126},
+            "anchors": {"left_eye": {"x": 41.0, "y": 52.0}},
+            "face_ratio": 0.46,
+        }
+
+        seeded_row = runtime._smooth_user_row(first_row)
+        passthrough_row = runtime._smooth_user_row(second_row)
+    finally:
+        runtime._current_session = None
+
+    assert seeded_row["pose"] == first_row["pose"]
+    assert seeded_row["_motion"]["pose_delta"] == 0.0
+    assert passthrough_row["pose"] == second_row["pose"]
+    assert passthrough_row["face_bbox"] == second_row["face_bbox"]
+    assert passthrough_row["anchors"] == second_row["anchors"]
+    assert passthrough_row["face_ratio"] == second_row["face_ratio"]
+    assert passthrough_row["_motion"]["pose_delta"] == 6.0
+    assert passthrough_row["_motion"]["fast"] is True
+
+
+def test_select_asset_holds_during_switch_cooldown(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime = build_runtime_stub()
+    current_asset = {"asset_id": "asset-current", "pose_key": "pose-current", "yaw_1deg": 0, "pitch_1deg": 0, "roll_1deg": 0}
+    best_asset = {"asset_id": "asset-best", "pose_key": "pose-best", "yaw_1deg": 4, "pitch_1deg": 0, "roll_1deg": 0}
+    session = runtime._get_or_create_session("cooldown")
+    runtime._current_session = session
+    runtime._selected_asset = current_asset
+    runtime._blend_assets = [(current_asset, 1.0)]
+    runtime._frames_since_switch = 1
+
+    user_row = {
+        "pose": {"yaw_1deg": 4, "pitch_1deg": 0, "roll_1deg": 0},
+        "_motion": {"fast": False, "moderate": False},
+    }
+
+    monkeypatch.setattr(runtime, "_candidate_assets_for_user_row", lambda user_row: ([current_asset, best_asset], {"source": "test", "candidate_pool_size": 2}))
+    monkeypatch.setattr("app.hairddae_runtime.select_best_assets", lambda user_row, candidate_assets, limit=10, candidate_limit=96: [(best_asset, 1.0), (current_asset, 4.0)])
+    monkeypatch.setattr("app.hairddae_runtime.asset_rank_score", lambda user_row, asset_row: 4.0 if asset_row["asset_id"] == "asset-current" else 1.0)
+    monkeypatch.setattr(runtime, "_prefer_side_band_candidate", lambda *args, **kwargs: (args[3], args[4], False))
+    monkeypatch.setattr(runtime, "_prefer_pitch_band_candidate", lambda *args, **kwargs: (args[3], args[4], False))
+    monkeypatch.setattr(runtime, "_prefer_frontal_safe_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_prefer_render_cost_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_prefer_render_safe_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_build_blend_assets", lambda user_row, ranked_assets, primary_asset, selection_mode: [(primary_asset, 1.0)])
+    monkeypatch.setattr(runtime, "_build_selection_trace", lambda **kwargs: {"decision": kwargs["selection_mode"]})
+
+    try:
+        selected_asset, _, selection_mode, blend_assets = runtime._select_asset(user_row)
+    finally:
+        runtime._current_session = None
+
+    assert selected_asset["asset_id"] == "asset-current"
+    assert selection_mode == "hold"
+    assert blend_assets == [(current_asset, 1.0)]
+
+
+def test_select_asset_angle_priority_prepares_geom_before_scoring(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime = build_runtime_stub()
+    runtime.angle_priority_enabled = True
+    current_asset = {"asset_id": "asset-current", "pose_key": "pose-current", "yaw_1deg": 0, "pitch_1deg": 0, "roll_1deg": 0}
+    best_asset = {"asset_id": "asset-best", "pose_key": "pose-best", "yaw_1deg": 14, "pitch_1deg": 2, "roll_1deg": 0}
+
+    user_row = {
+        "pose": {"yaw_1deg": 14, "pitch_1deg": 2, "roll_1deg": 0},
+        "_motion": {"fast": False, "moderate": False},
+    }
+
+    monkeypatch.setattr(
+        runtime,
+        "_angle_priority_candidate_assets_for_user_row",
+        lambda row, *, limit, max_radius=12: ([current_asset, best_asset], {"source": "test", "candidate_pool_size": 2, "pose_radius": 0}),
+    )
+    monkeypatch.setattr("app.hairddae_runtime.derive_geom_from_feature", lambda row: {"temple_span_norm": 0.2, "lower_span_norm": 0.2, "crown_offset_norm": 0.2, "face_ratio": 0.4})
+    monkeypatch.setattr("app.hairddae_runtime.asset_rank_score", lambda row, asset: 0.1 if row["_geom"]["face_ratio"] == 0.4 and asset["asset_id"] == "asset-best" else 1.0)
+    monkeypatch.setattr(runtime, "_asset_crop_risk", lambda asset_row: 0.0)
+    monkeypatch.setattr(runtime, "_prefer_side_band_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_prefer_pitch_band_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_prefer_frontal_safe_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_prefer_render_cost_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_prefer_render_safe_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_build_blend_assets", lambda row, ranked_assets, primary_asset, selection_mode: [(primary_asset, 1.0)])
+    monkeypatch.setattr(runtime, "_build_selection_trace", lambda **kwargs: {"decision": kwargs["selection_mode"]})
+
+    runtime._current_session = runtime._get_or_create_session("angle-priority-geom")
+    try:
+        selected_asset, _, selection_mode, blend_assets = runtime._select_asset(user_row)
+    finally:
+        runtime._current_session = None
+
+    assert user_row["_geom"]["face_ratio"] == 0.4
+    assert user_row["_best_score"] == 0.1
+    assert selected_asset["asset_id"] == "asset-best"
+    assert selection_mode == "initial"
+    assert blend_assets == [(best_asset, 1.0)]
+
+
+def test_select_asset_angle_priority_fallback_shortlist_keeps_late_pose_match(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime = build_runtime_stub()
+    runtime.angle_priority_enabled = True
+    wrong_assets = [
+        {
+            "asset_id": f"wrong-{index}",
+            "pose_key": f"wrong-{index}",
+            "yaw_1deg": -29,
+            "pitch_1deg": -15,
+            "roll_1deg": 10,
+        }
+        for index in range(96)
+    ]
+    good_asset = {
+        "asset_id": "good",
+        "pose_key": "good",
+        "yaw_1deg": -30,
+        "pitch_1deg": 6,
+        "roll_1deg": -8,
+    }
+    candidate_assets = wrong_assets + [good_asset]
+    user_row = {
+        "pose": {"yaw_1deg": -29, "pitch_1deg": 5, "roll_1deg": -7},
+        "_motion": {"fast": False, "moderate": False},
+    }
+
+    runtime.assets = candidate_assets
+    runtime.runtime_asset_count = len(candidate_assets)
+    runtime._asset_pose_index = runtime._build_asset_pose_index(candidate_assets)
+    monkeypatch.setattr(runtime, "_asset_bundle_integrity_error", lambda asset_row: None)
+    monkeypatch.setattr("app.hairddae_runtime.derive_geom_from_feature", lambda row: {"temple_span_norm": 0.2, "lower_span_norm": 0.2, "crown_offset_norm": 0.2, "face_ratio": 0.4})
+    monkeypatch.setattr("app.hairddae_runtime.asset_rank_score", lambda row, asset: 0.0)
+    monkeypatch.setattr(runtime, "_asset_crop_risk", lambda asset_row: 0.0)
+    monkeypatch.setattr(runtime, "_prefer_side_band_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_prefer_pitch_band_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_prefer_frontal_safe_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_prefer_render_cost_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_prefer_render_safe_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_build_blend_assets", lambda row, ranked_assets, primary_asset, selection_mode: [(primary_asset, 1.0)])
+    monkeypatch.setattr(runtime, "_build_selection_trace", lambda **kwargs: {"decision": kwargs["selection_mode"]})
+
+    runtime._current_session = runtime._get_or_create_session("angle-priority-shortlist")
+    try:
+        selected_asset, _, selection_mode, blend_assets = runtime._select_asset(user_row)
+    finally:
+        runtime._current_session = None
+
+    assert selected_asset["asset_id"] == "good"
+    assert selection_mode == "initial"
+    assert blend_assets == [(good_asset, 1.0)]
 
 
 def test_roll_gap_is_weighted_more_strongly_in_pose_ranking() -> None:
@@ -217,6 +399,58 @@ def test_process_frame_returns_passthrough_when_all_candidates_fail(monkeypatch:
     assert result["selection_mode"] == "overlay_error"
     assert result["render_error"] == "missing broken-a asset image"
     assert np.array_equal(result["output_frame_bgr"], frame_bgr)
+
+
+def test_process_frame_can_skip_jpeg_encoding(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime = build_runtime_stub()
+
+    monkeypatch.setattr(runtime, "_set_active_renderer", lambda renderer_name: "mesh_v3")
+    monkeypatch.setattr(runtime, "_is_face_tracking_outlier", lambda raw_user_row: False)
+    monkeypatch.setattr(runtime, "_smooth_user_row", lambda user_row: dict(user_row))
+    monkeypatch.setattr(
+        runtime,
+        "_parse_user_masks",
+        lambda frame_bgr, user_row, renderer_name, prefer_latency=False: (None, "disabled", 0.0),
+    )
+    monkeypatch.setattr(runtime, "_attach_runtime_fit_context", lambda user_row, user_mask_bundle: user_row)
+    monkeypatch.setattr(
+        runtime,
+        "_select_and_compose_output_frame",
+        lambda **kwargs: {
+            "output_frame": np.full((8, 8, 3), 77, dtype=np.uint8),
+            "selected_asset_id": "asset-a",
+            "selected_pose_key": "pose-a",
+            "score": 1.0,
+            "selection_mode": "stable",
+            "blend_assets": [({"asset_id": "asset-a"}, 1.0)],
+            "transition_progress": 0.0,
+            "transition_from_asset_id": None,
+            "selection_trace": {"decision": "stable"},
+            "render_error": None,
+            "status": "ok",
+            "effective_renderer_name": "mesh_v3",
+            "coverage_mask": None,
+        },
+    )
+    monkeypatch.setattr(
+        "app.hairddae_runtime.cv2.imencode",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("imencode should be skipped")),
+    )
+
+    result = runtime.process_frame(
+        np.zeros((8, 8, 3), dtype=np.uint8),
+        tracked_user_row={
+            "ok": True,
+            "pose": {"yaw_1deg": 0, "pitch_1deg": 0, "roll_1deg": 0},
+            "face_bbox": {"x": 0.1, "y": 0.1, "w": 0.4, "h": 0.4},
+        },
+        session_id="runtime-no-jpeg",
+        encode_output=False,
+    )
+
+    assert result["status"] == "ok"
+    assert result["image_bytes"] is None
+    assert np.array_equal(result["output_frame_bgr"], np.full((8, 8, 3), 77, dtype=np.uint8))
 
 
 def test_parse_user_masks_skips_parser_in_forced_latency_mode() -> None:
@@ -677,6 +911,49 @@ def test_compose_output_frame_drops_transition_when_lightweight(
     assert coverage_mask is None
 
 
+def test_compose_output_frame_returns_overlay_coverage_mask(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = build_runtime_stub()
+    runtime._current_session = runtime._get_or_create_session("overlay-coverage")
+    runtime._last_selection_trace = {"compose_detail_ms": {}}
+    frame = np.zeros((8, 8, 3), dtype=np.uint8)
+    asset = {"asset_id": "asset-a"}
+    expected_coverage = np.zeros((8, 8), dtype=np.uint8)
+    expected_coverage[2:6, 2:6] = 255
+
+    monkeypatch.setattr(runtime, "_resolve_compose_mode", lambda *args, **kwargs: "overlay")
+    monkeypatch.setattr(runtime, "_resolve_compose_renderer", lambda *args, **kwargs: "legacy")
+
+    def fake_compose_overlay_blend_frame(*args, **kwargs):
+        debug_payload = kwargs.get("debug_payload")
+        if isinstance(debug_payload, dict):
+            debug_payload["_coverage_mask"] = expected_coverage
+            debug_payload["blend_path"] = "single_asset_fast"
+        return np.full_like(frame, 24)
+
+    monkeypatch.setattr(
+        "app.hairddae_runtime.compose_overlay_blend_frame",
+        fake_compose_overlay_blend_frame,
+    )
+
+    output_frame, transition_progress, transition_from_asset_id, effective_renderer_name, coverage_mask = runtime._compose_output_frame(
+        {"pose": {"yaw_1deg": 0, "pitch_1deg": 0, "roll_1deg": 0}},
+        frame,
+        [(asset, 1.0)],
+        "legacy",
+        None,
+        prefer_latency=True,
+    )
+
+    assert np.array_equal(output_frame, np.full((8, 8, 3), 24, dtype=np.uint8))
+    assert transition_progress == 1.0
+    assert transition_from_asset_id is None
+    assert effective_renderer_name == "legacy"
+    assert np.array_equal(coverage_mask, expected_coverage)
+    assert "_coverage_mask" not in runtime._last_selection_trace["compose_detail_ms"]["overlay_blend_detail_ms"]
+
+
 def test_compose_single_bundle_render_frame_passes_tone_gain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -810,12 +1087,12 @@ def test_process_frame_returns_overlay_and_compose_details(monkeypatch: pytest.M
     assert result["selection_trace"]["overlay_detail_ms"]["overlay_total_ms"] == result["overlay_detail_ms"]["overlay_total_ms"]
 
 
-def test_apply_overlay_postprocess_ignores_non_upper_residual_hair() -> None:
+def test_apply_overlay_postprocess_ignores_when_coverage_consumes_all_residual() -> None:
     runtime = build_runtime_stub()
     output = np.full((6, 6, 3), 40, dtype=np.uint8)
     base = np.full((6, 6, 3), 30, dtype=np.uint8)
     coverage = np.zeros((6, 6), dtype=np.uint8)
-    coverage[2:4, 2:4] = 255
+    coverage[1:5, 1:5] = 255
     hair_mask = np.zeros((6, 6), dtype=np.uint8)
     hair_mask[1:5, 1:5] = 255
 
@@ -824,6 +1101,7 @@ def test_apply_overlay_postprocess_ignores_non_upper_residual_hair() -> None:
         base,
         {
             "_hair_binary_mask": hair_mask,
+            "_hair_fringe_mask": np.zeros((6, 6), dtype=np.uint8),
             "_hair_background_color": np.array([200.0, 180.0, 160.0], dtype=np.float32),
         },
         renderer_name="bundle_render",
@@ -833,56 +1111,89 @@ def test_apply_overlay_postprocess_ignores_non_upper_residual_hair() -> None:
     assert np.array_equal(postprocessed, output)
 
 
-def test_apply_overlay_postprocess_backgroundizes_upper_residual_more_aggressively() -> None:
+def test_apply_overlay_postprocess_skips_when_coverage_mask_missing() -> None:
     runtime = build_runtime_stub()
     output = np.full((8, 8, 3), 50, dtype=np.uint8)
     base = np.full((8, 8, 3), 30, dtype=np.uint8)
-    coverage = np.zeros((8, 8), dtype=np.uint8)
-    coverage[3:7, 2:6] = 255
+    base[:, :4] = np.array([220, 210, 200], dtype=np.uint8)
     hair_mask = np.zeros((8, 8), dtype=np.uint8)
     hair_mask[1:7, 1:7] = 255
-    upper_mask = np.zeros((8, 8), dtype=np.uint8)
-    upper_mask[1:4, 1:7] = 255
+    fringe_mask = np.zeros((8, 8), dtype=np.uint8)
+    fringe_mask[1:4, 2:6] = 255
 
     postprocessed = runtime._apply_overlay_postprocess(
         output,
         base,
         {
             "_hair_binary_mask": hair_mask,
-            "_hair_upper_region_mask": upper_mask,
+            "_hair_fringe_mask": fringe_mask,
             "_hair_background_color": np.array([220.0, 210.0, 200.0], dtype=np.float32),
         },
-        renderer_name="bundle_render",
-        coverage_mask=coverage,
+        renderer_name="legacy",
+        coverage_mask=None,
     )
 
     assert np.array_equal(postprocessed, output)
 
 
-def test_apply_overlay_postprocess_limits_backgroundization_to_upper_arch() -> None:
+def test_apply_overlay_postprocess_backgroundizes_segmentation_minus_fringe_using_local_background() -> None:
     runtime = build_runtime_stub()
     output = np.full((8, 8, 3), 50, dtype=np.uint8)
     base = np.full((8, 8, 3), 30, dtype=np.uint8)
+    base[:, :4] = np.array([220, 210, 200], dtype=np.uint8)
+    base[:, 4:] = np.array([120, 150, 220], dtype=np.uint8)
     coverage = np.zeros((8, 8), dtype=np.uint8)
-    coverage[3:7, 2:6] = 255
+    coverage[1:4, 2:6] = 255
     hair_mask = np.zeros((8, 8), dtype=np.uint8)
     hair_mask[1:7, 1:7] = 255
-    upper_mask = np.zeros((8, 8), dtype=np.uint8)
-    upper_mask[1:3, 1:7] = 255
+    fringe_mask = np.zeros((8, 8), dtype=np.uint8)
+    fringe_mask[1:4, 2:6] = 255
 
     postprocessed = runtime._apply_overlay_postprocess(
         output,
         base,
         {
             "_hair_binary_mask": hair_mask,
-            "_hair_upper_region_mask": upper_mask,
+            "_hair_fringe_mask": fringe_mask,
             "_hair_background_color": np.array([220.0, 210.0, 200.0], dtype=np.float32),
         },
         renderer_name="bundle_render",
         coverage_mask=coverage,
     )
 
-    assert np.array_equal(postprocessed, output)
+    left_region = postprocessed[4:7, 1:3].astype(np.float32).mean(axis=(0, 1))
+    right_region = postprocessed[4:7, 5:7].astype(np.float32).mean(axis=(0, 1))
+    left_bg = base[4:7, 1:3].astype(np.float32).mean(axis=(0, 1))
+    right_bg = base[4:7, 5:7].astype(np.float32).mean(axis=(0, 1))
+
+    assert float(np.abs(left_region - left_bg).mean()) < float(np.abs(left_region - right_bg).mean())
+    assert float(np.abs(right_region - right_bg).mean()) < float(np.abs(right_region - left_bg).mean())
+
+
+def test_apply_overlay_postprocess_preserves_fringe_region() -> None:
+    runtime = build_runtime_stub()
+    output = np.full((8, 8, 3), 50, dtype=np.uint8)
+    base = np.full((8, 8, 3), 30, dtype=np.uint8)
+    coverage = np.zeros((8, 8), dtype=np.uint8)
+    coverage[1:4, 2:6] = 255
+    hair_mask = np.zeros((8, 8), dtype=np.uint8)
+    hair_mask[1:7, 1:7] = 255
+    fringe_mask = np.zeros((8, 8), dtype=np.uint8)
+    fringe_mask[1:4, 2:6] = 255
+
+    postprocessed = runtime._apply_overlay_postprocess(
+        output,
+        base,
+        {
+            "_hair_binary_mask": hair_mask,
+            "_hair_fringe_mask": fringe_mask,
+            "_hair_background_color": np.array([220.0, 210.0, 200.0], dtype=np.float32),
+        },
+        renderer_name="bundle_render",
+        coverage_mask=coverage,
+    )
+
+    assert np.array_equal(postprocessed[1:4, 2:6], output[1:4, 2:6])
 
 
 def test_apply_overlay_postprocess_preserves_face_protect_region() -> None:
@@ -890,20 +1201,20 @@ def test_apply_overlay_postprocess_preserves_face_protect_region() -> None:
     output = np.full((8, 8, 3), 50, dtype=np.uint8)
     base = np.full((8, 8, 3), 30, dtype=np.uint8)
     coverage = np.zeros((8, 8), dtype=np.uint8)
-    coverage[3:7, 2:6] = 255
+    coverage[1:4, 2:6] = 255
     hair_mask = np.zeros((8, 8), dtype=np.uint8)
     hair_mask[1:7, 1:7] = 255
-    upper_mask = np.zeros((8, 8), dtype=np.uint8)
-    upper_mask[1:4, 1:7] = 255
+    fringe_mask = np.zeros((8, 8), dtype=np.uint8)
+    fringe_mask[1:4, 2:6] = 255
     face_protect = np.zeros((8, 8), dtype=np.uint8)
-    face_protect[2:5, 2:6] = 255
+    face_protect[4:7, 1:3] = 255
 
     postprocessed = runtime._apply_overlay_postprocess(
         output,
         base,
         {
             "_hair_binary_mask": hair_mask,
-            "_hair_upper_region_mask": upper_mask,
+            "_hair_fringe_mask": fringe_mask,
             "_hair_face_protect_mask": face_protect,
             "_hair_background_color": np.array([220.0, 210.0, 200.0], dtype=np.float32),
         },
@@ -911,4 +1222,124 @@ def test_apply_overlay_postprocess_preserves_face_protect_region() -> None:
         coverage_mask=coverage,
     )
 
-    assert np.array_equal(postprocessed, output)
+    assert np.array_equal(postprocessed[4:7, 1:3], output[4:7, 1:3])
+    assert not np.array_equal(postprocessed[4:7, 5:7], output[4:7, 5:7])
+
+def test_apply_overlay_postprocess_adds_outer_n_ring_from_residual_seed_without_touching_face_interior() -> None:
+    runtime = build_runtime_stub()
+    output = np.full((24, 24, 3), 50, dtype=np.uint8)
+    base = np.full((24, 24, 3), 30, dtype=np.uint8)
+    base[:, :12] = np.array([220, 210, 200], dtype=np.uint8)
+    base[:, 12:] = np.array([150, 170, 220], dtype=np.uint8)
+    hair_mask = np.zeros((24, 24), dtype=np.uint8)
+    hair_mask[3:6, 5:19] = 255
+    hair_mask[6:18, 5:8] = 255
+    hair_mask[6:18, 16:19] = 255
+    coverage = np.array(hair_mask, copy=True)
+    coverage[3:8, 5:19] = 0
+
+    postprocessed = runtime._apply_overlay_postprocess(
+        output,
+        base,
+        {
+            "_hair_binary_mask": hair_mask,
+            "_hair_background_color": np.array([220.0, 210.0, 200.0], dtype=np.float32),
+            "face_bbox": {"x": 7, "y": 6, "w": 10, "h": 10},
+            "anchors": {
+                "left_temple": {"x": 8.0, "y": 7.0},
+                "right_temple": {"x": 15.0, "y": 7.0},
+                "left_ear_root": {"x": 7.0, "y": 14.0},
+                "right_ear_root": {"x": 16.0, "y": 14.0},
+                "forehead_center": {"x": 11.5, "y": 6.0},
+                "crown": {"x": 11.5, "y": 4.0},
+                "lower_left": {"x": 8.0, "y": 15.0},
+                "lower_right": {"x": 15.0, "y": 15.0},
+            },
+        },
+        renderer_name="bundle_render",
+        coverage_mask=coverage,
+    )
+
+    assert not np.array_equal(postprocessed[0:3, 9:15], output[0:3, 9:15])
+    assert not np.array_equal(postprocessed[4:8, 0:5], output[4:8, 0:5])
+    assert not np.array_equal(postprocessed[4:8, 19:24], output[4:8, 19:24])
+    assert np.array_equal(postprocessed[9:20, 0:5], output[9:20, 0:5])
+    assert np.array_equal(postprocessed[9:20, 19:24], output[9:20, 19:24])
+    assert np.array_equal(postprocessed[10:20, 0:5], output[10:20, 0:5])
+    assert np.array_equal(postprocessed[10:20, 19:24], output[10:20, 19:24])
+    assert np.array_equal(postprocessed[7:12, 10:14], output[7:12, 10:14])
+    assert np.array_equal(postprocessed[9:15, 8:10], output[9:15, 8:10])
+
+
+def test_apply_overlay_postprocess_merges_residual_and_outer_ring_into_single_cleanup_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = build_runtime_stub()
+    output = np.full((24, 24, 3), 50, dtype=np.uint8)
+    base = np.full((24, 24, 3), 30, dtype=np.uint8)
+    hair_mask = np.zeros((24, 24), dtype=np.uint8)
+    hair_mask[3:18, 5:19] = 255
+    coverage = np.zeros((24, 24), dtype=np.uint8)
+    coverage[5:15, 7:17] = 255
+    user_row = {
+        "_hair_binary_mask": hair_mask,
+        "_hair_background_color": np.array([220.0, 210.0, 200.0], dtype=np.float32),
+        "face_bbox": {"x": 7, "y": 6, "w": 10, "h": 10},
+        "anchors": {
+            "left_temple": {"x": 8.0, "y": 7.0},
+            "right_temple": {"x": 15.0, "y": 7.0},
+            "left_ear_root": {"x": 7.0, "y": 14.0},
+            "right_ear_root": {"x": 16.0, "y": 14.0},
+            "forehead_center": {"x": 11.5, "y": 6.0},
+            "crown": {"x": 11.5, "y": 4.0},
+            "lower_left": {"x": 8.0, "y": 15.0},
+            "lower_right": {"x": 15.0, "y": 15.0},
+        },
+    }
+    captured_masks: list[np.ndarray] = []
+    original_backgroundize_mask = overlay_postprocess_pipeline._backgroundize_mask
+
+    def capture_backgroundize_mask(
+        output_frame_bgr: np.ndarray,
+        base_frame_bgr: np.ndarray,
+        hair_binary_mask: np.ndarray,
+        cleanup_mask: np.ndarray,
+        *,
+        background_color: np.ndarray,
+        alpha_scale: float = 1.0,
+    ) -> np.ndarray:
+        _ = (base_frame_bgr, hair_binary_mask, background_color, alpha_scale)
+        captured_masks.append(np.array(cleanup_mask, copy=True))
+        return output_frame_bgr
+
+    monkeypatch.setattr(
+        overlay_postprocess_pipeline,
+        "_backgroundize_mask",
+        capture_backgroundize_mask,
+    )
+
+    try:
+        runtime._apply_overlay_postprocess(
+            output,
+            base,
+            user_row,
+            renderer_name="bundle_render",
+            coverage_mask=coverage,
+        )
+    finally:
+        monkeypatch.setattr(
+            overlay_postprocess_pipeline,
+            "_backgroundize_mask",
+            original_backgroundize_mask,
+        )
+
+    expected_residual_mask = cv2.bitwise_and(hair_mask, cv2.bitwise_not(coverage))
+    expected_outer_ring_mask = overlay_postprocess_pipeline._build_outer_background_ring_mask(
+        expected_residual_mask,
+        hair_mask,
+        user_row,
+    )
+    expected_cleanup_mask = cv2.bitwise_or(expected_residual_mask, expected_outer_ring_mask)
+
+    assert len(captured_masks) == 1
+    assert np.array_equal(captured_masks[0], expected_cleanup_mask)

@@ -10,6 +10,7 @@ import torch
 from PIL import Image
 import torchvision.transforms as transforms
 
+from cv2_cuda_utils import opencv_bitwise_and, opencv_bitwise_not, opencv_cvt_color, opencv_dilate, opencv_gaussian_blur, opencv_resize
 from extract_asset_parsing_masks import (
     binary_mask,
     build_soft_alpha,
@@ -56,7 +57,7 @@ def _build_blur_mask(
     softened_protect = dilate(protect, protect_radius)
     blur_region = cv2.bitwise_and(expanded_hair, cv2.bitwise_not(softened_protect))
     sigma = max(5.0, face_width * 0.05)
-    softened = cv2.GaussianBlur(blur_region, (0, 0), sigmaX=sigma, sigmaY=sigma)
+    softened = opencv_gaussian_blur(blur_region, (0, 0), sigma_x=sigma, sigma_y=sigma, min_pixels=24_000)
     return np.clip(softened, 0, 255).astype(np.uint8)
 
 
@@ -117,7 +118,7 @@ class RuntimeFaceParsing:
         if roi_bgr.size == 0:
             return None
 
-        roi_rgb = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2RGB)
+        roi_rgb = opencv_cvt_color(roi_bgr, cv2.COLOR_BGR2RGB, min_pixels=8_192)
         pil_image = Image.fromarray(roi_rgb).resize((512, 512), Image.BILINEAR)
         tensor = self.to_tensor(pil_image).unsqueeze(0).to(self.device)
 
@@ -126,8 +127,8 @@ class RuntimeFaceParsing:
             parsing_512 = out.argmax(1)[0].cpu().numpy().astype(np.uint8)
             hair_confidence_512 = torch.softmax(out, dim=1)[:, 17:19].sum(dim=1)[0].cpu().numpy().astype(np.float32)
 
-        parsing_roi = cv2.resize(parsing_512, (roi_w, roi_h), interpolation=cv2.INTER_NEAREST)
-        hair_confidence_roi = cv2.resize(hair_confidence_512, (roi_w, roi_h), interpolation=cv2.INTER_LINEAR)
+        parsing_roi = opencv_resize(parsing_512, (roi_w, roi_h), interpolation=cv2.INTER_NEAREST, min_pixels=8_192)
+        hair_confidence_roi = opencv_resize(hair_confidence_512, (roi_w, roi_h), interpolation=cv2.INTER_LINEAR, min_pixels=8_192)
 
         parsing = np.zeros((height, width), dtype=np.uint8)
         hair_confidence = np.zeros((height, width), dtype=np.float32)
@@ -166,7 +167,7 @@ class RuntimeFaceParsing:
             face_bbox=face_bbox,
         )
         suppress_prior_mask = np.maximum(
-            cv2.bitwise_and(dilate(hair_mask, 11), cv2.bitwise_not(protect_face_mask)),
+            opencv_bitwise_and(dilate(hair_mask, 11), opencv_bitwise_not(protect_face_mask)),
             overlap_suppression,
         )
         alpha_mask = build_soft_alpha_with_suppression(hair_mask, hair_confidence, suppress_prior_mask)

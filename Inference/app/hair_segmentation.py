@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from threading import Lock
+import time
 
 import mediapipe as mp
 import numpy as np
@@ -73,6 +74,19 @@ class HairSegmenter:
             self._segmenter = None
         if segmenter is not None:
             segmenter.close()
+
+    def warm_up(self) -> float:
+        blank_rgb = np.zeros((256, 256, 3), dtype=np.uint8)
+        started_at = time.perf_counter()
+        with self._lock:
+            segmenter = self._instance()
+            self._last_timestamp_ms = max(1, self._last_timestamp_ms + 1)
+            mp_image = mp.Image(
+                image_format=mp.ImageFormat.SRGB,
+                data=np.ascontiguousarray(blank_rgb),
+            )
+            segmenter.segment_for_video(mp_image, self._last_timestamp_ms)
+        return round((time.perf_counter() - started_at) * 1000.0, 3)
 
     def segment_hair_confidence_from_rgb(
         self,

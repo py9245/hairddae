@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from threading import Lock
+import time
 
 import numpy as np
 
 from app.face_tracking import ServerFaceTracker, TrackingResult
 from app.hair_attenuation import HairAttenuator
 from app.hair_segmentation import HairSegmenter as RuntimeHairSegmenter
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class LazyFaceTracker:
@@ -41,6 +45,17 @@ class LazyFaceTracker:
     def extract_feature_from_rgb(self, *args: object, **kwargs: object):
         return self._instance().extract_feature_from_rgb(*args, **kwargs)
 
+    def warm_up(self) -> float:
+        started_at = time.perf_counter()
+        latency_ms = self._instance().warm_up()
+        total_ms = round((time.perf_counter() - started_at) * 1000.0, 3)
+        logger.info(
+            "startup prewarm complete: dependency=face_tracker warm_ms=%.1f total_ms=%.1f",
+            latency_ms,
+            total_ms,
+        )
+        return total_ms
+
 
 class LazyHairAttenuator:
     def __init__(
@@ -52,6 +67,10 @@ class LazyHairAttenuator:
         brightness_lift: float,
         blur_kernel_scale: float,
         max_work_dimension: int,
+        preserve_eyes_enabled: bool,
+        disable_fringe_suppression: bool,
+        disable_covered_suppression: bool,
+        disable_outer_bulk_suppression: bool,
         bald_test_mode: bool,
     ) -> None:
         self._lock = Lock()
@@ -62,6 +81,10 @@ class LazyHairAttenuator:
         self._brightness_lift = float(brightness_lift)
         self._blur_kernel_scale = float(blur_kernel_scale)
         self._max_work_dimension = int(max_work_dimension)
+        self._preserve_eyes_enabled = bool(preserve_eyes_enabled)
+        self._disable_fringe_suppression = bool(disable_fringe_suppression)
+        self._disable_covered_suppression = bool(disable_covered_suppression)
+        self._disable_outer_bulk_suppression = bool(disable_outer_bulk_suppression)
         self._bald_test_mode = bool(bald_test_mode)
 
     def _instance(self) -> HairAttenuator:
@@ -74,6 +97,10 @@ class LazyHairAttenuator:
                     brightness_lift=self._brightness_lift,
                     blur_kernel_scale=self._blur_kernel_scale,
                     max_work_dimension=self._max_work_dimension,
+                    preserve_eyes_enabled=self._preserve_eyes_enabled,
+                    disable_fringe_suppression=self._disable_fringe_suppression,
+                    disable_covered_suppression=self._disable_covered_suppression,
+                    disable_outer_bulk_suppression=self._disable_outer_bulk_suppression,
                     bald_test_mode=self._bald_test_mode,
                 )
             return self._attenuator
@@ -149,3 +176,14 @@ class LazyHairSegmenter:
             frame_rgb,
             timestamp_ms=timestamp_ms,
         )
+
+    def warm_up(self) -> float:
+        started_at = time.perf_counter()
+        latency_ms = self._instance().warm_up()
+        total_ms = round((time.perf_counter() - started_at) * 1000.0, 3)
+        logger.info(
+            "startup prewarm complete: dependency=hair_segmenter warm_ms=%.1f total_ms=%.1f",
+            latency_ms,
+            total_ms,
+        )
+        return total_ms

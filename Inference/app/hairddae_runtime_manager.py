@@ -96,6 +96,7 @@ class HairddaeRuntimeManager:
         prefer_latency: bool = False,
         session_id: str,
         representative_asset_id: str | None = None,
+        encode_output: bool = True,
     ) -> dict[str, Any]:
         runtime = self._runtime_for_dataset(dataset_code)
         renderer_name = (
@@ -112,6 +113,7 @@ class HairddaeRuntimeManager:
             prefer_latency=prefer_latency,
             session_id=session_id,
             representative_asset_id=representative_asset_id,
+            encode_output=encode_output,
         )
 
     def reference_face_bbox(self, dataset_code: str, session_id: str) -> dict[str, Any] | None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
 from collections import Counter
 from functools import lru_cache
 from pathlib import Path
@@ -12,6 +13,16 @@ from typing import Any
 import cv2
 import numpy as np
 
+from cv2_cuda_utils import (
+    opencv_cuda_download,
+    opencv_cuda_upload,
+    opencv_cvt_color,
+    opencv_dilate,
+    opencv_gaussian_blur,
+    opencv_resize,
+    opencv_warp_affine,
+    opencv_warp_affine_uploaded,
+)
 from local_demo_paths import read_json, resolve_asset_path, write_json
 
 DEFAULT_RENDERER = "legacy"
@@ -76,6 +87,140 @@ HAIR_TONE_MATCH_STRENGTH = float(np.clip(_env_float("INFERENCE_RTC_HAIR_TONE_MAT
 HAIR_TONE_MATCH_GAIN_MIN = float(np.clip(_env_float("INFERENCE_RTC_HAIR_TONE_MATCH_GAIN_MIN", 0.84), 0.5, 1.0))
 HAIR_TONE_MATCH_GAIN_MAX = float(np.clip(_env_float("INFERENCE_RTC_HAIR_TONE_MATCH_GAIN_MAX", 1.18), 1.0, 1.6))
 HAIR_TONE_MATCH_DELTA_THRESHOLD = float(np.clip(_env_float("INFERENCE_RTC_HAIR_TONE_MATCH_DELTA_THRESHOLD", 0.035), 0.0, 0.2))
+ASSET_BUNDLE_CACHE_SIZE = max(8, int(os.environ.get("INFERENCE_RUNTIME_ASSET_BUNDLE_CACHE_SIZE", "64")))
+ASSET_EDGE_RISK_CACHE_SIZE = max(32, int(os.environ.get("INFERENCE_RUNTIME_ASSET_EDGE_RISK_CACHE_SIZE", "256")))
+PACKED_BUNDLES_ENABLED = _env_bool("INFERENCE_RUNTIME_PACKED_BUNDLES_ENABLED", True)
+
+BUNDLE_PROFILE_FULL = "full"
+BUNDLE_PROFILE_LEGACY = "legacy"
+BUNDLE_PROFILE_MESH = "mesh"
+BUNDLE_PROFILE_EDGE_RISK = "edge_risk"
+
+_BUNDLE_PROFILE_REQUIRED_KEYS: dict[str, frozenset[str]] = {
+    BUNDLE_PROFILE_FULL: frozenset(
+        {
+            "image_path",
+            "alpha_path",
+            "hair_mask_path",
+            "face_mask_path",
+            "forehead_mask_path",
+            "ear_mask_left_path",
+            "ear_mask_right_path",
+            "neck_shoulder_mask_path",
+            "protect_face_mask_path",
+        }
+    ),
+    BUNDLE_PROFILE_LEGACY: frozenset(
+        {
+            "image_path",
+            "alpha_path",
+            "hair_mask_path",
+            "face_mask_path",
+            "protect_face_mask_path",
+        }
+    ),
+    BUNDLE_PROFILE_MESH: frozenset(
+        {
+            "image_path",
+            "alpha_path",
+            "hair_mask_path",
+            "face_mask_path",
+            "forehead_mask_path",
+            "ear_mask_left_path",
+            "ear_mask_right_path",
+            "neck_shoulder_mask_path",
+            "protect_face_mask_path",
+        }
+    ),
+    BUNDLE_PROFILE_EDGE_RISK: frozenset({"alpha_path", "hair_mask_path"}),
+}
+
+_PACKED_BUNDLE_FIELDS: dict[str, tuple[str, ...]] = {
+    BUNDLE_PROFILE_LEGACY: (
+        "image",
+        "alpha",
+        "hair_mask",
+        "face_mask",
+        "protect_face_mask",
+    ),
+    BUNDLE_PROFILE_EDGE_RISK: (
+        "alpha",
+        "hair_mask",
+    ),
+}
+
+
+def _normalize_bundle_profile(profile: str | None) -> str:
+    normalized = str(profile or "").strip().lower()
+    if normalized == BUNDLE_PROFILE_LEGACY:
+        return BUNDLE_PROFILE_LEGACY
+    if normalized == BUNDLE_PROFILE_MESH:
+        return BUNDLE_PROFILE_MESH
+    if normalized == BUNDLE_PROFILE_EDGE_RISK:
+        return BUNDLE_PROFILE_EDGE_RISK
+    return BUNDLE_PROFILE_FULL
+
+
+def _packed_bundle_asset_id(metadata: dict[str, Any], metadata_path_str: str) -> str:
+    asset_id = str(metadata.get("asset_id") or "").strip()
+    if asset_id:
+        return asset_id
+    return Path(metadata_path_str).stem
+
+
+def packed_bundle_path(asset_root: Path, asset_id: str, profile: str) -> Path:
+    return asset_root / "packed" / profile / f"{asset_id}.npz"
+
+
+def _load_packed_asset_bundle(
+    asset_root: Path,
+    metadata_path_str: str,
+    metadata: dict[str, Any],
+    bundle_profile: str,
+) -> dict[str, Any] | None:
+    if not PACKED_BUNDLES_ENABLED:
+        return None
+    if bundle_profile not in _PACKED_BUNDLE_FIELDS:
+        return None
+    asset_id = _packed_bundle_asset_id(metadata, metadata_path_str)
+    packed_path = packed_bundle_path(asset_root, asset_id, bundle_profile)
+    if not packed_path.is_file():
+        return None
+    with np.load(packed_path, allow_pickle=False) as packed:
+        anchors_json = packed.get("anchors_json")
+        if anchors_json is None:
+            return None
+        anchors = json.loads(str(np.asarray(anchors_json).item()))
+        crop_box = tuple(int(v) for v in np.asarray(packed["crop_box"]).tolist())
+        hair_bbox = tuple(int(v) for v in np.asarray(packed["hair_bbox"]).tolist())
+        hair_luma_array = packed.get("hair_luma")
+        hair_luma = None
+        if hair_luma_array is not None:
+            raw_hair_luma = float(np.asarray(hair_luma_array).reshape(-1)[0])
+            hair_luma = None if not np.isfinite(raw_hair_luma) or raw_hair_luma <= 0.0 else raw_hair_luma
+        payload: dict[str, Any] = {
+            "metadata": metadata,
+            "anchors": anchors,
+            "image": None,
+            "alpha": None,
+            "hair_mask": None,
+            "face_mask": None,
+            "forehead_mask": None,
+            "ear_mask_left": None,
+            "ear_mask_right": None,
+            "neck_shoulder_mask": None,
+            "protect_face_mask": None,
+            "hair_bbox": hair_bbox,
+            "hair_luma": hair_luma,
+            "crop_box": crop_box,
+            "image_size": tuple(int(v) for v in np.asarray(packed["image_size"]).tolist()),
+            "bundle_profile": bundle_profile,
+            "packed_bundle_path": str(packed_path),
+            "packed_crop_only": bool(int(np.asarray(packed["packed_crop_only"]).reshape(-1)[0])),
+        }
+        for field_name in _PACKED_BUNDLE_FIELDS[bundle_profile]:
+            payload[field_name] = np.asarray(packed[field_name])
+        return payload
 
 
 def parse_args() -> argparse.Namespace:
@@ -116,7 +261,7 @@ def _masked_mean_luma(image_bgr: np.ndarray, mask: np.ndarray | None) -> float |
     active_pixels = int(np.count_nonzero(tone_mask))
     if active_pixels < max(32, int(round(mask.size * 0.006))):
         return None
-    luma = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
+    luma = opencv_cvt_color(image_bgr, cv2.COLOR_BGR2GRAY, min_pixels=8_192)
     mean_luma = float(cv2.mean(luma, mask=tone_mask)[0])
     if not np.isfinite(mean_luma) or mean_luma <= 1.0:
         return None
@@ -397,7 +542,7 @@ def protect_face_mask(height: int, width: int, bbox: dict[str, Any]) -> np.ndarr
     center = (int(round(bbox["x"] + bbox["w"] * 0.5)), int(round(bbox["y"] + bbox["h"] * 0.60)))
     axes = (int(round(bbox["w"] * 0.34)), int(round(bbox["h"] * 0.38)))
     cv2.ellipse(mask, center, axes, 0, 0, 360, 255, -1)
-    return cv2.GaussianBlur(mask, (0, 0), sigmaX=5.0, sigmaY=5.0)
+    return opencv_gaussian_blur(mask, (0, 0), sigma_x=5.0, sigma_y=5.0, min_pixels=24_000)
 
 
 def hair_bbox_from_mask(mask: np.ndarray) -> tuple[int, int, int, int]:
@@ -640,7 +785,7 @@ def warp_mesh_layer(
         src_triangle_local = src_triangle - np.array([src_x, src_y], dtype=np.float32)
         dst_triangle_local = dst_triangle - np.array([dst_x, dst_y], dtype=np.float32)
         warp_matrix = cv2.getAffineTransform(src_triangle_local, dst_triangle_local)
-        warped_patch = cv2.warpAffine(
+        warped_patch = opencv_warp_affine(
             source_patch,
             warp_matrix,
             (dst_w, dst_h),
@@ -784,12 +929,12 @@ def _synthesize_full_frame_from_hair_rgba(
     if path_key == "image_path":
         crop = hair_rgba[:, :, :3]
         if crop.shape[:2] != (bbox_h, bbox_w):
-            crop = cv2.resize(crop, (bbox_w, bbox_h), interpolation=cv2.INTER_LINEAR)
+            crop = opencv_resize(crop, (bbox_w, bbox_h), interpolation=cv2.INTER_LINEAR, min_pixels=8_192)
         canvas = np.zeros((canvas_height, canvas_width, 3), dtype=np.uint8)
     else:
         crop = hair_rgba[:, :, 3]
         if crop.shape[:2] != (bbox_h, bbox_w):
-            crop = cv2.resize(crop, (bbox_w, bbox_h), interpolation=cv2.INTER_LINEAR)
+            crop = opencv_resize(crop, (bbox_w, bbox_h), interpolation=cv2.INTER_LINEAR, min_pixels=8_192)
         canvas = np.zeros((canvas_height, canvas_width), dtype=np.uint8)
 
     dst_x0 = max(0, bbox_x)
@@ -807,10 +952,19 @@ def _synthesize_full_frame_from_hair_rgba(
     return canvas
 
 
-@lru_cache(maxsize=512)
-def load_asset_bundle(asset_root_str: str, metadata_path_str: str) -> dict[str, Any]:
+@lru_cache(maxsize=ASSET_BUNDLE_CACHE_SIZE)
+def load_asset_bundle(
+    asset_root_str: str,
+    metadata_path_str: str,
+    profile: str = BUNDLE_PROFILE_FULL,
+) -> dict[str, Any]:
     asset_root = Path(asset_root_str)
+    bundle_profile = _normalize_bundle_profile(profile)
+    required_keys = _BUNDLE_PROFILE_REQUIRED_KEYS[bundle_profile]
     metadata = read_json(resolve_asset_path(asset_root, metadata_path_str))
+    packed_payload = _load_packed_asset_bundle(asset_root, metadata_path_str, metadata, bundle_profile)
+    if packed_payload is not None:
+        return packed_payload
     anchors = read_json(resolve_asset_path(asset_root, metadata["anchors_path"]))["anchors"]
     hair_rgba_path = metadata.get("hair_rgba_path")
     hair_rgba_bbox = metadata.get("hair_rgba_bbox")
@@ -819,6 +973,8 @@ def load_asset_bundle(asset_root_str: str, metadata_path_str: str) -> dict[str, 
 
     def load_required_image(path_key: str, flags: int) -> Any:
         nonlocal cached_hair_rgba
+        if path_key not in required_keys:
+            return None
 
         raw_value = metadata.get(path_key)
         if raw_value not in (None, ""):
@@ -864,8 +1020,15 @@ def load_asset_bundle(asset_root_str: str, metadata_path_str: str) -> dict[str, 
     neck_shoulder_mask = load_required_image("neck_shoulder_mask_path", cv2.IMREAD_GRAYSCALE)
     protect_face_mask = load_required_image("protect_face_mask_path", cv2.IMREAD_GRAYSCALE)
     hair_bbox = hair_bbox_from_mask(hair_mask)
-    crop_box = expanded_hair_crop(hair_bbox, image.shape[1], image.shape[0])
-    hair_luma = _masked_mean_luma(image, hair_mask)
+    image_for_bounds = image
+    if image_for_bounds is None and alpha is not None:
+        image_for_bounds = alpha
+    if image_for_bounds is None and hair_mask is not None:
+        image_for_bounds = hair_mask
+    if image_for_bounds is None:
+        raise FileNotFoundError(f"unable to determine image bounds for {metadata_path_str}")
+    crop_box = expanded_hair_crop(hair_bbox, image_for_bounds.shape[1], image_for_bounds.shape[0])
+    hair_luma = _masked_mean_luma(image, hair_mask) if image is not None and hair_mask is not None else None
     return {
         "metadata": metadata,
         "anchors": anchors,
@@ -881,6 +1044,7 @@ def load_asset_bundle(asset_root_str: str, metadata_path_str: str) -> dict[str, 
         "hair_bbox": hair_bbox,
         "hair_luma": hair_luma,
         "crop_box": crop_box,
+        "bundle_profile": bundle_profile,
     }
 
 
@@ -911,14 +1075,20 @@ def _ensure_asset_bundle_mesh_geometry(
     return source_points, mesh_triangles
 
 
-@lru_cache(maxsize=2048)
+@lru_cache(maxsize=ASSET_EDGE_RISK_CACHE_SIZE)
 def asset_crop_edge_risk(asset_root_str: str, metadata_path_str: str) -> float:
-    asset_bundle = load_asset_bundle(asset_root_str, metadata_path_str)
+    asset_bundle = load_asset_bundle(asset_root_str, metadata_path_str, BUNDLE_PROFILE_EDGE_RISK)
     hair_mask = asset_bundle["hair_mask"]
     alpha = asset_bundle["alpha"]
     x0, y0, x1, y1 = asset_bundle["crop_box"]
-    crop_mask = hair_mask[y0:y1, x0:x1] > 0
-    crop_alpha = alpha[y0:y1, x0:x1] > 0
+    if bool(asset_bundle.get("packed_crop_only")):
+        crop_mask = hair_mask > 0
+        crop_alpha = alpha > 0
+        image_height, image_width = asset_bundle.get("image_size") or hair_mask.shape[:2]
+    else:
+        crop_mask = hair_mask[y0:y1, x0:x1] > 0
+        crop_alpha = alpha[y0:y1, x0:x1] > 0
+        image_height, image_width = hair_mask.shape[:2]
     mask_pixels = int(np.count_nonzero(crop_mask))
     alpha_pixels = int(np.count_nonzero(crop_alpha))
     if mask_pixels <= 0 or crop_mask.size == 0:
@@ -943,7 +1113,6 @@ def asset_crop_edge_risk(asset_root_str: str, metadata_path_str: str) -> float:
         else 0.0
     )
 
-    image_height, image_width = hair_mask.shape[:2]
     image_edge_penalty = 0.0
     if y0 <= 0:
         image_edge_penalty += 0.10
@@ -968,10 +1137,26 @@ def build_effective_alpha(
     warped_hair: np.ndarray,
     soft_sigma: float = 1.8,
     alpha_gain: np.ndarray | None = None,
+    hair_sigma: float = 2.2,
 ) -> np.ndarray:
-    effective_alpha = np.minimum(warped_alpha, cv2.GaussianBlur(warped_hair, (0, 0), sigmaX=2.2, sigmaY=2.2))
+    effective_alpha = np.minimum(
+        warped_alpha,
+        opencv_gaussian_blur(
+            warped_hair,
+            (0, 0),
+            sigma_x=hair_sigma,
+            sigma_y=hair_sigma,
+            min_pixels=24_000,
+        ),
+    )
     effective_alpha = effective_alpha.astype(np.float32) / 255.0
-    effective_alpha = cv2.GaussianBlur(effective_alpha, (0, 0), sigmaX=soft_sigma, sigmaY=soft_sigma)
+    effective_alpha = opencv_gaussian_blur(
+        effective_alpha,
+        (0, 0),
+        sigma_x=soft_sigma,
+        sigma_y=soft_sigma,
+        min_pixels=24_000,
+    )
     if alpha_gain is not None:
         effective_alpha *= np.clip(alpha_gain.astype(np.float32), 0.0, 1.0)
     return np.clip(effective_alpha, 0.0, 1.0)
@@ -1058,19 +1243,22 @@ def build_mesh_v2_alpha_gain(
     bottom_gain_y = 1.0 - (1.0 - bottom_min_gain) * bottom_strength
 
     gain_map = global_gain * top_gain_y[:, None] * side_gain_x[None, :] * bottom_gain_y[:, None]
-    gain_map = cv2.GaussianBlur(gain_map.astype(np.float32), (0, 0), sigmaX=2.2, sigmaY=2.2)
-    return np.clip(gain_map, 0.72, 1.0)
+    return np.clip(gain_map.astype(np.float32), 0.72, 1.0)
 
 
 def smooth_mask_layer(mask_layer: np.ndarray | None, sigma: float, grow_radius: int = 0) -> np.ndarray | None:
     if mask_layer is None or mask_layer.size == 0:
         return None
     normalized = np.clip(mask_layer.astype(np.float32) / 255.0, 0.0, 1.0)
+    if not bool(np.any(normalized > 0.0)):
+        return None
     if grow_radius > 0:
         kernel_size = max(1, int(grow_radius) * 2 + 1)
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
-        normalized = cv2.dilate(normalized, kernel, iterations=1)
-    return cv2.GaussianBlur(normalized, (0, 0), sigmaX=sigma, sigmaY=sigma)
+        normalized = opencv_dilate(normalized, kernel, iterations=1, min_pixels=24_000)
+        if not bool(np.any(normalized > 0.0)):
+            return None
+    return opencv_gaussian_blur(normalized, (0, 0), sigma_x=sigma, sigma_y=sigma, min_pixels=24_000)
 
 
 def crop_runtime_mask_layer(
@@ -1438,7 +1626,7 @@ def apply_user_head_blur_underlay(
     suppress_layer = smooth_mask_layer(_coerce_mask_layer(resized_masks["suppress_prior_mask"]), sigma=7.0, grow_radius=1)
     confidence_layer = _coerce_mask_layer(resized_masks["hair_confidence"])
     if confidence_layer is not None and np.asarray(confidence_layer).size > 0:
-        confidence_layer = cv2.GaussianBlur(np.clip(np.asarray(confidence_layer).astype(np.float32), 0.0, 1.0), (0, 0), sigmaX=6.0, sigmaY=6.0)
+        confidence_layer = np.clip(np.asarray(confidence_layer).astype(np.float32), 0.0, 1.0)
     else:
         confidence_layer = None
 
@@ -1463,8 +1651,8 @@ def apply_user_head_blur_underlay(
     hair_mask = np.asarray(hair_mask, dtype=np.uint8) if hair_mask is not None else None
     ring_color = None
     if hair_mask is not None and hair_mask.size:
-        ring_outer = cv2.dilate(hair_mask, np.ones((13, 13), np.uint8), iterations=1)
-        ring_inner = cv2.dilate(hair_mask, np.ones((5, 5), np.uint8), iterations=1)
+        ring_outer = opencv_dilate(hair_mask, np.ones((13, 13), np.uint8), iterations=1, min_pixels=24_000)
+        ring_inner = opencv_dilate(hair_mask, np.ones((5, 5), np.uint8), iterations=1, min_pixels=24_000)
         ring_mask = (ring_outer > 0) & ~(ring_inner > 0)
         if np.count_nonzero(ring_mask) >= 64:
             ring_color = np.median(user_image_roi[ring_mask], axis=0).astype(np.float32)
@@ -1491,7 +1679,13 @@ def apply_user_head_blur_underlay(
         if head_layer is not None:
             blur_mask *= np.clip(0.55 + 0.45 * head_layer, 0.0, 1.0)
 
-    blur_mask = cv2.GaussianBlur(np.clip(blur_mask, 0.0, 1.0), (0, 0), sigmaX=2.6, sigmaY=2.6)
+    blur_mask = opencv_gaussian_blur(
+        np.clip(blur_mask, 0.0, 1.0),
+        (0, 0),
+        sigma_x=2.6,
+        sigma_y=2.6,
+        min_pixels=24_000,
+    )
 
     blur_active = blur_mask > 0.01
     if not np.any(blur_active):
@@ -1506,7 +1700,13 @@ def apply_user_head_blur_underlay(
     y1 = min(blur_height, int(ys.max()) + pad + 1)
 
     user_roi = user_image_roi[y0:y1, x0:x1]
-    blurred_roi = cv2.GaussianBlur(user_roi, (0, 0), sigmaX=sigma, sigmaY=sigma)
+    blurred_roi = opencv_gaussian_blur(
+        user_roi,
+        (0, 0),
+        sigma_x=sigma,
+        sigma_y=sigma,
+        min_pixels=24_000,
+    )
     if ring_color is not None:
         blurred_roi = np.clip(
             blurred_roi.astype(np.float32) * 0.92 + ring_color.reshape(1, 1, 3) * 0.08,
@@ -1600,14 +1800,26 @@ def apply_asset_skin_suppression_gain(
     warped_protect_face_mask: np.ndarray | None,
     warped_ear_left_mask: np.ndarray | None,
     warped_ear_right_mask: np.ndarray | None,
+    *,
+    include_ears: bool = True,
+    prefer_protect_face_only: bool = False,
+    layer_sigma_scale: float = 1.0,
 ) -> np.ndarray:
     if effective_alpha.size == 0:
         return effective_alpha
 
-    face_layer = smooth_mask_layer(warped_face_mask, sigma=5.5, grow_radius=1)
-    protect_layer = smooth_mask_layer(warped_protect_face_mask, sigma=6.2, grow_radius=2)
-    ear_left_layer = smooth_mask_layer(warped_ear_left_mask, sigma=5.2, grow_radius=2)
-    ear_right_layer = smooth_mask_layer(warped_ear_right_mask, sigma=5.2, grow_radius=2)
+    sigma_scale = float(np.clip(layer_sigma_scale, 0.4, 1.0))
+    face_layer = smooth_mask_layer(warped_face_mask, sigma=5.5 * sigma_scale, grow_radius=1 if sigma_scale >= 0.85 else 0)
+    protect_layer = smooth_mask_layer(
+        warped_protect_face_mask,
+        sigma=6.2 * sigma_scale,
+        grow_radius=2 if sigma_scale >= 0.85 else 1,
+    )
+    ear_left_layer = None
+    ear_right_layer = None
+    if include_ears:
+        ear_left_layer = smooth_mask_layer(warped_ear_left_mask, sigma=5.2 * sigma_scale, grow_radius=2 if sigma_scale >= 0.85 else 1)
+        ear_right_layer = smooth_mask_layer(warped_ear_right_mask, sigma=5.2 * sigma_scale, grow_radius=2 if sigma_scale >= 0.85 else 1)
     if face_layer is None and protect_layer is None and ear_left_layer is None and ear_right_layer is None:
         return effective_alpha
 
@@ -1649,7 +1861,9 @@ def apply_asset_skin_suppression_gain(
 
     combined_gain = np.ones_like(effective_alpha, dtype=np.float32)
     face_combined = None
-    if face_layer is not None and protect_layer is not None:
+    if prefer_protect_face_only and protect_layer is not None:
+        face_combined = protect_layer
+    elif face_layer is not None and protect_layer is not None:
         face_combined = np.maximum(face_layer, protect_layer)
     else:
         face_combined = face_layer if face_layer is not None else protect_layer
@@ -1664,6 +1878,40 @@ def apply_asset_skin_suppression_gain(
         combined_gain *= 1.0 - ear_strength * ear_layer * vertical_gate
 
     return np.clip(effective_alpha * np.clip(combined_gain, 0.74, 1.0), 0.0, 1.0)
+
+
+def _warp_mask_stack(
+    mask_layers: list[np.ndarray],
+    matrix: np.ndarray,
+    dsize: tuple[int, int],
+    *,
+    min_pixels: int = 16_384,
+) -> list[np.ndarray]:
+    if not mask_layers:
+        return []
+    if len(mask_layers) == 1:
+        return [
+            opencv_warp_affine(
+                mask_layers[0],
+                matrix,
+                dsize,
+                flags=cv2.INTER_NEAREST,
+                borderMode=cv2.BORDER_CONSTANT,
+                min_pixels=min_pixels,
+            )
+        ]
+    stacked = np.dstack(mask_layers)
+    warped = opencv_warp_affine(
+        stacked,
+        matrix,
+        dsize,
+        flags=cv2.INTER_NEAREST,
+        borderMode=cv2.BORDER_CONSTANT,
+        min_pixels=min_pixels,
+    )
+    if warped.ndim == 2:
+        warped = warped[:, :, None]
+    return [warped[:, :, idx] for idx in range(warped.shape[2])]
 
 
 def build_frontal_head_envelope_gain(
@@ -1900,8 +2148,7 @@ def suppress_frontal_lateral_spikes(
         return effective_alpha
     if suppressed_fraction > 0.18:
         return effective_alpha
-    softened_gain = cv2.GaussianBlur(gain_mask, (0, 0), sigmaX=1.2, sigmaY=1.2)
-    return np.clip(effective_alpha * softened_gain, 0.0, 1.0)
+    return np.clip(effective_alpha * gain_mask, 0.0, 1.0)
 
 
 def mesh_v3_requires_silhouette_fallback(
@@ -2024,7 +2271,9 @@ def build_legacy_overlay_layer(
     user_image: np.ndarray,
     asset_bundle: dict[str, Any],
     user_mask_bundle: dict[str, Any] | None = None,
+    debug_payload: dict[str, object] | None = None,
 ) -> dict[str, Any] | None:
+    started_at = time.perf_counter()
     asset_image = asset_bundle["image"]
     asset_alpha = asset_bundle["alpha"]
     asset_hair = asset_bundle["hair_mask"]
@@ -2032,6 +2281,7 @@ def build_legacy_overlay_layer(
     src_x0, src_y0, src_x1, src_y1 = asset_bundle["crop_box"]
 
     height, width = user_image.shape[:2]
+    setup_started_at = time.perf_counter()
     matrix = estimate_transform(asset_anchors, user_row["anchors"])
     head_size_scale, head_scale_pivot = compute_conservative_head_size_scale(
         user_row,
@@ -2060,43 +2310,199 @@ def build_legacy_overlay_layer(
     )
     if roi is None:
         return None
+    roi_setup_ms = round((time.perf_counter() - setup_started_at) * 1000.0, 3)
 
     dst_x0, dst_y0, dst_x1, dst_y1 = roi
     roi_width = dst_x1 - dst_x0
     roi_height = dst_y1 - dst_y0
-    src_rgb = asset_image[src_y0:src_y1, src_x0:src_x1]
-    src_alpha = asset_alpha[src_y0:src_y1, src_x0:src_x1]
-    src_hair = asset_hair[src_y0:src_y1, src_x0:src_x1]
-    src_face = asset_bundle["face_mask"][src_y0:src_y1, src_x0:src_x1]
-    src_protect_face = asset_bundle["protect_face_mask"][src_y0:src_y1, src_x0:src_x1]
-    src_ear_left = asset_bundle["ear_mask_left"][src_y0:src_y1, src_x0:src_x1]
-    src_ear_right = asset_bundle["ear_mask_right"][src_y0:src_y1, src_x0:src_x1]
+    if bool(asset_bundle.get("packed_crop_only")):
+        src_rgb = asset_image
+        src_alpha = asset_alpha
+        src_hair = asset_hair
+        src_face = asset_bundle["face_mask"]
+        src_protect_face = asset_bundle["protect_face_mask"]
+    else:
+        src_rgb = asset_image[src_y0:src_y1, src_x0:src_x1]
+        src_alpha = asset_alpha[src_y0:src_y1, src_x0:src_x1]
+        src_hair = asset_hair[src_y0:src_y1, src_x0:src_x1]
+        src_face = asset_bundle["face_mask"][src_y0:src_y1, src_x0:src_x1]
+        src_protect_face = asset_bundle["protect_face_mask"][src_y0:src_y1, src_x0:src_x1]
+    src_mask_stack = np.dstack([src_face, src_protect_face])
     roi_matrix = roi_affine_from_crop(matrix, src_x0, src_y0, dst_x0, dst_y0)
-    warped_rgb = cv2.warpAffine(src_rgb, roi_matrix, (roi_width, roi_height), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
-    warped_alpha = cv2.warpAffine(src_alpha, roi_matrix, (roi_width, roi_height), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
-    warped_hair = cv2.warpAffine(src_hair, roi_matrix, (roi_width, roi_height), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT)
-    warped_face = cv2.warpAffine(src_face, roi_matrix, (roi_width, roi_height), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT)
-    warped_protect_face = cv2.warpAffine(src_protect_face, roi_matrix, (roi_width, roi_height), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT)
-    warped_ear_left = cv2.warpAffine(src_ear_left, roi_matrix, (roi_width, roi_height), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT)
-    warped_ear_right = cv2.warpAffine(src_ear_right, roi_matrix, (roi_width, roi_height), flags=cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT)
+    gpu_src_rgb = opencv_cuda_upload(src_rgb, min_pixels=16_384)
+    gpu_src_alpha = opencv_cuda_upload(src_alpha, min_pixels=16_384)
+    gpu_src_hair = opencv_cuda_upload(src_hair, min_pixels=16_384)
+    gpu_src_mask_stack = opencv_cuda_upload(src_mask_stack, min_pixels=16_384)
+    warp_rgb_started_at = time.perf_counter()
+    warped_rgb_gpu = opencv_warp_affine_uploaded(
+        gpu_src_rgb,
+        roi_matrix,
+        (roi_width, roi_height),
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+    )
+    if warped_rgb_gpu is not None:
+        warped_rgb = opencv_cuda_download(warped_rgb_gpu)
+    else:
+        warped_rgb = opencv_warp_affine(
+            src_rgb,
+            roi_matrix,
+            (roi_width, roi_height),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_CONSTANT,
+            min_pixels=16_384,
+        )
+    warp_rgb_ms = round((time.perf_counter() - warp_rgb_started_at) * 1000.0, 3)
+    warp_alpha_started_at = time.perf_counter()
+    warped_alpha_gpu = opencv_warp_affine_uploaded(
+        gpu_src_alpha,
+        roi_matrix,
+        (roi_width, roi_height),
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+    )
+    if warped_alpha_gpu is not None:
+        warped_alpha = opencv_cuda_download(warped_alpha_gpu)
+    else:
+        warped_alpha = opencv_warp_affine(
+            src_alpha,
+            roi_matrix,
+            (roi_width, roi_height),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_CONSTANT,
+            min_pixels=16_384,
+        )
+    warp_alpha_ms = round((time.perf_counter() - warp_alpha_started_at) * 1000.0, 3)
+    warp_hair_started_at = time.perf_counter()
+    warped_hair_gpu = opencv_warp_affine_uploaded(
+        gpu_src_hair,
+        roi_matrix,
+        (roi_width, roi_height),
+        flags=cv2.INTER_NEAREST,
+        borderMode=cv2.BORDER_CONSTANT,
+    )
+    if warped_hair_gpu is not None:
+        warped_hair = opencv_cuda_download(warped_hair_gpu)
+    else:
+        warped_hair = opencv_warp_affine(
+            src_hair,
+            roi_matrix,
+            (roi_width, roi_height),
+            flags=cv2.INTER_NEAREST,
+            borderMode=cv2.BORDER_CONSTANT,
+            min_pixels=16_384,
+        )
+    warp_hair_ms = round((time.perf_counter() - warp_hair_started_at) * 1000.0, 3)
+    warp_masks_started_at = time.perf_counter()
+    warped_mask_stack_gpu = opencv_warp_affine_uploaded(
+        gpu_src_mask_stack,
+        roi_matrix,
+        (roi_width, roi_height),
+        flags=cv2.INTER_NEAREST,
+        borderMode=cv2.BORDER_CONSTANT,
+    )
+    if warped_mask_stack_gpu is not None:
+        warped_mask_stack = opencv_cuda_download(warped_mask_stack_gpu)
+        if warped_mask_stack.ndim == 2:
+            warped_mask_stack = warped_mask_stack[:, :, None]
+        warped_face = warped_mask_stack[:, :, 0]
+        warped_protect_face = warped_mask_stack[:, :, 1] if warped_mask_stack.shape[2] > 1 else np.zeros_like(warped_face)
+    else:
+        warped_face, warped_protect_face = _warp_mask_stack(
+            [src_face, src_protect_face],
+            roi_matrix,
+            (roi_width, roi_height),
+            min_pixels=16_384,
+        )
+    warp_masks_ms = round((time.perf_counter() - warp_masks_started_at) * 1000.0, 3)
     rgb_gain = resolve_hair_tone_gain(user_row, asset_bundle.get("hair_luma"))
+    rgb_gain_started_at = time.perf_counter()
     warped_rgb = apply_masked_rgb_gain(warped_rgb, warped_hair, rgb_gain)
-    effective_alpha = build_effective_alpha(warped_alpha, warped_hair)
+    rgb_gain_ms = round((time.perf_counter() - rgb_gain_started_at) * 1000.0, 3)
+    hard_coverage = np.where(
+        np.maximum(warped_alpha, warped_hair) >= 24,
+        np.uint8(255),
+        np.uint8(0),
+    )
+    effective_alpha_started_at = time.perf_counter()
+    effective_alpha = build_effective_alpha(
+        warped_alpha,
+        warped_hair,
+        soft_sigma=1.45,
+        hair_sigma=1.65,
+    )
+    effective_alpha_ms = round((time.perf_counter() - effective_alpha_started_at) * 1000.0, 3)
+    skin_suppression_started_at = time.perf_counter()
     effective_alpha = apply_asset_skin_suppression_gain(
         user_row,
         roi,
         effective_alpha,
         warped_face,
         warped_protect_face,
-        warped_ear_left,
-        warped_ear_right,
+        None,
+        None,
+        include_ears=False,
+        prefer_protect_face_only=True,
+        layer_sigma_scale=0.72,
     )
+    skin_suppression_ms = round((time.perf_counter() - skin_suppression_started_at) * 1000.0, 3)
+    if debug_payload is not None:
+        debug_payload.update(
+            {
+                "roi_setup_ms": roi_setup_ms,
+                "warp_rgb_ms": warp_rgb_ms,
+                "warp_alpha_ms": warp_alpha_ms,
+                "warp_hair_ms": warp_hair_ms,
+                "warp_masks_ms": warp_masks_ms,
+                "rgb_gain_ms": rgb_gain_ms,
+                "effective_alpha_ms": effective_alpha_ms,
+                "skin_suppression_ms": skin_suppression_ms,
+                "legacy_layer_total_ms": round((time.perf_counter() - started_at) * 1000.0, 3),
+            }
+        )
     return {
         "roi": roi,
         "rgb": np.clip(warped_rgb, 0.0, 255.0).astype(np.uint8),
         "alpha": effective_alpha,
+        "coverage": hard_coverage,
         "render_kind": "legacy",
     }
+
+
+def _legacy_layer_coverage_mask(
+    layer: dict[str, Any] | None,
+    frame_shape: tuple[int, int],
+) -> np.ndarray | None:
+    if not isinstance(layer, dict):
+        return None
+    roi = layer.get("roi")
+    alpha = layer.get("alpha")
+    coverage = layer.get("coverage")
+    if (
+        not isinstance(roi, tuple)
+        or len(roi) != 4
+        or frame_shape[0] <= 0
+        or frame_shape[1] <= 0
+    ):
+        return None
+
+    x0, y0, x1, y1 = (int(roi[0]), int(roi[1]), int(roi[2]), int(roi[3]))
+    if x1 <= x0 or y1 <= y0:
+        return None
+
+    if isinstance(coverage, np.ndarray) and coverage.ndim == 2 and coverage.shape[:2] == (y1 - y0, x1 - x0):
+        coverage_roi = np.where(coverage > 0, np.uint8(255), np.uint8(0))
+    elif isinstance(alpha, np.ndarray) and alpha.ndim == 2 and alpha.shape[:2] == (y1 - y0, x1 - x0):
+        coverage_roi = np.where(alpha > 0.08, np.uint8(255), np.uint8(0))
+    else:
+        return None
+
+    if int(np.count_nonzero(coverage_roi)) < 4:
+        return None
+
+    coverage_mask = np.zeros(frame_shape, dtype=np.uint8)
+    coverage_mask[y0:y1, x0:x1] = coverage_roi
+    return coverage_mask
 
 
 def build_mesh_target_points(
@@ -2373,17 +2779,51 @@ def compose_overlay_legacy_frame(
     asset_row: dict[str, Any],
     asset_root: Path,
     user_mask_bundle: dict[str, Any] | None = None,
+    debug_payload: dict[str, object] | None = None,
 ) -> np.ndarray:
-    asset_bundle = load_asset_bundle(str(asset_root), asset_row["metadata_path"])
+    started_at = time.perf_counter()
+    asset_load_started_at = time.perf_counter()
+    asset_bundle = load_asset_bundle(str(asset_root), asset_row["metadata_path"], BUNDLE_PROFILE_LEGACY)
+    asset_load_ms = round((time.perf_counter() - asset_load_started_at) * 1000.0, 3)
+    layer_detail_ms: dict[str, object] = {}
+    build_layer_started_at = time.perf_counter()
     layer = build_legacy_overlay_layer(
         user_row,
         user_image,
         asset_bundle,
         user_mask_bundle=user_mask_bundle,
+        debug_payload=layer_detail_ms,
     )
+    build_layer_ms = round((time.perf_counter() - build_layer_started_at) * 1000.0, 3)
     if layer is None:
+        if debug_payload is not None:
+            debug_payload.update(
+                {
+                    "asset_load_ms": asset_load_ms,
+                    "build_layer_ms": build_layer_ms,
+                    "composite_ms": 0.0,
+                    "legacy_frame_total_ms": round((time.perf_counter() - started_at) * 1000.0, 3),
+                    "legacy_layer_detail_ms": layer_detail_ms,
+                    "layer_missing": True,
+                }
+            )
         return user_image.copy()
-    return composite_effective_layer(user_image.copy(), layer["roi"], layer["rgb"], layer["alpha"])
+    composite_started_at = time.perf_counter()
+    composed = composite_effective_layer(user_image.copy(), layer["roi"], layer["rgb"], layer["alpha"])
+    composite_ms = round((time.perf_counter() - composite_started_at) * 1000.0, 3)
+    coverage_mask = _legacy_layer_coverage_mask(layer, user_image.shape[:2])
+    if debug_payload is not None:
+        debug_payload.update(
+            {
+                "asset_load_ms": asset_load_ms,
+                "build_layer_ms": build_layer_ms,
+                "composite_ms": composite_ms,
+                "legacy_frame_total_ms": round((time.perf_counter() - started_at) * 1000.0, 3),
+                "legacy_layer_detail_ms": layer_detail_ms,
+                "_coverage_mask": coverage_mask,
+            }
+        )
+    return composed
 
 
 def _compose_mesh_base_image(
@@ -2413,7 +2853,7 @@ def _build_mesh_weighted_layers(
     weighted_layers: list[tuple[dict[str, Any], float]] = []
     asset_root_str = str(asset_root)
     for asset_row, weight in active_assets:
-        asset_bundle = load_asset_bundle(asset_root_str, asset_row["metadata_path"])
+        asset_bundle = load_asset_bundle(asset_root_str, asset_row["metadata_path"], BUNDLE_PROFILE_MESH)
         layer = build_mesh_overlay_layer(
             user_row,
             user_image,
@@ -2485,6 +2925,7 @@ def compose_overlay_frame(
     asset_root: Path,
     renderer_name: str = DEFAULT_RENDERER,
     user_mask_bundle: dict[str, Any] | None = None,
+    debug_payload: dict[str, object] | None = None,
 ) -> np.ndarray:
     resolved_renderer = normalize_renderer_name(renderer_name)
     if resolved_renderer in {"mesh_v1", "mesh_v2", "mesh_v3", "mesh_v4"}:
@@ -2496,7 +2937,14 @@ def compose_overlay_frame(
             renderer_name=resolved_renderer,
             user_mask_bundle=user_mask_bundle,
         )
-    return compose_overlay_legacy_frame(user_row, user_image, asset_row, asset_root, user_mask_bundle=user_mask_bundle)
+    return compose_overlay_legacy_frame(
+        user_row,
+        user_image,
+        asset_row,
+        asset_root,
+        user_mask_bundle=user_mask_bundle,
+        debug_payload=debug_payload,
+    )
 
 
 def compose_overlay_blend_frame(
@@ -2506,11 +2954,37 @@ def compose_overlay_blend_frame(
     asset_root: Path,
     renderer_name: str = DEFAULT_RENDERER,
     user_mask_bundle: dict[str, Any] | None = None,
+    debug_payload: dict[str, object] | None = None,
 ) -> np.ndarray:
+    started_at = time.perf_counter()
     resolved_renderer = normalize_renderer_name(renderer_name)
     active_assets = [(asset_row, float(weight)) for asset_row, weight in weighted_assets if float(weight) > 0.0]
     if not active_assets:
         return user_image.copy()
+    if len(active_assets) == 1 and active_assets[0][1] >= 0.999:
+        single_asset, _ = active_assets[0]
+        single_asset_detail_ms: dict[str, object] = {}
+        composed = compose_overlay_frame(
+            user_row,
+            user_image,
+            single_asset,
+            asset_root,
+            renderer_name=resolved_renderer,
+            user_mask_bundle=user_mask_bundle,
+            debug_payload=single_asset_detail_ms,
+        )
+        coverage_mask = single_asset_detail_ms.pop("_coverage_mask", None)
+        if debug_payload is not None:
+            debug_payload.update(
+                {
+                    "blend_path": "single_asset_fast",
+                    "asset_count": 1,
+                    "single_asset_detail_ms": single_asset_detail_ms,
+                    "overlay_blend_total_ms": round((time.perf_counter() - started_at) * 1000.0, 3),
+                    "_coverage_mask": coverage_mask,
+                }
+            )
+        return composed
     if resolved_renderer in {"mesh_v2", "mesh_v3", "mesh_v4"}:
         return _compose_mesh_blend_frame_from_active_assets(
             user_row,
@@ -2526,9 +3000,11 @@ def compose_overlay_blend_frame(
     total_weight = sum(weight for _, weight in active_assets)
     if total_weight <= 0.0:
         return user_image.copy()
+    accumulated_coverage_mask: np.ndarray | None = None
 
     for asset_row, weight in active_assets:
         normalized_weight = weight / total_weight
+        asset_detail_ms: dict[str, object] = {}
         overlay_frame = compose_overlay_frame(
             user_row,
             user_image,
@@ -2536,10 +3012,26 @@ def compose_overlay_blend_frame(
             asset_root,
             renderer_name=resolved_renderer,
             user_mask_bundle=user_mask_bundle,
+            debug_payload=asset_detail_ms,
         ).astype(np.float32)
+        asset_coverage_mask = asset_detail_ms.pop("_coverage_mask", None)
+        if isinstance(asset_coverage_mask, np.ndarray) and asset_coverage_mask.shape == user_image.shape[:2]:
+            if accumulated_coverage_mask is None:
+                accumulated_coverage_mask = np.array(asset_coverage_mask, copy=True)
+            else:
+                accumulated_coverage_mask = np.maximum(accumulated_coverage_mask, asset_coverage_mask)
         delta += (overlay_frame - base) * normalized_weight
-
-    return np.clip(base + delta, 0.0, 255.0).astype(np.uint8)
+    result = np.clip(base + delta, 0.0, 255.0).astype(np.uint8)
+    if debug_payload is not None:
+        debug_payload.update(
+            {
+                "blend_path": "multi_asset_delta",
+                "asset_count": len(active_assets),
+                "overlay_blend_total_ms": round((time.perf_counter() - started_at) * 1000.0, 3),
+                "_coverage_mask": accumulated_coverage_mask,
+            }
+        )
+    return result
 
 
 def compose_overlay_transition_frames(
@@ -2550,26 +3042,52 @@ def compose_overlay_transition_frames(
     asset_root: Path,
     renderer_name: str = DEFAULT_RENDERER,
     user_mask_bundle: dict[str, Any] | None = None,
+    debug_payload: dict[str, object] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     resolved_renderer = normalize_renderer_name(renderer_name)
     if resolved_renderer not in {"mesh_v2", "mesh_v3", "mesh_v4"}:
+        from_detail_ms: dict[str, object] = {}
+        to_detail_ms: dict[str, object] = {}
+        from_frame = compose_overlay_blend_frame(
+            user_row,
+            user_image,
+            from_weighted_assets,
+            asset_root,
+            renderer_name=resolved_renderer,
+            user_mask_bundle=user_mask_bundle,
+            debug_payload=from_detail_ms,
+        )
+        to_frame = compose_overlay_blend_frame(
+            user_row,
+            user_image,
+            to_weighted_assets,
+            asset_root,
+            renderer_name=resolved_renderer,
+            user_mask_bundle=user_mask_bundle,
+            debug_payload=to_detail_ms,
+        )
+        if debug_payload is not None:
+            from_coverage_mask = from_detail_ms.pop("_coverage_mask", None)
+            to_coverage_mask = to_detail_ms.pop("_coverage_mask", None)
+            coverage_mask = None
+            if isinstance(from_coverage_mask, np.ndarray) and from_coverage_mask.shape == user_image.shape[:2]:
+                coverage_mask = np.array(from_coverage_mask, copy=True)
+            if isinstance(to_coverage_mask, np.ndarray) and to_coverage_mask.shape == user_image.shape[:2]:
+                coverage_mask = (
+                    np.array(to_coverage_mask, copy=True)
+                    if coverage_mask is None
+                    else np.maximum(coverage_mask, to_coverage_mask)
+                )
+            debug_payload.update(
+                {
+                    "from_blend_detail_ms": from_detail_ms,
+                    "to_blend_detail_ms": to_detail_ms,
+                    "_coverage_mask": coverage_mask,
+                }
+            )
         return (
-            compose_overlay_blend_frame(
-                user_row,
-                user_image,
-                from_weighted_assets,
-                asset_root,
-                renderer_name=resolved_renderer,
-                user_mask_bundle=user_mask_bundle,
-            ),
-            compose_overlay_blend_frame(
-                user_row,
-                user_image,
-                to_weighted_assets,
-                asset_root,
-                renderer_name=resolved_renderer,
-                user_mask_bundle=user_mask_bundle,
-            ),
+            from_frame,
+            to_frame,
         )
 
     shared_base_image = _compose_mesh_base_image(

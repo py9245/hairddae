@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import logging
 from pathlib import Path
 from threading import Lock
+import time
 
 import cv2
 import mediapipe as mp
@@ -239,6 +240,14 @@ class ServerFaceTracker:
 
     def close(self) -> None:
         self._landmarker.close()
+
+    def warm_up(self) -> float:
+        blank_rgb = np.zeros((256, 256, 3), dtype=np.uint8)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=blank_rgb)
+        started_at = time.perf_counter()
+        with self._lock:
+            self._landmarker.detect(mp_image)
+        return round((time.perf_counter() - started_at) * 1000.0, 3)
 
     def _create_landmarker(
         self,

@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from app.auth import TicketValidationError, validate_connect_ticket
 from app.catalog import AssetBundle, AssetCatalog
-from app.config import Settings
+from app.config import DEFAULT_RTC_FPS, Settings
 from app.face_tracking import ServerFaceTracker
 from app.fallback_render_pipeline import render_bundle_fallback_frame
 from app.frame_prepare_pipeline import TrackingCacheSnapshot, prepare_runtime_frame
@@ -26,6 +26,7 @@ from app.hair_attenuation import HairAttenuator
 from app.hairddae_runtime_manager import HairddaeRuntimeManager
 from app.models import FeatureMessageModel
 from app.server_render import compose_bundle_frame
+from cv2_cuda_utils import opencv_flip, opencv_resize
 
 try:
     from aiortc import (
@@ -50,7 +51,7 @@ except ImportError:  # pragma: no cover - runtime guarded
 
 
 logger = logging.getLogger("uvicorn.error")
-RENDER_FRAME_DELAY_MS = 60.0
+RENDER_FRAME_DELAY_MS = 1000.0 / float(DEFAULT_RTC_FPS)
 MAX_BUFFERED_VIDEO_FRAMES = 8
 SERVER_TRACK_MAX_BUFFERED_VIDEO_FRAMES = 2
 SERVER_RENDER_READY_MIN_PROCESSED = 1
@@ -770,6 +771,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         self._buffer: deque[BufferedVideoFrame] = deque()
         self._frame_available = asyncio.Event()
         self._source_ended = False
+        self._last_output_sent_at_ms = 0.0
         self._tracking_snapshot = TrackingCacheSnapshot(
             user_row=None,
             landmarks_px=None,
@@ -797,6 +799,19 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
 
     def _mirrored_output(self) -> bool:
         return bool(self._settings.rtc_output_mirrored)
+
+    def _output_interval_ms(self) -> float:
+        configured_fps = max(1, int(getattr(self._settings, "rtc_output_fps", DEFAULT_RTC_FPS) or DEFAULT_RTC_FPS))
+        return 1000.0 / float(configured_fps)
+
+    async def _wait_for_next_output_slot(self) -> None:
+        interval_ms = self._output_interval_ms()
+        if self._last_output_sent_at_ms <= 0.0 or interval_ms <= 0.0:
+            return
+        now_ms = time.monotonic() * 1000.0
+        wait_ms = self._last_output_sent_at_ms + interval_ms - now_ms
+        if wait_ms > 0.0:
+            await asyncio.sleep(wait_ms / 1000.0)
 
     def _maybe_emit_stage_mismatch_error(self, frame_width: int, frame_height: int) -> None:
         if self._state.stage_mismatch_reported or not self._state.hello_received:
@@ -989,7 +1004,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         scale = float(max_dimension) / float(max(frame_width, frame_height))
         resized_width = max(1, int(round(frame_width * scale)))
         resized_height = max(1, int(round(frame_height * scale)))
-        resized = cv2.resize(frame_bgr, (resized_width, resized_height), interpolation=cv2.INTER_AREA)
+        resized = opencv_resize(frame_bgr, (resized_width, resized_height), interpolation=cv2.INTER_AREA)
         return resized, (frame_width, frame_height)
 
     def _process_runtime_frame(
@@ -999,6 +1014,30 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         prefer_latency: bool,
     ) -> tuple[dict[str, Any], str, dict[str, float], FeatureMessageModel | None]:
         prepared_frame_bgr, tracked_user_row, attenuation_status, prepare_metrics, tracking_feature = self._prepare_frame_for_hair_runtime(frame_bgr, seq)
+        if bool(getattr(self._settings, "rtc_disable_hair_overlay", False)):
+            prepared_only_result: dict[str, Any] = {
+                "output_frame_bgr": prepared_frame_bgr,
+                "selected_asset_id": "",
+                "selected_pose_key": "",
+                "score": None,
+                "status": "ok",
+                "selection_mode": "prepared_only",
+                "renderer_name": "disabled",
+                "feature_latency_ms": 0.0,
+                "primary_overlay_latency_ms": 0.0,
+                "overlay_latency_ms": 0.0,
+                "fallback_latency_ms": 0.0,
+                "user_parsing_latency_ms": 0.0,
+                "user_parsing_status": "skipped",
+                "overlay_detail_ms": {"overlay_disabled": True},
+                "compose_detail_ms": {"compose_mode": "prepared_only"},
+                "bundle_detail_ms": {},
+                "selection_trace": {"overlay_detail_ms": {"overlay_disabled": True}},
+                "fallback_allowed": False,
+                "user_row": tracked_user_row or {},
+                "raw_user_row": tracked_user_row or {},
+            }
+            return prepared_only_result, attenuation_status, prepare_metrics, tracking_feature
         runtime_result = self._hair_runtime_manager.process_frame(
             dataset_code=self._active_dataset_code(),
             frame_bgr=frame_bgr,
@@ -1008,6 +1047,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             prefer_latency=prefer_latency,
             session_id=self._claims.apply_session_id,
             representative_asset_id=self._active_representative_asset_id(),
+            encode_output=False,
         )
         return runtime_result, attenuation_status, prepare_metrics, tracking_feature
 
@@ -1068,6 +1108,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         _send_channel_json(self._state.data_channel, self._state, payload)
 
     async def recv(self) -> Any:
+        await self._wait_for_next_output_slot()
         frame_started_at = time.perf_counter()
         buffered_frame = await self._next_latest_frame()
         frame = buffered_frame.frame
@@ -1075,7 +1116,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         frame_age_ms = round(max(0.0, time.monotonic() * 1000.0 - buffered_frame.received_at_ms), 3)
         decode_started_at = time.perf_counter()
         frame_bgr = frame.to_ndarray(format="bgr24")
-        processing_source_bgr = cv2.flip(frame_bgr, 1) if self._mirrored_input() else frame_bgr
+        processing_source_bgr = opencv_flip(frame_bgr, 1) if self._mirrored_input() else frame_bgr
         decode_latency_ms = round((time.perf_counter() - decode_started_at) * 1000.0, 3)
         self._maybe_emit_stage_mismatch_error(frame_bgr.shape[1], frame_bgr.shape[0])
         self._state.server_processed_seq = next_seq
@@ -1102,6 +1143,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             runtime_latency_ms = round((time.perf_counter() - runtime_started_at) * 1000.0, 3)
         except Exception as exc:
             logger.warning("rtc hairddae runtime failed: %s", exc)
+            self._last_output_sent_at_ms = time.monotonic() * 1000.0
             return frame
 
         fallback_allowed = bool(runtime_result.get("fallback_allowed", True))
@@ -1304,6 +1346,14 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                     float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
                     float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
                 )
+                attenuation_detail_ms = prepare_metrics.get("hair_attenuation_detail_ms")
+                if attenuation_detail_ms:
+                    logger.info(
+                        "rtc attenuation detail: seq=%s status=%s detail=%s",
+                        next_seq,
+                        attenuation_status,
+                        attenuation_detail_ms,
+                    )
             if (
                 float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0) >= 80.0
                 or str(runtime_result.get("status") or "ok") != "ok"
@@ -1331,16 +1381,17 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 total_pipeline_latency_ms=total_pipeline_latency_ms,
                 selected_asset_id=selected_asset_id or None,
             )
+            self._last_output_sent_at_ms = time.monotonic() * 1000.0
             return frame
         if rendered_bgr.shape[1] != original_size[0] or rendered_bgr.shape[0] != original_size[1]:
-            rendered_bgr = cv2.resize(
+            rendered_bgr = opencv_resize(
                 rendered_bgr,
                 (original_size[0], original_size[1]),
                 interpolation=cv2.INTER_LINEAR,
             )
         resize_out_latency_ms = round((time.perf_counter() - resize_out_started_at) * 1000.0, 3)
         if self._mirrored_output():
-            rendered_bgr = cv2.flip(rendered_bgr, 1)
+            rendered_bgr = opencv_flip(rendered_bgr, 1)
         total_pipeline_latency_ms = round((time.perf_counter() - frame_started_at) * 1000.0, 3)
         self._state.recent_pipeline_latency_ms = total_pipeline_latency_ms
         self._update_adaptive_resolution(total_pipeline_latency_ms)
@@ -1405,6 +1456,14 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
                 float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
             )
+            attenuation_detail_ms = prepare_metrics.get("hair_attenuation_detail_ms")
+            if attenuation_detail_ms:
+                logger.info(
+                    "rtc attenuation detail: seq=%s status=%s detail=%s",
+                    next_seq,
+                    attenuation_status,
+                    attenuation_detail_ms,
+                )
             if (
                 float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0) >= 80.0
                 or str(runtime_result.get("status") or "ok") != "ok"
@@ -1437,6 +1496,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         next_frame = VideoFrame.from_ndarray(rendered_bgr, format="bgr24")
         next_frame.pts = frame.pts
         next_frame.time_base = frame.time_base
+        self._last_output_sent_at_ms = time.monotonic() * 1000.0
         return next_frame
 
 

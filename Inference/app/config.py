@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 
+DEFAULT_RTC_FPS = 15
+
 
 def _env_int(name: str, default: int) -> int:
     value = os.getenv(name)
@@ -120,7 +122,14 @@ class Settings:
     rtc_hair_attenuation_brightness_lift: float
     rtc_hair_attenuation_blur_kernel_scale: float
     rtc_hair_attenuation_max_work_dimension: int
+    rtc_disable_fringe_suppression: bool
+    rtc_disable_covered_suppression: bool
+    rtc_disable_outer_bulk_suppression: bool
+    rtc_disable_hair_overlay: bool
+    rtc_preserve_eyes_enabled: bool
     rtc_bald_test_mode: bool
+    rtc_enable_h264_nvenc: bool
+    rtc_enable_h264_cuvid: bool
     rtc_disable_user_parsing_in_latency_mode: bool
     face_tracker_delegate: str
     hair_segmenter_delegate: str
@@ -138,6 +147,7 @@ class Settings:
     rtc_user_parsing_center_delta_threshold_norm: float
     rtc_user_parsing_size_delta_threshold_norm: float
     rtc_user_parsing_bbox_iou_threshold: float
+    startup_prewarm_enabled: bool
     http_test_enabled: bool
     http_test_default_dataset_code: str
     http_test_jpeg_quality: int
@@ -222,16 +232,16 @@ class Settings:
             rtc_send_processed_events=_env_bool("INFERENCE_RTC_SEND_PROCESSED_EVENTS", False),
             rtc_input_width=_env_int("INFERENCE_RTC_INPUT_WIDTH", 576),
             rtc_input_height=_env_int("INFERENCE_RTC_INPUT_HEIGHT", 1024),
-            rtc_input_fps=_env_int("INFERENCE_RTC_INPUT_FPS", 15),
+            rtc_input_fps=_env_int("INFERENCE_RTC_INPUT_FPS", DEFAULT_RTC_FPS),
             rtc_output_width=_env_int("INFERENCE_RTC_OUTPUT_WIDTH", 576),
             rtc_output_height=_env_int("INFERENCE_RTC_OUTPUT_HEIGHT", 1024),
-            rtc_output_fps=_env_int("INFERENCE_RTC_OUTPUT_FPS", 15),
+            rtc_output_fps=_env_int("INFERENCE_RTC_OUTPUT_FPS", DEFAULT_RTC_FPS),
             rtc_udp_port_min=_env_int("INFERENCE_RTC_UDP_PORT_MIN", 40000),
             rtc_udp_port_max=_env_int("INFERENCE_RTC_UDP_PORT_MAX", 40199),
             rtc_mirrored_input=_env_bool("INFERENCE_RTC_MIRRORED_INPUT", False),
             rtc_output_mirrored=_env_bool("INFERENCE_RTC_OUTPUT_MIRRORED", True),
-            rtc_renderer_name=_env_str("INFERENCE_RTC_RENDERER_NAME", "mesh_v3"),
-            rtc_latency_renderer_name=_env_str("INFERENCE_RTC_LATENCY_RENDERER_NAME", ""),
+            rtc_renderer_name=_env_str("INFERENCE_RTC_RENDERER_NAME", "legacy"),
+            rtc_latency_renderer_name=_env_str("INFERENCE_RTC_LATENCY_RENDERER_NAME", "legacy"),
             rtc_hair_attenuation_enabled=_env_bool("INFERENCE_RTC_HAIR_ATTENUATION_ENABLED", True),
             rtc_hair_segmentation_enabled=_env_bool("INFERENCE_RTC_HAIR_SEGMENTATION_ENABLED", True),
             rtc_hair_segmentation_confidence_threshold=float(
@@ -253,7 +263,14 @@ class Settings:
                 "INFERENCE_RTC_HAIR_ATTENUATION_MAX_WORK_DIMENSION",
                 176,
             ),
+            rtc_disable_fringe_suppression=_env_bool("INFERENCE_RTC_DISABLE_FRINGE_SUPPRESSION", False),
+            rtc_disable_covered_suppression=_env_bool("INFERENCE_RTC_DISABLE_COVERED_SUPPRESSION", False),
+            rtc_disable_outer_bulk_suppression=_env_bool("INFERENCE_RTC_DISABLE_OUTER_BULK_SUPPRESSION", False),
+            rtc_disable_hair_overlay=_env_bool("INFERENCE_RTC_DISABLE_HAIR_OVERLAY", False),
+            rtc_preserve_eyes_enabled=_env_bool("INFERENCE_RTC_PRESERVE_EYES_ENABLED", False),
             rtc_bald_test_mode=_env_bool("INFERENCE_RTC_BALD_TEST_MODE", False),
+            rtc_enable_h264_nvenc=_env_bool("INFERENCE_RTC_ENABLE_H264_NVENC", False),
+            rtc_enable_h264_cuvid=_env_bool("INFERENCE_RTC_ENABLE_H264_CUVID", False),
             rtc_disable_user_parsing_in_latency_mode=_env_bool(
                 "INFERENCE_RTC_DISABLE_USER_PARSING_IN_LATENCY_MODE",
                 False,
@@ -292,6 +309,7 @@ class Settings:
             rtc_user_parsing_bbox_iou_threshold=float(
                 _env_str("INFERENCE_RTC_USER_PARSING_BBOX_IOU_THRESHOLD", "0.86")
             ),
+            startup_prewarm_enabled=_env_bool("INFERENCE_STARTUP_PREWARM_ENABLED", False),
             http_test_enabled=_env_bool("INFERENCE_HTTP_TEST_ENABLED", False),
             http_test_default_dataset_code=_env_str("INFERENCE_HTTP_TEST_DEFAULT_DATASET_CODE", "0001"),
             http_test_jpeg_quality=_env_int("INFERENCE_HTTP_TEST_JPEG_QUALITY", 88),

@@ -106,6 +106,7 @@ def _process_http_frame(
         dataset_code=dataset_code,
         frame_bgr=frame_bgr,
         session_id=apply_session_id,
+        encode_output=False,
     )
 
     output_frame_bgr = runtime_result.get("output_frame_bgr")

@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from concurrent.futures import Executor
 from dataclasses import dataclass
+import logging
 import time
 from typing import Any
 
 import cv2
 import numpy as np
 
+from cv2_cuda_utils import opencv_cvt_color
 from app.models import FeatureMessageModel
+
+logger = logging.getLogger("uvicorn.error")
 
 
 def _now_ms() -> int:
@@ -20,13 +24,17 @@ class FramePreparationMetrics:
     tracking_latency_ms: float
     hair_segmentation_latency_ms: float
     hair_attenuation_latency_ms: float
+    hair_attenuation_detail_ms: dict[str, float] | None = None
 
-    def as_dict(self) -> dict[str, float]:
-        return {
+    def as_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "tracking_latency_ms": self.tracking_latency_ms,
             "hair_segmentation_latency_ms": self.hair_segmentation_latency_ms,
             "hair_attenuation_latency_ms": self.hair_attenuation_latency_ms,
         }
+        if self.hair_attenuation_detail_ms:
+            payload["hair_attenuation_detail_ms"] = dict(self.hair_attenuation_detail_ms)
+        return payload
 
 
 @dataclass(frozen=True)
@@ -61,7 +69,7 @@ def prepare_runtime_frame(
     prepare_executor: Executor,
     previous_tracking_snapshot: TrackingCacheSnapshot,
 ) -> PreparedRuntimeFrame:
-    frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    frame_rgb = opencv_cvt_color(frame_bgr, cv2.COLOR_BGR2RGB, min_pixels=200_000)
     reference_face_bbox = hair_runtime_manager.reference_face_bbox(
         active_dataset_code,
         claims.apply_session_id,
@@ -115,6 +123,10 @@ def prepare_runtime_frame(
         if previous_tracking_snapshot.user_row is not None:
             fill_user_row = dict(previous_tracking_snapshot.user_row)
 
+    if fill_user_row is not None:
+        fill_user_row = dict(fill_user_row)
+        fill_user_row["_apply_session_id"] = str(claims.apply_session_id)
+
     metrics = FramePreparationMetrics(
         tracking_latency_ms=tracking_latency_ms,
         hair_segmentation_latency_ms=hair_segmentation_latency_ms,
@@ -155,8 +167,14 @@ def prepare_runtime_frame(
                 (time.perf_counter() - attenuation_started_at) * 1000.0,
                 3,
             ),
+            hair_attenuation_detail_ms=(
+                dict(hair_tone_metadata.get("attenuation_detail_ms") or {})
+                if isinstance(hair_tone_metadata, dict)
+                else None
+            ),
         )
     except Exception:
+        logger.exception("hair attenuation failed during frame preparation: seq=%s", seq)
         return PreparedRuntimeFrame(
             prepared_frame_bgr=frame_bgr,
             tracked_user_row=(
@@ -210,6 +228,9 @@ def prepare_runtime_frame(
         hair_binary_mask = hair_tone_metadata.get("hair_binary_mask")
         if isinstance(hair_binary_mask, np.ndarray) and hair_binary_mask.shape == frame_bgr.shape[:2]:
             tracked_user_row["_hair_binary_mask"] = hair_binary_mask
+        fringe_mask = hair_tone_metadata.get("fringe_mask")
+        if isinstance(fringe_mask, np.ndarray) and fringe_mask.shape == frame_bgr.shape[:2]:
+            tracked_user_row["_hair_fringe_mask"] = fringe_mask
         upper_region_mask = hair_tone_metadata.get("upper_region_mask")
         if isinstance(upper_region_mask, np.ndarray) and upper_region_mask.shape == frame_bgr.shape[:2]:
             tracked_user_row["_hair_upper_region_mask"] = upper_region_mask

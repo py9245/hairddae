@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+import os
 import time
 
 import cv2
@@ -9,9 +10,12 @@ import numpy as np
 from PIL import Image
 
 from app.catalog import AssetBundle
+from cv2_cuda_utils import opencv_cvt_color, opencv_dilate, opencv_gaussian_blur
 
 
 RESAMPLE_FILTER = Image.Resampling.BILINEAR
+SERVER_RENDER_RGBA_CACHE_SIZE = max(8, int(os.environ.get("INFERENCE_SERVER_RENDER_RGBA_CACHE_SIZE", "64")))
+SERVER_RENDER_MASK_CACHE_SIZE = max(8, int(os.environ.get("INFERENCE_SERVER_RENDER_MASK_CACHE_SIZE", "64")))
 
 
 def _apply_rgba_rgb_gain(image: Image.Image, rgb_gain: float) -> Image.Image:
@@ -33,12 +37,12 @@ def _apply_rgba_rgb_gain(image: Image.Image, rgb_gain: float) -> Image.Image:
     return Image.fromarray(adjusted, mode="RGBA")
 
 
-@lru_cache(maxsize=256)
+@lru_cache(maxsize=SERVER_RENDER_RGBA_CACHE_SIZE)
 def _load_rgba_image(path: str) -> Image.Image:
     return Image.open(path).convert("RGBA")
 
 
-@lru_cache(maxsize=256)
+@lru_cache(maxsize=SERVER_RENDER_MASK_CACHE_SIZE)
 def _load_mask_image(path: str) -> Image.Image:
     return Image.open(path).convert("L")
 
@@ -137,12 +141,12 @@ def _coverage_mask_from_warped_patch(
         if kernel_size % 2 == 0:
             kernel_size += 1
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
-        hard_mask = cv2.dilate(hard_mask, kernel, iterations=1)
+        hard_mask = opencv_dilate(hard_mask, kernel, iterations=1, min_pixels=24_000)
 
     soft_mask = hard_mask.astype(np.float32) / 255.0
     if resolved_feather_px > 0:
         sigma = max(0.85, resolved_feather_px * 0.55)
-        soft_mask = cv2.GaussianBlur(soft_mask, (0, 0), sigmaX=sigma, sigmaY=sigma)
+        soft_mask = opencv_gaussian_blur(soft_mask, (0, 0), sigma_x=sigma, sigma_y=sigma, min_pixels=0)
     alpha_soft = np.clip(alpha.astype(np.float32) / 255.0, 0.0, 1.0)
     soft_mask = np.maximum(soft_mask, np.clip(alpha_soft * 1.1, 0.0, 1.0))
     return np.clip(soft_mask, 0.0, 1.0)
@@ -270,8 +274,8 @@ def _replace_asset_skin_with_base_roi(
     if replacement_color is not None:
         replaced[:, :, :3][replace_mask] = replacement_color
         return Image.fromarray(replaced, mode="RGBA")
-    asset_ycrcb = cv2.cvtColor(asset_rgb, cv2.COLOR_RGB2YCrCb).astype(np.float32)
-    base_ycrcb = cv2.cvtColor(base_rgb, cv2.COLOR_RGB2YCrCb).astype(np.float32)
+    asset_ycrcb = opencv_cvt_color(asset_rgb, cv2.COLOR_RGB2YCrCb, min_pixels=8_192).astype(np.float32)
+    base_ycrcb = opencv_cvt_color(base_rgb, cv2.COLOR_RGB2YCrCb, min_pixels=8_192).astype(np.float32)
     matched_ycrcb = asset_ycrcb.copy()
     matched_ycrcb[:, :, 0][replace_mask] = (
         asset_ycrcb[:, :, 0][replace_mask] * 0.35
@@ -285,9 +289,10 @@ def _replace_asset_skin_with_base_roi(
         base_ycrcb[:, :, 2][replace_mask] * 0.95
         + asset_ycrcb[:, :, 2][replace_mask] * 0.05
     )
-    matched_rgb = cv2.cvtColor(
+    matched_rgb = opencv_cvt_color(
         np.clip(matched_ycrcb, 0.0, 255.0).astype(np.uint8),
         cv2.COLOR_YCrCb2RGB,
+        min_pixels=8_192,
     )
     replaced[:, :, :3][replace_mask] = matched_rgb[replace_mask]
     return Image.fromarray(replaced, mode="RGBA")
@@ -390,10 +395,11 @@ def compose_bundle_frame(
     if warped_rgba.ndim == 3 and warped_rgba.shape[2] == 4:
         hard_coverage_mask = np.where(warped_rgba[:, :, 3] >= 4, np.uint8(255), np.uint8(0))
         if int(np.count_nonzero(hard_coverage_mask)) > 0:
-            hard_coverage_mask = cv2.dilate(
+            hard_coverage_mask = opencv_dilate(
                 hard_coverage_mask,
                 cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)),
                 iterations=1,
+                min_pixels=24_000,
             )
     timings_ms["coverage_mask_ms"] = round((time.perf_counter() - coverage_started_at) * 1000.0, 3)
 

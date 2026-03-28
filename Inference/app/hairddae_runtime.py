@@ -14,10 +14,17 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from app.angle_priority_selection import (
+    is_angle_priority_pose_compatible,
+    rank_assets_by_angle_priority,
+    shortlist_assets_by_angle_priority,
+    should_release_current_asset,
+)
 from app.models import FeatureMessageModel
 from app.overlay_postprocess_pipeline import apply_overlay_postprocess
 from app.render import build_render_task
 from app.server_render import compose_bundle_frame
+from cv2_cuda_utils import opencv_add_weighted, opencv_cvt_color
 
 
 TOOLS_DIR = Path(__file__).resolve().parents[1] / "hairddae_tools"
@@ -33,6 +40,7 @@ from run_hair_overlay_poc import (
     asset_rank_score,
     compose_overlay_blend_frame,
     compose_overlay_transition_frames,
+    derive_geom_from_feature,
     normalize_renderer_name,
     pose_distance,
     resolve_hair_tone_gain,
@@ -160,6 +168,22 @@ class HairOverlayRuntime:
         self.render_cost_preference_score_gap = float(
             os.environ.get("INFERENCE_RTC_RENDER_COST_PREFERENCE_SCORE_GAP", "2.4")
         )
+        self.switch_cooldown_frames = max(
+            1,
+            int(os.environ.get("INFERENCE_RTC_SWITCH_COOLDOWN_FRAMES", "3")),
+        )
+        self.switch_hold_margin_bias = float(
+            os.environ.get("INFERENCE_RTC_SWITCH_HOLD_MARGIN_BIAS", "0.8")
+        )
+        self.switch_significant_improvement_bias = float(
+            os.environ.get("INFERENCE_RTC_SWITCH_SIGNIFICANT_IMPROVEMENT_BIAS", "0.8")
+        )
+        self.angle_priority_enabled = str(
+            os.environ.get("INFERENCE_RTC_ANGLE_PRIORITY_ENABLED", "0")
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        self.pose_smoothing_enabled = str(
+            os.environ.get("INFERENCE_RTC_POSE_SMOOTHING_ENABLED", "1")
+        ).strip().lower() in {"1", "true", "yes", "on"}
         self.bundle_render_enabled = str(
             os.environ.get("INFERENCE_RTC_BUNDLE_RENDER_ENABLED", "1")
         ).strip().lower() in {"1", "true", "yes", "on"}
@@ -176,22 +200,23 @@ class HairOverlayRuntime:
             os.environ.get("INFERENCE_RTC_LIGHTWEIGHT_OVERLAY_ONLY", "0")
         ).strip().lower() in {"1", "true", "yes", "on"}
         self.lightweight_renderer_name = normalize_renderer_name(
-            os.environ.get("INFERENCE_RTC_LIGHTWEIGHT_RENDERER_NAME", "mesh_v2")
+            os.environ.get("INFERENCE_RTC_LIGHTWEIGHT_RENDERER_NAME", DEFAULT_RENDERER)
         )
         self._lock = threading.Lock()
-        self._landmarker = build_landmarker(self.model_path, num_faces=3)
+        self._landmarker = None
         self._user_parser: RuntimeFaceParsing | None = None
         self._current_session: RuntimeSessionState | None = None
         self._sessions: dict[str, RuntimeSessionState] = {}
         self._integrity_rejected_asset_ids: set[str] = set()
         self._asset_pose_index: dict[tuple[int, int, int], list[dict[str, Any]]] = {}
         self._bundle_render_entry_cache: dict[str, RuntimeBundleRenderEntry] = {}
+        self._bundle_render_entry_cache_limit = max(
+            8,
+            int(os.environ.get("INFERENCE_RTC_BUNDLE_RENDER_ENTRY_CACHE_LIMIT", "64")),
+        )
         self.user_parsing_ready = False
         self.user_parsing_error: str | None = None
         self.available_renderers = [name for name in AVAILABLE_RENDERERS if name != "mesh_v4"]
-        self._ensure_user_parser()
-        if self.user_parsing_ready:
-            self.available_renderers = list(AVAILABLE_RENDERERS)
         requested_renderer = normalize_renderer_name(renderer_name)
         if requested_renderer in self.available_renderers:
             self.default_renderer_name = requested_renderer
@@ -217,6 +242,11 @@ class HairOverlayRuntime:
         self._init_user_parser()
         if self.user_parsing_ready and "mesh_v4" not in self.available_renderers:
             self.available_renderers = list(AVAILABLE_RENDERERS)
+
+    def _ensure_landmarker(self) -> Any:
+        if self._landmarker is None:
+            self._landmarker = build_landmarker(self.model_path, num_faces=3)
+        return self._landmarker
 
     def _require_session(self) -> RuntimeSessionState:
         if self._current_session is None:
@@ -851,6 +881,76 @@ class HairOverlayRuntime:
             },
         }
 
+    def _angle_priority_candidate_assets_for_user_row(
+        self,
+        user_row: dict[str, Any],
+        *,
+        limit: int,
+        max_radius: int = 12,
+    ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        if not self._asset_pose_index or not isinstance(user_row.get("pose"), dict):
+            candidates = shortlist_assets_by_angle_priority(
+                user_row,
+                self._candidate_assets(),
+                limit=limit,
+            )
+            return candidates, {
+                "source": "angle_priority_full_scan",
+                "candidate_pool_size": len(candidates),
+                "runtime_asset_count": len(self.assets),
+                "pose_radius": None,
+            }
+
+        user_pose = user_row.get("pose") or {}
+        user_yaw = int(user_pose.get("yaw_1deg") or 0)
+        user_pitch = int(user_pose.get("pitch_1deg") or 0)
+        user_roll = int(user_pose.get("roll_1deg") or 0)
+        broken_asset_ids = self._broken_asset_ids
+
+        for radius in range(0, max_radius + 1):
+            ring_candidates: list[dict[str, Any]] = []
+            seen_asset_ids: set[str] = set()
+            for yaw_value in range(user_yaw - radius, user_yaw + radius + 1):
+                for pitch_value in range(user_pitch - radius, user_pitch + radius + 1):
+                    for roll_value in range(user_roll - radius, user_roll + radius + 1):
+                        if max(abs(user_yaw - yaw_value), abs(user_pitch - pitch_value), abs(user_roll - roll_value)) != radius:
+                            continue
+                        for asset_row in self._asset_pose_index.get(
+                            self._pose_index_key(yaw_value, pitch_value, roll_value),
+                            (),
+                        ):
+                            asset_id = str(asset_row.get("asset_id") or "").strip()
+                            if not asset_id or asset_id in seen_asset_ids or asset_id in broken_asset_ids:
+                                continue
+                            if self._asset_bundle_integrity_error(asset_row) is not None:
+                                continue
+                            seen_asset_ids.add(asset_id)
+                            ring_candidates.append(asset_row)
+            if ring_candidates:
+                candidates = shortlist_assets_by_angle_priority(
+                    user_row,
+                    ring_candidates,
+                    limit=limit,
+                )
+                return candidates, {
+                    "source": "angle_priority_pose_ring",
+                    "candidate_pool_size": len(candidates),
+                    "runtime_asset_count": len(self.assets),
+                    "pose_radius": radius,
+                }
+
+        candidates = shortlist_assets_by_angle_priority(
+            user_row,
+            self._candidate_assets(),
+            limit=limit,
+        )
+        return candidates, {
+            "source": "angle_priority_full_scan_fallback",
+            "candidate_pool_size": len(candidates),
+            "runtime_asset_count": len(self.assets),
+            "pose_radius": max_radius,
+        }
+
     def _ranking_candidate_limit(
         self,
         user_row: dict[str, Any],
@@ -1236,7 +1336,7 @@ class HairOverlayRuntime:
             previous_float = previous_array.astype(np.float32)
             current_float = current_array.astype(np.float32)
             return (previous_float * (1.0 - current_alpha) + current_float * current_alpha).astype(np.float32)
-        blended = cv2.addWeighted(
+        blended = opencv_add_weighted(
             previous_array.astype(np.float32),
             1.0 - current_alpha,
             current_array.astype(np.float32),
@@ -1584,6 +1684,19 @@ class HairOverlayRuntime:
             abs(float(raw_bbox["w"]) - float(prev_bbox["w"])) / max(1.0, float(prev_bbox["w"])),
             abs(float(raw_bbox["h"]) - float(prev_bbox["h"])) / max(1.0, float(prev_bbox["h"])),
         )
+        motion = {
+            "pose_delta": round(pose_delta, 4),
+            "center_delta_norm": round(center_delta_norm, 4),
+            "size_delta_norm": round(size_delta_norm, 4),
+            "fast": bool(pose_delta >= 7.0 or center_delta_norm >= 0.10 or size_delta_norm >= 0.09),
+            "moderate": bool(pose_delta >= 3.0 or center_delta_norm >= 0.05 or size_delta_norm >= 0.04),
+        }
+
+        if not self.pose_smoothing_enabled:
+            passthrough_row = dict(user_row)
+            passthrough_row["_motion"] = motion
+            self._smoothed_user_row = passthrough_row
+            return passthrough_row
 
         pose_alpha = 0.64
         if pose_delta >= 7.0 or center_delta_norm >= 0.12:
@@ -1623,13 +1736,7 @@ class HairOverlayRuntime:
             lerp(float(prev_row["face_ratio"]), float(user_row["face_ratio"]), geometry_alpha),
             6,
         )
-        smoothed_row["_motion"] = {
-            "pose_delta": round(pose_delta, 4),
-            "center_delta_norm": round(center_delta_norm, 4),
-            "size_delta_norm": round(size_delta_norm, 4),
-            "fast": bool(pose_delta >= 7.0 or center_delta_norm >= 0.10 or size_delta_norm >= 0.09),
-            "moderate": bool(pose_delta >= 3.0 or center_delta_norm >= 0.05 or size_delta_norm >= 0.04),
-        }
+        smoothed_row["_motion"] = motion
         self._smoothed_user_row = smoothed_row
         return smoothed_row
 
@@ -1895,6 +2002,8 @@ class HairOverlayRuntime:
 
         best_band = self._pitch_band_key(int(best_asset["pitch_1deg"]))
         current_yaw_gap = abs(user_yaw - int(current_asset["yaw_1deg"]))
+        if should_release_current_asset(getattr(self, "angle_priority_enabled", False), user_row, current_asset, best_asset):
+            return best_asset, best_score, False
         allowed_gap = 1.8 if moderate_motion else 3.8
         if current_yaw_gap >= 2:
             allowed_gap = 1.2 if moderate_motion else 2.4
@@ -1933,6 +2042,13 @@ class HairOverlayRuntime:
             if float(score) > best_score + allowed_gap:
                 continue
             if risk_bucket > 0 and risk_score > best_risk - 0.08:
+                continue
+            if not is_angle_priority_pose_compatible(
+                getattr(self, "angle_priority_enabled", False),
+                user_row,
+                best_asset,
+                asset_row,
+            ):
                 continue
             safer_candidates.append(
                 (
@@ -1987,6 +2103,13 @@ class HairOverlayRuntime:
                 continue
             candidate_pose_gap = pose_distance(user_row["pose"], asset_row)
             if candidate_pose_gap > best_pose_gap + 4.0:
+                continue
+            if not is_angle_priority_pose_compatible(
+                getattr(self, "angle_priority_enabled", False),
+                user_row,
+                best_asset,
+                asset_row,
+            ):
                 continue
             cheaper_candidates.append(
                 (
@@ -2062,16 +2185,36 @@ class HairOverlayRuntime:
         representative_asset_id: str | None = None,
     ) -> tuple[dict[str, Any], float, str, list[tuple[dict[str, Any], float]]]:
         selection_started_at = time.perf_counter()
-        candidate_assets, candidate_metrics = self._candidate_assets_for_user_row(user_row)
-        ranking_candidate_limit = self._ranking_candidate_limit(user_row, len(candidate_assets))
-        candidate_metrics = dict(candidate_metrics)
-        candidate_metrics["ranking_candidate_limit"] = ranking_candidate_limit
-        ranked_assets = select_best_assets(
-            user_row,
-            candidate_assets,
-            limit=10,
-            candidate_limit=ranking_candidate_limit,
-        )
+        if getattr(self, "angle_priority_enabled", False):
+            if "_geom" not in user_row:
+                user_row["_geom"] = derive_geom_from_feature(user_row)
+            ranking_candidate_limit = self._ranking_candidate_limit(user_row, self.runtime_asset_count)
+            shortlist, candidate_metrics = self._angle_priority_candidate_assets_for_user_row(
+                user_row,
+                limit=max(80, ranking_candidate_limit),
+            )
+            candidate_metrics = dict(candidate_metrics)
+            candidate_metrics["ranking_candidate_limit"] = ranking_candidate_limit
+            ranked_assets = rank_assets_by_angle_priority(
+                user_row,
+                shortlist,
+                limit=10,
+                asset_score_fn=asset_rank_score,
+                asset_crop_risk_fn=self._asset_crop_risk,
+            )
+            if ranked_assets:
+                user_row["_best_score"] = ranked_assets[0][1]
+        else:
+            candidate_assets, candidate_metrics = self._candidate_assets_for_user_row(user_row)
+            ranking_candidate_limit = self._ranking_candidate_limit(user_row, len(candidate_assets))
+            candidate_metrics = dict(candidate_metrics)
+            candidate_metrics["ranking_candidate_limit"] = ranking_candidate_limit
+            ranked_assets = select_best_assets(
+                user_row,
+                candidate_assets,
+                limit=10,
+                candidate_limit=ranking_candidate_limit,
+            )
         if not ranked_assets:
             raise RuntimeError("No candidate assets available")
         selection_latency_ms = round((time.perf_counter() - selection_started_at) * 1000.0, 3)
@@ -2209,6 +2352,7 @@ class HairOverlayRuntime:
         current_yaw_gap = abs(user_row["pose"]["yaw_1deg"] - int(current_asset["yaw_1deg"]))
         current_pitch_gap = abs(user_row["pose"]["pitch_1deg"] - int(current_asset["pitch_1deg"]))
         current_roll_gap = abs(user_row["pose"]["roll_1deg"] - int(current_asset["roll_1deg"]))
+        best_yaw_gap = abs(user_row["pose"]["yaw_1deg"] - int(best_asset["yaw_1deg"]))
         pitch_dominant = current_pitch_gap >= current_yaw_gap + 1 and current_pitch_gap >= 2
         neighbor_pose = (
             abs(int(current_asset["yaw_1deg"]) - int(best_asset["yaw_1deg"])) <= (2 if side_view else 1)
@@ -2225,13 +2369,16 @@ class HairOverlayRuntime:
             )
             and current_roll_gap <= (2 if side_view else 1)
         )
-        significant_improvement = (current_score - best_score) >= (
+        significant_improvement_threshold = (
             4.6 if vertical_view and pitch_dominant and not moderate_motion else
             4.0 if side_view and not moderate_motion else
             3.0 if side_view else
             2.2 if moderate_motion else
             3.2
         )
+        if not fast_motion:
+            significant_improvement_threshold += self.switch_significant_improvement_bias
+        significant_improvement = (current_score - best_score) >= significant_improvement_threshold
         if fast_motion:
             hold_margin = 1.0
         elif moderate_motion:
@@ -2249,13 +2396,23 @@ class HairOverlayRuntime:
             hold_margin -= 0.8 if moderate_motion else 1.0
         if current_yaw_gap >= 3 and current_pitch_gap >= 2:
             hold_margin -= 0.4
+        if not fast_motion:
+            hold_margin += self.switch_hold_margin_bias
+            if current_within_deadband and neighbor_pose:
+                hold_margin += min(0.6, self.switch_hold_margin_bias * 0.75)
         hold_margin = max(1.0, hold_margin)
         force_switch = current_pose_gap > 16.0 and best_pose_gap + 3.0 < current_pose_gap
         if side_view and current_yaw_gap >= 3 and best_pose_gap + 1.5 < current_pose_gap:
             force_switch = True
         if safe_candidate_selected and not same_asset:
             force_switch = True
-        in_cooldown = self._frames_since_switch < 1
+        in_cooldown = self._frames_since_switch < self.switch_cooldown_frames
+        if should_release_current_asset(getattr(self, "angle_priority_enabled", False), user_row, current_asset, best_asset):
+            significant_improvement = True
+            hold_margin = max(0.8, hold_margin - 1.8)
+            in_cooldown = False
+            if current_yaw_gap >= 4 or best_yaw_gap <= 2:
+                force_switch = True
 
         if same_asset:
             self._blend_assets = self._build_blend_assets(user_row, ranked_assets, current_asset, "stable")
@@ -2357,6 +2514,7 @@ class HairOverlayRuntime:
         resolve_compose_renderer_ms = round((time.perf_counter() - resolve_renderer_started_at) * 1000.0, 3)
         if self._transition is None:
             overlay_blend_started_at = time.perf_counter()
+            overlay_blend_detail_ms: dict[str, object] = {}
             target_frame = compose_overlay_blend_frame(
                 user_row,
                 frame_bgr,
@@ -2364,20 +2522,24 @@ class HairOverlayRuntime:
                 self.asset_root,
                 renderer_name=effective_renderer_name,
                 user_mask_bundle=user_mask_bundle,
+                debug_payload=overlay_blend_detail_ms,
             )
             overlay_blend_ms = round((time.perf_counter() - overlay_blend_started_at) * 1000.0, 3)
+            coverage_mask = overlay_blend_detail_ms.pop("_coverage_mask", None)
             self._merge_selection_trace_fields(
                 compose_detail_ms={
                     "compose_mode": "overlay",
                     "resolve_compose_mode_ms": resolve_compose_mode_ms,
                     "resolve_compose_renderer_ms": resolve_compose_renderer_ms,
                     "overlay_blend_ms": overlay_blend_ms,
+                    "overlay_blend_detail_ms": overlay_blend_detail_ms,
                     "transition_blend_ms": 0.0,
                 }
             )
-            return target_frame, 1.0, None, effective_renderer_name, None
+            return target_frame, 1.0, None, effective_renderer_name, coverage_mask
 
         overlay_transition_started_at = time.perf_counter()
+        overlay_transition_detail_ms: dict[str, object] = {}
         from_frame, target_frame = compose_overlay_transition_frames(
             user_row,
             frame_bgr,
@@ -2386,13 +2548,15 @@ class HairOverlayRuntime:
             self.asset_root,
             renderer_name=effective_renderer_name,
             user_mask_bundle=user_mask_bundle,
+            debug_payload=overlay_transition_detail_ms,
         )
         overlay_transition_frames_ms = round((time.perf_counter() - overlay_transition_started_at) * 1000.0, 3)
         self._transition["step"] += 1
         transition_progress = min(1.0, self._transition["step"] / float(self._transition["steps"]))
         transition_blend_started_at = time.perf_counter()
-        blended_frame = cv2.addWeighted(from_frame, 1.0 - transition_progress, target_frame, transition_progress, 0.0)
+        blended_frame = opencv_add_weighted(from_frame, 1.0 - transition_progress, target_frame, transition_progress, 0.0)
         transition_blend_ms = round((time.perf_counter() - transition_blend_started_at) * 1000.0, 3)
+        coverage_mask = overlay_transition_detail_ms.pop("_coverage_mask", None)
         from_asset_id = str(self._transition["from_asset_id"])
         if transition_progress >= 1.0:
             self._transition = None
@@ -2403,9 +2567,10 @@ class HairOverlayRuntime:
                 "resolve_compose_renderer_ms": resolve_compose_renderer_ms,
                 "overlay_transition_frames_ms": overlay_transition_frames_ms,
                 "transition_blend_ms": transition_blend_ms,
+                "overlay_transition_detail_ms": overlay_transition_detail_ms,
             }
         )
-        return blended_frame, transition_progress, from_asset_id, effective_renderer_name, None
+        return blended_frame, transition_progress, from_asset_id, effective_renderer_name, coverage_mask
 
     def _resolve_compose_mode(
         self,
@@ -2547,6 +2712,9 @@ class HairOverlayRuntime:
             protect_face_mask_path=protect_face_mask_path,
         )
         if cache_key:
+            if cache_key not in self._bundle_render_entry_cache and len(self._bundle_render_entry_cache) >= self._bundle_render_entry_cache_limit:
+                oldest_key = next(iter(self._bundle_render_entry_cache))
+                self._bundle_render_entry_cache.pop(oldest_key, None)
             self._bundle_render_entry_cache[cache_key] = entry
         if debug_payload is not None:
             debug_payload.update(
@@ -2619,13 +2787,13 @@ class HairOverlayRuntime:
             if scalp_color_array.size >= 3 and bool(np.all(np.isfinite(scalp_color_array[:3]))):
                 skin_replacement_color_rgb = scalp_color_array[:3][::-1].astype(np.float32)
         frame_to_pil_started_at = time.perf_counter()
-        frame_image = Image.fromarray(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
+        frame_image = Image.fromarray(opencv_cvt_color(frame_bgr, cv2.COLOR_BGR2RGB))
         frame_to_pil_ms = round((time.perf_counter() - frame_to_pil_started_at) * 1000.0, 3)
         original_frame_image = None
         source_to_pil_ms = 0.0
         if isinstance(source_frame_bgr, np.ndarray) and source_frame_bgr.shape == frame_bgr.shape:
             source_to_pil_started_at = time.perf_counter()
-            original_frame_image = Image.fromarray(cv2.cvtColor(source_frame_bgr, cv2.COLOR_BGR2RGB))
+            original_frame_image = Image.fromarray(opencv_cvt_color(source_frame_bgr, cv2.COLOR_BGR2RGB))
             source_to_pil_ms = round((time.perf_counter() - source_to_pil_started_at) * 1000.0, 3)
         server_debug_payload: dict[str, object] = {}
         compose_bundle_started_at = time.perf_counter()
@@ -2639,7 +2807,7 @@ class HairOverlayRuntime:
         )
         compose_bundle_frame_ms = round((time.perf_counter() - compose_bundle_started_at) * 1000.0, 3)
         pil_to_bgr_started_at = time.perf_counter()
-        rendered_bgr = cv2.cvtColor(np.asarray(rendered_image), cv2.COLOR_RGB2BGR)
+        rendered_bgr = opencv_cvt_color(np.asarray(rendered_image), cv2.COLOR_RGB2BGR)
         pil_to_bgr_ms = round((time.perf_counter() - pil_to_bgr_started_at) * 1000.0, 3)
         coverage_mask = server_debug_payload.get("coverage_mask")
         if not isinstance(coverage_mask, np.ndarray) or coverage_mask.shape != frame_bgr.shape[:2]:
@@ -2734,7 +2902,7 @@ class HairOverlayRuntime:
         self._transition["step"] += 1
         transition_progress = min(1.0, self._transition["step"] / float(self._transition["steps"]))
         transition_blend_started_at = time.perf_counter()
-        blended_frame = cv2.addWeighted(
+        blended_frame = opencv_add_weighted(
             from_frame,
             1.0 - transition_progress,
             target_frame,
@@ -2814,6 +2982,7 @@ class HairOverlayRuntime:
         prefer_latency: bool = False,
         session_id: str | None = None,
         representative_asset_id: str | None = None,
+        encode_output: bool = True,
     ) -> dict[str, Any]:
         started_at = time.perf_counter()
         with self._lock:
@@ -2842,7 +3011,7 @@ class HairOverlayRuntime:
                     reference_face_bbox = None if self._smoothed_user_row is None else self._smoothed_user_row.get("face_bbox")
                     raw_user_row = extract_feature_from_frame_bgr(
                         frame_bgr,
-                        self._landmarker,
+                        self._ensure_landmarker(),
                         file_name="runtime_frame.jpg",
                         reference_face_bbox=reference_face_bbox,
                     )
@@ -3009,9 +3178,12 @@ class HairOverlayRuntime:
             finally:
                 self._current_session = previous_session
 
-        encoded_ok, encoded = cv2.imencode(".jpg", output_frame, jpeg_params(self.jpeg_quality))
-        if not encoded_ok:
-            raise RuntimeError("Failed to encode overlay image")
+        image_bytes: bytes | None = None
+        if encode_output:
+            encoded_ok, encoded = cv2.imencode(".jpg", output_frame, jpeg_params(self.jpeg_quality))
+            if not encoded_ok:
+                raise RuntimeError("Failed to encode overlay image")
+            image_bytes = encoded.tobytes()
 
         total_latency_ms = round((time.perf_counter() - started_at) * 1000.0, 3)
         selection_latency_ms = 0.0
@@ -3076,7 +3248,7 @@ class HairOverlayRuntime:
                     bundle_detail_ms,
                 )
         return {
-            "image_bytes": encoded.tobytes(),
+            "image_bytes": image_bytes,
             "output_frame_bgr": output_frame,
             "user_row": user_row,
             "raw_user_row": raw_user_row,
@@ -3120,4 +3292,5 @@ class HairOverlayRuntime:
     def close(self) -> None:
         with self._lock:
             self._sessions.clear()
-            self._landmarker.close()
+            if self._landmarker is not None:
+                self._landmarker.close()

@@ -13,6 +13,7 @@ pytest.importorskip("torch")
 pytest.importorskip("torchvision")
 
 from app.main import create_app
+from app.lazy_runtime_dependencies import LazyFaceTracker, LazyHairSegmenter
 from conftest import apply_test_env
 
 
@@ -29,6 +30,32 @@ def test_healthz_returns_ok() -> None:
         response = client.get("/healthz")
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
+
+
+def test_startup_prewarm_warms_face_tracker_and_hair_segmenter(monkeypatch: pytest.MonkeyPatch) -> None:
+    apply_test_env(
+        monkeypatch,
+        INFERENCE_HTTP_TEST_ENABLED="true",
+        INFERENCE_NODE_ID="infer-a-01",
+        INFERENCE_STARTUP_PREWARM_ENABLED="true",
+    )
+    warmed_dependencies: list[str] = []
+
+    monkeypatch.setattr(
+        LazyFaceTracker,
+        "warm_up",
+        lambda self: warmed_dependencies.append("face_tracker") or 1.0,
+    )
+    monkeypatch.setattr(
+        LazyHairSegmenter,
+        "warm_up",
+        lambda self: warmed_dependencies.append("hair_segmenter") or 1.0,
+    )
+
+    with TestClient(create_app()):
+        pass
+
+    assert warmed_dependencies == ["face_tracker", "hair_segmenter"]
 
 
 def test_apply_route_removed() -> None:

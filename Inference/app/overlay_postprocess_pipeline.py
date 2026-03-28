@@ -207,7 +207,7 @@ def _build_directional_outer_ring_gate(
     def _side_bottom_y(ear_root: tuple[float, float] | None) -> float:
         if ear_root is None:
             return temple_y + face_h * 0.20
-        return max(temple_y + max(1.0, face_h * 0.02), ear_root[1] - 10.0)
+        return max(temple_y + max(1.0, face_h * 0.02), ear_root[1] - 15.0)
 
     left_side_bottom_y = min(jaw_y, _side_bottom_y(left_ear_root))
     right_side_bottom_y = min(jaw_y, _side_bottom_y(right_ear_root))

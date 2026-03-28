@@ -1,7 +1,5 @@
 import { type RefObject, useEffect, useRef, useState } from 'react'
 
-import { describeMediaStream, logRtcDebug } from '@/lib/Camera/debug'
-
 type RemoteVideoSize = {
   width: number
   height: number
@@ -33,9 +31,6 @@ export function useHairRtcDisplay({
     const remoteVideo = remoteVideoRef.current
     if (!remoteVideo) return
 
-    logRtcDebug('remote display stream update', {
-      remoteStream: describeMediaStream(remoteStream),
-    })
     setRemoteVideoReady(false)
     setRemoteVideoSize(null)
     remoteVideo.srcObject = remoteStream
@@ -99,30 +94,11 @@ export function useHairRtcDisplay({
   }, [isRenderReady, remoteVideoReady, settleMs])
 
   useEffect(() => {
-    logRtcDebug('remote display readiness changed', {
-      remoteVideoReady,
-      remoteDisplayReady,
-      hasRemoteVideo,
-      isRenderReady,
-      remoteVideoSize,
-    })
-  }, [
-    hasRemoteVideo,
-    isRenderReady,
-    remoteDisplayReady,
-    remoteVideoReady,
-    remoteVideoSize,
-  ])
-
-  useEffect(() => {
     const displayVideo = hasRemoteVideo
       ? remoteVideoRef.current
       : localVideoRef.current
     if (!displayVideo) return
 
-    logRtcDebug('display video play requested', {
-      source: hasRemoteVideo ? 'remote' : 'local',
-    })
     void displayVideo.play().catch(() => {})
   }, [hasRemoteVideo, localVideoRef])
 

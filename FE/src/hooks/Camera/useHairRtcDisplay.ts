@@ -9,7 +9,6 @@ type UseHairRtcDisplayArgs = {
   localVideoRef: RefObject<HTMLVideoElement | null>
   remoteStream: MediaStream | null
   isRenderReady: boolean
-  isFrameFrozen: boolean
   settleMs?: number
 }
 
@@ -17,7 +16,6 @@ export function useHairRtcDisplay({
   localVideoRef,
   remoteStream,
   isRenderReady,
-  isFrameFrozen,
   settleMs = 40,
 }: UseHairRtcDisplayArgs) {
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null)
@@ -101,13 +99,8 @@ export function useHairRtcDisplay({
       : localVideoRef.current
     if (!displayVideo) return
 
-    if (isFrameFrozen) {
-      displayVideo.pause()
-      return
-    }
-
     void displayVideo.play().catch(() => {})
-  }, [hasRemoteVideo, isFrameFrozen, localVideoRef])
+  }, [hasRemoteVideo, localVideoRef])
 
   return {
     remoteVideoRef,

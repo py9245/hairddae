@@ -12,7 +12,11 @@ import { useHairRtcDisplay } from '@/hooks/Camera/useHairRtcDisplay'
 import { useHairRtcSession } from '@/hooks/Camera/useHairRtcSession'
 import { useViewportCaptureStream } from '@/hooks/Camera/useViewportCaptureStream'
 import { fetchMe } from '@/lib/auth'
-import { captureCompositedImage } from '@/lib/Camera/capture'
+import {
+  captureCompositedImage,
+  downloadCanvasImage,
+  drawCompositedSourceToCanvas,
+} from '@/lib/Camera/capture'
 import {
   fetchHairItems,
   HAIR_ITEMS,
@@ -50,6 +54,7 @@ export function HairCameraView({
 }: HairCameraViewProps) {
   const router = useRouter()
   const wrapRef = useRef<HTMLDivElement | null>(null)
+  const frozenFrameCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const hasHandledInitialSelectionRef = useRef(false)
   const finishTimerRef = useRef<number | null>(null)
 
@@ -115,7 +120,6 @@ export function HairCameraView({
       localVideoRef: videoRef,
       remoteStream: hairRtc.remoteStream,
       isRenderReady: hairRtc.isRenderReady,
-      isFrameFrozen,
     })
 
   useEffect(() => {
@@ -232,17 +236,54 @@ export function HairCameraView({
     router,
   ])
 
-  const handleHairSelect = useCallback((hairId: number) => {
-    setIsFrameFrozen(false)
+  const handleFreezeChange = useCallback(
+    (nextFrozen: boolean) => {
+      if (!nextFrozen) {
+        setIsFrameFrozen(false)
+        return
+      }
 
-    if (hairId <= 0) {
-      setPendingHairId(null)
-      setSelectedHairId(0)
-      return
-    }
+      const wrap = wrapRef.current
+      const frozenCanvas = frozenFrameCanvasRef.current
+      const sourceVideo = hasRemoteVideo
+        ? remoteVideoRef.current
+        : videoRef.current
 
-    setPendingHairId(hairId)
-  }, [])
+      if (!wrap || !frozenCanvas || !sourceVideo) {
+        return
+      }
+
+      const didDraw = drawCompositedSourceToCanvas({
+        source: sourceVideo,
+        outputCanvas: frozenCanvas,
+        width: wrap.clientWidth,
+        height: wrap.clientHeight,
+        mirror: hasRemoteVideo ? false : RTC_STAGE_MIRRORED,
+      })
+
+      if (!didDraw) {
+        return
+      }
+
+      setIsFrameFrozen(true)
+    },
+    [hasRemoteVideo, remoteVideoRef, videoRef],
+  )
+
+  const handleHairSelect = useCallback(
+    (hairId: number) => {
+      handleFreezeChange(false)
+
+      if (hairId <= 0) {
+        setPendingHairId(null)
+        setSelectedHairId(0)
+        return
+      }
+
+      setPendingHairId(hairId)
+    },
+    [handleFreezeChange],
+  )
 
   const handleModalFinish = useCallback(() => {
     if (pendingHairId == null) {
@@ -255,10 +296,21 @@ export function HairCameraView({
 
   const handleModalClose = useCallback(() => {
     setPendingHairId(null)
-    setIsFrameFrozen(false)
-  }, [])
+    handleFreezeChange(false)
+  }, [handleFreezeChange])
 
   const handleCapture = useCallback(() => {
+    const frozenCanvas = frozenFrameCanvasRef.current
+
+    if (isFrameFrozen && frozenCanvas) {
+      downloadCanvasImage(frozenCanvas, {
+        hairItems,
+        selectedHairId: displayHairId,
+      })
+      setIsFrameFrozen(false)
+      return
+    }
+
     captureCompositedImage({
       videoRef: hasRemoteVideo ? remoteVideoRef : videoRef,
       wrapRef,
@@ -268,7 +320,14 @@ export function HairCameraView({
     })
 
     setIsFrameFrozen(false)
-  }, [displayHairId, hairItems, hasRemoteVideo, remoteVideoRef, videoRef])
+  }, [
+    displayHairId,
+    hairItems,
+    hasRemoteVideo,
+    isFrameFrozen,
+    remoteVideoRef,
+    videoRef,
+  ])
 
   const handleTopLeftAction = useCallback(() => {
     if (isFrameFrozen) {
@@ -340,7 +399,9 @@ export function HairCameraView({
           <HairCameraStage
             videoRef={videoRef}
             remoteVideoRef={remoteVideoRef}
+            frozenFrameCanvasRef={frozenFrameCanvasRef}
             hasRemoteVideo={hasRemoteVideo}
+            showFrozenFrame={isFrameFrozen}
             localMirrored={RTC_STAGE_MIRRORED}
             remoteMirrored={false}
           />
@@ -367,7 +428,7 @@ export function HairCameraView({
             frozen={isFrameFrozen}
             onSelect={handleHairSelect}
             onCapture={handleCapture}
-            onFreezeChange={setIsFrameFrozen}
+            onFreezeChange={handleFreezeChange}
           />
 
           {shouldShowGuideModal ? (

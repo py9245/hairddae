@@ -5,6 +5,7 @@ from typing import Any
 
 import cv2
 import numpy as np
+from functools import lru_cache
 
 from cv2_cuda_utils import (
     opencv_absdiff,
@@ -32,6 +33,20 @@ def _as_mask(mask: object, shape: tuple[int, int]) -> np.ndarray | None:
     if mask.shape != shape:
         return None
     return np.where(mask > 0, np.uint8(255), np.uint8(0))
+
+
+@lru_cache(maxsize=8)
+def _coord_grids(shape: tuple[int, int]) -> tuple[np.ndarray, np.ndarray]:
+    frame_height, frame_width = shape
+    x_coords = np.broadcast_to(
+        np.arange(frame_width, dtype=np.float32)[None, :],
+        (frame_height, frame_width),
+    )
+    y_coords = np.broadcast_to(
+        np.arange(frame_height, dtype=np.float32)[:, None],
+        (frame_height, frame_width),
+    )
+    return x_coords, y_coords
 
 
 def _as_color(color: object) -> np.ndarray | None:
@@ -112,12 +127,14 @@ def _build_local_background_field(
     candidate_mask: np.ndarray,
     *,
     fallback_color: np.ndarray,
+    external_background_mask: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray] | None:
     active_cols = np.flatnonzero(np.any(candidate_mask > 0, axis=0))
     if active_cols.size == 0:
         return None
 
-    external_background_mask = _build_external_background_mask(hair_mask)
+    if external_background_mask is None:
+        external_background_mask = _build_external_background_mask(hair_mask)
     if int(np.count_nonzero(external_background_mask)) < 16:
         return None
 
@@ -213,14 +230,7 @@ def _build_directional_outer_ring_gate(
     left_side_bottom_y = min(jaw_y, _side_bottom_y(left_ear_root))
     right_side_bottom_y = min(jaw_y, _side_bottom_y(right_ear_root))
 
-    x_coords = np.broadcast_to(
-        np.arange(frame_width, dtype=np.float32)[None, :],
-        (frame_height, frame_width),
-    )
-    y_coords = np.broadcast_to(
-        np.arange(frame_height, dtype=np.float32)[:, None],
-        (frame_height, frame_width),
-    )
+    x_coords, y_coords = _coord_grids(shape)
 
     top_gate = (
         (x_coords >= left_temple_x - face_w * 0.52)
@@ -325,14 +335,7 @@ def _build_outer_side_fringe_gates(
     keep_expand_x = face_w * (0.14 * side_pose_strength)
     keep_expand_bottom = face_h * (0.18 * side_pose_strength)
 
-    x_coords = np.broadcast_to(
-        np.arange(frame_width, dtype=np.float32)[None, :],
-        (frame_height, frame_width),
-    )
-    y_coords = np.broadcast_to(
-        np.arange(frame_height, dtype=np.float32)[:, None],
-        (frame_height, frame_width),
-    )
+    x_coords, y_coords = _coord_grids(shape)
 
     side_seed_gate = (
         (
@@ -398,6 +401,8 @@ def _build_outer_background_ring_mask(
     cleanup_seed_mask: np.ndarray,
     hair_binary_mask: np.ndarray,
     user_row: dict[str, Any],
+    *,
+    external_background_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     if OUTER_BACKGROUND_RING_PX <= 0:
         return np.zeros_like(hair_binary_mask, dtype=np.uint8)
@@ -408,10 +413,9 @@ def _build_outer_background_ring_mask(
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
     dilated_mask = opencv_dilate(cleanup_seed_mask, kernel, iterations=1, min_pixels=0)
     outer_ring_mask = opencv_bitwise_and(dilated_mask, opencv_bitwise_not(cleanup_seed_mask))
-    outer_ring_mask = opencv_bitwise_and(
-        outer_ring_mask,
-        _build_external_background_mask(hair_binary_mask),
-    )
+    if external_background_mask is None:
+        external_background_mask = _build_external_background_mask(hair_binary_mask)
+    outer_ring_mask = opencv_bitwise_and(outer_ring_mask, external_background_mask)
     outer_ring_gate = _build_directional_outer_ring_gate(user_row, hair_binary_mask.shape)
     if outer_ring_gate is None:
         return np.zeros_like(hair_binary_mask, dtype=np.uint8)
@@ -427,6 +431,7 @@ def _backgroundize_mask(
     *,
     background_color: np.ndarray,
     alpha_scale: float = 1.0,
+    external_background_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     if int(np.count_nonzero(cleanup_mask)) < 8:
         return output_frame_bgr
@@ -460,13 +465,20 @@ def _backgroundize_mask(
         hair_binary_mask,
         cleanup_mask,
         fallback_color=background_color,
+        external_background_mask=external_background_mask,
     )
     target_roi = background_fill * 0.97 + blur_roi.astype(np.float32) * 0.03
     if local_background_field is not None:
         field_cols, field_colors = local_background_field
-        field_by_col = np.tile(background_color[None, :], (output_frame_bgr.shape[1], 1))
-        field_by_col[field_cols] = field_colors
-        target_roi = field_by_col[x : x + width][None, :, :] * 0.97 + blur_roi.astype(np.float32) * 0.03
+        field_by_col = np.tile(background_color[None, :], (width, 1))
+        local_cols = field_cols - x
+        valid_local_cols = (
+            (local_cols >= 0)
+            & (local_cols < width)
+        )
+        if bool(np.any(valid_local_cols)):
+            field_by_col[local_cols[valid_local_cols]] = field_colors[valid_local_cols]
+        target_roi = field_by_col[None, :, :] * 0.97 + blur_roi.astype(np.float32) * 0.03
 
     output_roi_float = output_roi.astype(np.float32)
     output_roi_float = output_roi_float * (1.0 - alpha[..., None]) + target_roi * alpha[..., None]
@@ -495,6 +507,7 @@ def apply_overlay_postprocess(
     background_color = _as_color(user_row.get("_hair_background_color"))
     if hair_binary_mask is None or background_color is None:
         return output_frame_bgr
+    external_background_mask = _build_external_background_mask(hair_binary_mask)
 
     candidate_mask = np.array(hair_binary_mask, copy=True)
     if fringe_mask is not None:
@@ -532,6 +545,7 @@ def apply_overlay_postprocess(
         cleanup_seed_mask,
         hair_binary_mask,
         user_row,
+        external_background_mask=external_background_mask,
     )
     if fringe_central_keep_gate is not None:
         outer_ring_mask = opencv_bitwise_and(
@@ -551,4 +565,5 @@ def apply_overlay_postprocess(
         cleanup_mask,
         background_color=background_color,
         alpha_scale=1.0,
+        external_background_mask=external_background_mask,
     )

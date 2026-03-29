@@ -1420,8 +1420,9 @@ def test_apply_overlay_postprocess_merges_residual_and_outer_ring_into_single_cl
         *,
         background_color: np.ndarray,
         alpha_scale: float = 1.0,
+        external_background_mask: np.ndarray | None = None,
     ) -> np.ndarray:
-        _ = (base_frame_bgr, hair_binary_mask, background_color, alpha_scale)
+        _ = (base_frame_bgr, hair_binary_mask, background_color, alpha_scale, external_background_mask)
         captured_masks.append(np.array(cleanup_mask, copy=True))
         return output_frame_bgr
 

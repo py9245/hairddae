@@ -1730,8 +1730,7 @@ class HairAttenuator:
         if width <= 1 or height <= 1:
             return frame_bgr, {}
 
-        output = frame_bgr.copy()
-        roi = output[y : y + height, x : x + width]
+        roi = frame_bgr[y : y + height, x : x + width]
         mask_roi = binary_mask[y : y + height, x : x + width]
         work_scale = min(
             1.0,
@@ -1748,8 +1747,6 @@ class HairAttenuator:
             work_width = width
             work_height = height
 
-        tone_source_gray = opencv_cvt_color(roi_work, cv2.COLOR_BGR2GRAY, min_pixels=8_192)
-        tone_source_gray = opencv_cvt_color(tone_source_gray, cv2.COLOR_GRAY2BGR, min_pixels=8_192)
         detail_ms["roi_setup_ms"] = round((time.perf_counter() - roi_setup_started_at) * 1000.0, 3)
         hair_mask_full: np.ndarray | None = None
         fringe_mask_full: np.ndarray | None = None
@@ -1796,6 +1793,8 @@ class HairAttenuator:
             detail_ms["confidence_alpha_ms"] = round((time.perf_counter() - confidence_alpha_started_at) * 1000.0, 3)
 
             zone_mask_started_at = time.perf_counter()
+            tone_source_gray = opencv_cvt_color(roi_work, cv2.COLOR_BGR2GRAY, min_pixels=8_192)
+            tone_source_gray = opencv_cvt_color(tone_source_gray, cv2.COLOR_GRAY2BGR, min_pixels=8_192)
             tone_metadata = self._tone_metadata_from_roi(
                 tone_source_gray,
                 np.clip(confidence_work * 255.0, 0.0, 255.0).astype(np.uint8),
@@ -1923,10 +1922,7 @@ class HairAttenuator:
                 scalp_matte_work = np.empty_like(roi_work, dtype=np.uint8)
                 scalp_matte_work[:] = np.clip(scalp_color, 0.0, 255.0).astype(np.uint8)
             if scalp_matte_work is not None and np.any(fringe_work):
-                weakened_work = weakened_work.astype(np.float32)
-                fringe_fill = scalp_matte_work.astype(np.float32)
-                weakened_work[fringe_work] = fringe_fill[fringe_work]
-                weakened_work = np.clip(weakened_work, 0, 255).astype(np.uint8)
+                weakened_work[fringe_work] = scalp_matte_work[fringe_work]
                 fringe_alpha = np.where(fringe_work, np.float32(1.0), np.float32(0.0))
                 alpha_work = np.where(
                     fringe_work[..., None],
@@ -2111,6 +2107,7 @@ class HairAttenuator:
         detail_ms["upscale_alpha_ms"] = round((time.perf_counter() - upscale_alpha_started_at) * 1000.0, 3)
 
         roi_blend_started_at = time.perf_counter()
+        output = frame_bgr.copy()
         blended = (
             roi.astype(np.float32) * (1.0 - alpha)
             + weakened.astype(np.float32) * alpha

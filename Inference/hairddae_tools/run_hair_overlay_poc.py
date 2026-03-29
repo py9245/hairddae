@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import threading
 import time
 from collections import Counter
 from functools import lru_cache
@@ -63,6 +64,8 @@ MESH_V2_CONTROL_POINT_SPECS: tuple[tuple[str, dict[str, float]], ...] = (
     ("neck_center", {"neck_left": 0.5, "neck_right": 0.5}),
     ("neck_right", {"neck_right": 1.0}),
 )
+
+_LEGACY_GPU_CACHE_LOCK = threading.Lock()
 
 
 def _env_bool(name: str, default: bool) -> bool:
@@ -2315,24 +2318,51 @@ def build_legacy_overlay_layer(
     dst_x0, dst_y0, dst_x1, dst_y1 = roi
     roi_width = dst_x1 - dst_x0
     roi_height = dst_y1 - dst_y0
-    if bool(asset_bundle.get("packed_crop_only")):
-        src_rgb = asset_image
-        src_alpha = asset_alpha
-        src_hair = asset_hair
-        src_face = asset_bundle["face_mask"]
-        src_protect_face = asset_bundle["protect_face_mask"]
+    if bool(asset_bundle.get("_legacy_static_sources_ready")):
+        src_rgb = asset_bundle["_legacy_src_rgb"]
+        src_alpha = asset_bundle["_legacy_src_alpha"]
+        src_hair = asset_bundle["_legacy_src_hair"]
+        src_face = asset_bundle["_legacy_src_face"]
+        src_protect_face = asset_bundle["_legacy_src_protect_face"]
+        src_mask_stack = asset_bundle["_legacy_src_mask_stack"]
     else:
-        src_rgb = asset_image[src_y0:src_y1, src_x0:src_x1]
-        src_alpha = asset_alpha[src_y0:src_y1, src_x0:src_x1]
-        src_hair = asset_hair[src_y0:src_y1, src_x0:src_x1]
-        src_face = asset_bundle["face_mask"][src_y0:src_y1, src_x0:src_x1]
-        src_protect_face = asset_bundle["protect_face_mask"][src_y0:src_y1, src_x0:src_x1]
-    src_mask_stack = np.dstack([src_face, src_protect_face])
+        if bool(asset_bundle.get("packed_crop_only")):
+            src_rgb = asset_image
+            src_alpha = asset_alpha
+            src_hair = asset_hair
+            src_face = asset_bundle["face_mask"]
+            src_protect_face = asset_bundle["protect_face_mask"]
+        else:
+            src_rgb = asset_image[src_y0:src_y1, src_x0:src_x1]
+            src_alpha = asset_alpha[src_y0:src_y1, src_x0:src_x1]
+            src_hair = asset_hair[src_y0:src_y1, src_x0:src_x1]
+            src_face = asset_bundle["face_mask"][src_y0:src_y1, src_x0:src_x1]
+            src_protect_face = asset_bundle["protect_face_mask"][src_y0:src_y1, src_x0:src_x1]
+        src_mask_stack = np.dstack([src_face, src_protect_face])
+        asset_bundle["_legacy_src_rgb"] = src_rgb
+        asset_bundle["_legacy_src_alpha"] = src_alpha
+        asset_bundle["_legacy_src_hair"] = src_hair
+        asset_bundle["_legacy_src_face"] = src_face
+        asset_bundle["_legacy_src_protect_face"] = src_protect_face
+        asset_bundle["_legacy_src_mask_stack"] = src_mask_stack
+        asset_bundle["_legacy_static_sources_ready"] = True
     roi_matrix = roi_affine_from_crop(matrix, src_x0, src_y0, dst_x0, dst_y0)
-    gpu_src_rgb = opencv_cuda_upload(src_rgb, min_pixels=16_384)
-    gpu_src_alpha = opencv_cuda_upload(src_alpha, min_pixels=16_384)
-    gpu_src_hair = opencv_cuda_upload(src_hair, min_pixels=16_384)
-    gpu_src_mask_stack = opencv_cuda_upload(src_mask_stack, min_pixels=16_384)
+    with _LEGACY_GPU_CACHE_LOCK:
+        if bool(asset_bundle.get("_legacy_gpu_upload_ready")):
+            gpu_src_rgb = asset_bundle.get("_legacy_gpu_src_rgb")
+            gpu_src_alpha = asset_bundle.get("_legacy_gpu_src_alpha")
+            gpu_src_hair = asset_bundle.get("_legacy_gpu_src_hair")
+            gpu_src_mask_stack = asset_bundle.get("_legacy_gpu_src_mask_stack")
+        else:
+            gpu_src_rgb = opencv_cuda_upload(src_rgb, min_pixels=16_384)
+            gpu_src_alpha = opencv_cuda_upload(src_alpha, min_pixels=16_384)
+            gpu_src_hair = opencv_cuda_upload(src_hair, min_pixels=16_384)
+            gpu_src_mask_stack = opencv_cuda_upload(src_mask_stack, min_pixels=16_384)
+            asset_bundle["_legacy_gpu_src_rgb"] = gpu_src_rgb
+            asset_bundle["_legacy_gpu_src_alpha"] = gpu_src_alpha
+            asset_bundle["_legacy_gpu_src_hair"] = gpu_src_hair
+            asset_bundle["_legacy_gpu_src_mask_stack"] = gpu_src_mask_stack
+            asset_bundle["_legacy_gpu_upload_ready"] = True
     warp_rgb_started_at = time.perf_counter()
     warped_rgb_gpu = opencv_warp_affine_uploaded(
         gpu_src_rgb,

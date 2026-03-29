@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from aiortc.mediastreams import VIDEO_CLOCK_RATE, VIDEO_TIME_BASE
 
 pytest.importorskip("cv2")
 pytest.importorskip("mediapipe")
@@ -431,3 +432,31 @@ def test_bundle_fallback_frame_passes_original_frame_image(monkeypatch: pytest.M
     assert bundle is not None
     assert rendered_bgr is not None
     assert captured["original_frame_image"] is not None
+
+
+def test_output_timestamp_uses_configured_output_fps(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = build_settings(monkeypatch)
+    object.__setattr__(settings, "rtc_output_fps", 15)
+
+    track = RtcServerTrackedRenderTrack.__new__(RtcServerTrackedRenderTrack)
+    track._settings = settings
+    track._output_timestamp = None
+
+    first_pts, first_time_base = track._next_output_timestamp()
+    second_pts, second_time_base = track._next_output_timestamp()
+
+    assert first_pts == 0
+    assert second_pts - first_pts == int(round(VIDEO_CLOCK_RATE / 15.0))
+    assert first_time_base == VIDEO_TIME_BASE
+    assert second_time_base == VIDEO_TIME_BASE
+
+
+def test_target_output_size_uses_configured_output_dimensions(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = build_settings(monkeypatch)
+    object.__setattr__(settings, "rtc_output_width", 576)
+    object.__setattr__(settings, "rtc_output_height", 1024)
+
+    track = RtcServerTrackedRenderTrack.__new__(RtcServerTrackedRenderTrack)
+    track._settings = settings
+
+    assert track._target_output_size((432, 768)) == (576, 1024)

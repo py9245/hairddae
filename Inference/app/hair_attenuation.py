@@ -1352,7 +1352,7 @@ class HairAttenuator:
             np.array(
                 [
                     forehead_center[0],
-                    forehead_center[1] + face_height * 0.02,
+                    forehead_center[1] + face_height * 0.08,
                 ],
                 dtype=np.float32,
             ),
@@ -1361,9 +1361,28 @@ class HairAttenuator:
         )
         axes = (
             max(1, int(round(face_width * 0.84))),
-            max(1, int(round(face_height * 0.37))),
+            max(1, int(round(face_height * 0.42))),
         )
         cv2.ellipse(mask, center, axes, roll_deg, 0, 360, 255, -1)
+
+        # Extend only the central lower fringe so short front bangs stay in the
+        # fringe region without widening the temple-side cleanup zone.
+        lower_bang_center = _clip_point(
+            np.array(
+                [
+                    forehead_mid[0],
+                    forehead_mid[1] + face_height * 0.26,
+                ],
+                dtype=np.float32,
+            ),
+            width,
+            height,
+        )
+        lower_bang_axes = (
+            max(1, int(round(face_width * 0.34))),
+            max(1, int(round(face_height * 0.20))),
+        )
+        cv2.ellipse(mask, lower_bang_center, lower_bang_axes, roll_deg, 0, 360, 255, -1)
 
         wing_axes = (
             max(1, int(round(face_width * 0.27))),

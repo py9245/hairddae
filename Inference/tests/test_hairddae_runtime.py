@@ -1270,6 +1270,41 @@ def test_apply_overlay_postprocess_backgroundizes_outer_side_fringe_residual() -
     assert float(np.abs(right_region - right_bg).mean()) < float(np.abs(original_region - right_bg).mean())
 
 
+def test_outer_side_fringe_gate_narrows_side_seed_for_large_yaw() -> None:
+    user_row_front = {
+        "face_bbox": {"x": 40, "y": 30, "w": 80, "h": 110},
+        "anchors": {
+            "left_temple": {"x": 52.0, "y": 56.0},
+            "right_temple": {"x": 108.0, "y": 56.0},
+            "left_ear_root": {"x": 40.0, "y": 84.0},
+            "right_ear_root": {"x": 120.0, "y": 84.0},
+            "forehead_center": {"x": 80.0, "y": 38.0},
+            "crown": {"x": 80.0, "y": 18.0},
+        },
+        "pose": {"yaw_float": 0.0},
+    }
+    user_row_side = {
+        **user_row_front,
+        "pose": {"yaw_float": 28.0},
+    }
+
+    front_seed_gate, front_keep_gate = overlay_postprocess_pipeline._build_outer_side_fringe_gates(
+        user_row_front,
+        (160, 160),
+    )
+    side_seed_gate, side_keep_gate = overlay_postprocess_pipeline._build_outer_side_fringe_gates(
+        user_row_side,
+        (160, 160),
+    )
+
+    assert front_seed_gate is not None
+    assert side_seed_gate is not None
+    assert front_keep_gate is not None
+    assert side_keep_gate is not None
+    assert int(np.count_nonzero(side_seed_gate)) < int(np.count_nonzero(front_seed_gate))
+    assert int(np.count_nonzero(side_keep_gate)) > int(np.count_nonzero(front_keep_gate))
+
+
 def test_apply_overlay_postprocess_preserves_central_face_attached_fringe_residual() -> None:
     runtime = build_runtime_stub()
     output = np.full((24, 24, 3), 50, dtype=np.uint8)
@@ -1343,8 +1378,6 @@ def test_apply_overlay_postprocess_adds_outer_n_ring_from_residual_seed_without_
     assert not np.array_equal(postprocessed[0:3, 9:15], output[0:3, 9:15])
     assert not np.array_equal(postprocessed[4:8, 0:5], output[4:8, 0:5])
     assert not np.array_equal(postprocessed[4:8, 19:24], output[4:8, 19:24])
-    assert np.array_equal(postprocessed[9:20, 0:5], output[9:20, 0:5])
-    assert np.array_equal(postprocessed[9:20, 19:24], output[9:20, 19:24])
     assert np.array_equal(postprocessed[10:20, 0:5], output[10:20, 0:5])
     assert np.array_equal(postprocessed[10:20, 19:24], output[10:20, 19:24])
     assert np.array_equal(postprocessed[7:12, 10:14], output[7:12, 10:14])

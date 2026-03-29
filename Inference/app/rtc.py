@@ -4,6 +4,7 @@ import asyncio
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+import fractions
 import json
 import logging
 import cv2
@@ -37,7 +38,7 @@ try:
         RTCSessionDescription,
         VideoStreamTrack,
     )
-    from aiortc.mediastreams import MediaStreamError
+    from aiortc.mediastreams import MediaStreamError, VIDEO_CLOCK_RATE, VIDEO_TIME_BASE
     from av import VideoFrame
 except ImportError:  # pragma: no cover - runtime guarded
     RTCConfiguration = None
@@ -47,6 +48,8 @@ except ImportError:  # pragma: no cover - runtime guarded
     RTCSessionDescription = None
     VideoStreamTrack = object
     MediaStreamError = RuntimeError
+    VIDEO_CLOCK_RATE = 90000
+    VIDEO_TIME_BASE = fractions.Fraction(1, 90000)
     VideoFrame = None
 
 
@@ -772,6 +775,13 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         self._frame_available = asyncio.Event()
         self._source_ended = False
         self._last_output_sent_at_ms = 0.0
+        self._output_timestamp: int | None = None
+        self._last_input_pts: int | None = None
+        self._last_output_pts_sent: int | None = None
+        self._input_pts_duplicate_count = 0
+        self._input_pts_rewind_count = 0
+        self._output_pts_duplicate_count = 0
+        self._output_pts_rewind_count = 0
         self._tracking_snapshot = TrackingCacheSnapshot(
             user_row=None,
             landmarks_px=None,
@@ -803,6 +813,64 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
     def _output_interval_ms(self) -> float:
         configured_fps = max(1, int(getattr(self._settings, "rtc_output_fps", DEFAULT_RTC_FPS) or DEFAULT_RTC_FPS))
         return 1000.0 / float(configured_fps)
+
+    def _target_output_size(self, original_size: tuple[int, int]) -> tuple[int, int]:
+        configured_width = max(0, int(getattr(self._settings, "rtc_output_width", 0) or 0))
+        configured_height = max(0, int(getattr(self._settings, "rtc_output_height", 0) or 0))
+        if configured_width <= 0 or configured_height <= 0:
+            return original_size
+        return configured_width, configured_height
+
+    def _next_output_timestamp(self) -> tuple[int, fractions.Fraction]:
+        configured_fps = max(1, int(getattr(self._settings, "rtc_output_fps", DEFAULT_RTC_FPS) or DEFAULT_RTC_FPS))
+        increment = max(1, int(round(VIDEO_CLOCK_RATE / float(configured_fps))))
+        if self._output_timestamp is None:
+            self._output_timestamp = 0
+        else:
+            self._output_timestamp += increment
+        return self._output_timestamp, VIDEO_TIME_BASE
+
+    @staticmethod
+    def _time_base_to_str(time_base: Any) -> str | None:
+        if time_base is None:
+            return None
+        try:
+            numerator = getattr(time_base, "numerator", None)
+            denominator = getattr(time_base, "denominator", None)
+            if numerator is not None and denominator is not None:
+                return f"{numerator}/{denominator}"
+            return str(time_base)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _pts_to_ms(pts: int | None, time_base: Any) -> float | None:
+        if pts is None or time_base is None:
+            return None
+        try:
+            return round(float(pts) * float(time_base) * 1000.0, 3)
+        except Exception:
+            return None
+
+    def _record_input_pts(self, pts: int | None) -> None:
+        if pts is None:
+            return
+        if self._last_input_pts is not None:
+            if pts == self._last_input_pts:
+                self._input_pts_duplicate_count += 1
+            elif pts < self._last_input_pts:
+                self._input_pts_rewind_count += 1
+        self._last_input_pts = pts
+
+    def _record_output_pts(self, pts: int | None) -> None:
+        if pts is None:
+            return
+        if self._last_output_pts_sent is not None:
+            if pts == self._last_output_pts_sent:
+                self._output_pts_duplicate_count += 1
+            elif pts < self._last_output_pts_sent:
+                self._output_pts_rewind_count += 1
+        self._last_output_pts_sent = pts
 
     async def _wait_for_next_output_slot(self) -> None:
         interval_ms = self._output_interval_ms()
@@ -1112,6 +1180,11 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         frame_started_at = time.perf_counter()
         buffered_frame = await self._next_latest_frame()
         frame = buffered_frame.frame
+        input_pts = getattr(frame, "pts", None)
+        input_time_base = getattr(frame, "time_base", None)
+        self._record_input_pts(input_pts)
+        input_time_base_str = self._time_base_to_str(input_time_base)
+        input_pts_ms = self._pts_to_ms(input_pts, input_time_base)
         next_seq = self._state.server_processed_seq + 1
         frame_age_ms = round(max(0.0, time.monotonic() * 1000.0 - buffered_frame.received_at_ms), 3)
         decode_started_at = time.perf_counter()
@@ -1143,6 +1216,10 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             runtime_latency_ms = round((time.perf_counter() - runtime_started_at) * 1000.0, 3)
         except Exception as exc:
             logger.warning("rtc hairddae runtime failed: %s", exc)
+            pts, time_base = self._next_output_timestamp()
+            self._record_output_pts(pts)
+            frame.pts = pts
+            frame.time_base = time_base
             self._last_output_sent_at_ms = time.monotonic() * 1000.0
             return frame
 
@@ -1286,6 +1363,8 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             total_pipeline_latency_ms = round((time.perf_counter() - frame_started_at) * 1000.0, 3)
             self._state.recent_pipeline_latency_ms = total_pipeline_latency_ms
             self._update_adaptive_resolution(total_pipeline_latency_ms)
+            fallback_pts, fallback_time_base = self._next_output_timestamp()
+            self._record_output_pts(fallback_pts)
             now_ms = time.monotonic() * 1000.0
             if now_ms - self._state.last_perf_log_at_ms >= PERF_LOG_INTERVAL_MS:
                 self._state.last_perf_log_at_ms = now_ms
@@ -1326,7 +1405,9 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                         "rtc perf detail: seq=%s frame_age=%.1f queue_depth=%s dropped_total=%s "
                         "control_last=%s control_ms=%.2f control_err=%s control_count=%s "
                         "channel_state=%s buffered_amount=%s send_count=%s last_send=%.3f "
-                        "feature_ms=%.1f primary_overlay_ms=%.1f fallback_ms=%.1f overlay_ms=%.1f user_parse_ms=%.1f"
+                        "feature_ms=%.1f primary_overlay_ms=%.1f fallback_ms=%.1f overlay_ms=%.1f user_parse_ms=%.1f "
+                        "input_pts=%s input_tb=%s input_ms=%s input_dup=%s input_rewind=%s "
+                        "output_pts=%s output_tb=%s output_ms=%s output_dup=%s output_rewind=%s"
                     ),
                     next_seq,
                     frame_age_ms,
@@ -1345,6 +1426,16 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                     float(runtime_result.get("fallback_latency_ms", 0.0) or 0.0),
                     float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
                     float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
+                    input_pts,
+                    input_time_base_str,
+                    input_pts_ms,
+                    self._input_pts_duplicate_count,
+                    self._input_pts_rewind_count,
+                    fallback_pts,
+                    self._time_base_to_str(fallback_time_base),
+                    self._pts_to_ms(fallback_pts, fallback_time_base),
+                    self._output_pts_duplicate_count,
+                    self._output_pts_rewind_count,
                 )
                 attenuation_detail_ms = prepare_metrics.get("hair_attenuation_detail_ms")
                 if attenuation_detail_ms:
@@ -1381,12 +1472,15 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 total_pipeline_latency_ms=total_pipeline_latency_ms,
                 selected_asset_id=selected_asset_id or None,
             )
+            frame.pts = fallback_pts
+            frame.time_base = fallback_time_base
             self._last_output_sent_at_ms = time.monotonic() * 1000.0
             return frame
-        if rendered_bgr.shape[1] != original_size[0] or rendered_bgr.shape[0] != original_size[1]:
+        target_output_size = self._target_output_size(original_size)
+        if rendered_bgr.shape[1] != target_output_size[0] or rendered_bgr.shape[0] != target_output_size[1]:
             rendered_bgr = opencv_resize(
                 rendered_bgr,
-                (original_size[0], original_size[1]),
+                (target_output_size[0], target_output_size[1]),
                 interpolation=cv2.INTER_LINEAR,
             )
         resize_out_latency_ms = round((time.perf_counter() - resize_out_started_at) * 1000.0, 3)
@@ -1395,6 +1489,8 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         total_pipeline_latency_ms = round((time.perf_counter() - frame_started_at) * 1000.0, 3)
         self._state.recent_pipeline_latency_ms = total_pipeline_latency_ms
         self._update_adaptive_resolution(total_pipeline_latency_ms)
+        output_pts, output_time_base = self._next_output_timestamp()
+        self._record_output_pts(output_pts)
 
         now_ms = time.monotonic() * 1000.0
         if now_ms - self._state.last_perf_log_at_ms >= PERF_LOG_INTERVAL_MS:
@@ -1436,7 +1532,9 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                     "rtc perf detail: seq=%s frame_age=%.1f queue_depth=%s dropped_total=%s "
                     "control_last=%s control_ms=%.2f control_err=%s control_count=%s "
                     "channel_state=%s buffered_amount=%s send_count=%s last_send=%.3f "
-                    "feature_ms=%.1f primary_overlay_ms=%.1f fallback_ms=%.1f overlay_ms=%.1f user_parse_ms=%.1f"
+                    "feature_ms=%.1f primary_overlay_ms=%.1f fallback_ms=%.1f overlay_ms=%.1f user_parse_ms=%.1f "
+                    "input_pts=%s input_tb=%s input_ms=%s input_dup=%s input_rewind=%s "
+                    "output_pts=%s output_tb=%s output_ms=%s output_dup=%s output_rewind=%s"
                 ),
                 next_seq,
                 frame_age_ms,
@@ -1455,6 +1553,16 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 float(runtime_result.get("fallback_latency_ms", 0.0) or 0.0),
                 float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
                 float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
+                input_pts,
+                input_time_base_str,
+                input_pts_ms,
+                self._input_pts_duplicate_count,
+                self._input_pts_rewind_count,
+                output_pts,
+                self._time_base_to_str(output_time_base),
+                self._pts_to_ms(output_pts, output_time_base),
+                self._output_pts_duplicate_count,
+                self._output_pts_rewind_count,
             )
             attenuation_detail_ms = prepare_metrics.get("hair_attenuation_detail_ms")
             if attenuation_detail_ms:
@@ -1494,8 +1602,8 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         )
 
         next_frame = VideoFrame.from_ndarray(rendered_bgr, format="bgr24")
-        next_frame.pts = frame.pts
-        next_frame.time_base = frame.time_base
+        next_frame.pts = output_pts
+        next_frame.time_base = output_time_base
         self._last_output_sent_at_ms = time.monotonic() * 1000.0
         return next_frame
 
@@ -1517,6 +1625,53 @@ def _sdp_candidate_lines(description: Any) -> list[str]:
     if not isinstance(sdp, str):
         return []
     return [line for line in sdp.splitlines() if line.startswith("a=candidate:")]
+
+
+def _sdp_video_codec_summary(description: Any) -> list[str]:
+    sdp = getattr(description, "sdp", None)
+    if not isinstance(sdp, str) or not sdp:
+        return []
+
+    lines = [line.strip() for line in sdp.splitlines() if line.strip()]
+    video_payload_types: list[str] = []
+    rtpmap_by_pt: dict[str, str] = {}
+    fmtp_by_pt: dict[str, str] = {}
+
+    in_video_section = False
+    for line in lines:
+        if line.startswith("m="):
+            in_video_section = line.startswith("m=video ")
+            if in_video_section:
+                parts = line.split()
+                if len(parts) >= 4:
+                    video_payload_types = parts[3:]
+            continue
+        if not in_video_section:
+            continue
+        if line.startswith("a=rtpmap:"):
+            payload = line[len("a=rtpmap:") :]
+            pt, _, codec = payload.partition(" ")
+            if pt and codec:
+                rtpmap_by_pt[pt] = codec
+        elif line.startswith("a=fmtp:"):
+            payload = line[len("a=fmtp:") :]
+            pt, _, fmtp = payload.partition(" ")
+            if pt and fmtp:
+                fmtp_by_pt[pt] = fmtp
+
+    summary: list[str] = []
+    for pt in video_payload_types:
+        codec = rtpmap_by_pt.get(pt)
+        if codec is None:
+            summary.append(f"pt={pt}")
+            continue
+        entry = f"{codec}(pt={pt}"
+        fmtp = fmtp_by_pt.get(pt)
+        if fmtp:
+            entry += f",fmtp={fmtp}"
+        entry += ")"
+        summary.append(entry)
+    return summary
 
 
 def _create_peer_connection(settings: Settings) -> Any:
@@ -1840,6 +1995,10 @@ def attach_rtc_routes(app: FastAPI) -> None:
             "rtc remote candidates: %s",
             _sdp_candidate_lines(peer_connection.remoteDescription),
         )
+        logger.info(
+            "rtc remote video codecs: %s",
+            _sdp_video_codec_summary(peer_connection.remoteDescription),
+        )
         answer = await peer_connection.createAnswer()
         await peer_connection.setLocalDescription(answer)
         await _wait_for_ice_gathering_complete(peer_connection)
@@ -1851,6 +2010,10 @@ def attach_rtc_routes(app: FastAPI) -> None:
         logger.info(
             "rtc local candidates: %s",
             _sdp_candidate_lines(local_description),
+        )
+        logger.info(
+            "rtc local video codecs: %s",
+            _sdp_video_codec_summary(local_description),
         )
 
         return {

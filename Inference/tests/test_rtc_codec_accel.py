@@ -10,6 +10,13 @@ class _FakeCodec:
         self.mimeType = mime_type
 
 
+def test_nvenc_codec_options_omit_zerolatency() -> None:
+    options = rtc_codec_accel._nvenc_codec_options()
+    assert options["preset"] == "p4"
+    assert options["rc"] == "cbr"
+    assert "zerolatency" not in options
+
+
 def test_make_get_encoder_uses_nvenc_for_h264(monkeypatch):
     monkeypatch.setattr(
         rtc_codec_accel,

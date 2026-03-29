@@ -207,7 +207,8 @@ def _build_directional_outer_ring_gate(
     def _side_bottom_y(ear_root: tuple[float, float] | None) -> float:
         if ear_root is None:
             return temple_y + face_h * 0.20
-        return max(temple_y + max(1.0, face_h * 0.02), ear_root[1] - 15.0)
+        # stop the side ring above the ear lobe to avoid sideburn/background over-cleanup
+        return max(temple_y + max(1.0, face_h * 0.02), ear_root[1] - 5.0)
 
     left_side_bottom_y = min(jaw_y, _side_bottom_y(left_ear_root))
     right_side_bottom_y = min(jaw_y, _side_bottom_y(right_ear_root))
@@ -313,6 +314,16 @@ def _build_outer_side_fringe_gates(
     crown_y = crown[1] if crown is not None else max(0.0, forehead_y - face_h * 0.22)
     left_ear_y = left_ear_root[1] if left_ear_root is not None else temple_y + face_h * 0.28
     right_ear_y = right_ear_root[1] if right_ear_root is not None else temple_y + face_h * 0.28
+    pose = user_row.get("pose")
+    try:
+        yaw_abs = abs(float((pose or {}).get("yaw_float", 0.0)))
+    except (TypeError, ValueError):
+        yaw_abs = 0.0
+    side_pose_strength = float(np.clip((yaw_abs - 10.0) / 20.0, 0.0, 1.0))
+    side_seed_inset = face_w * (0.16 - 0.10 * side_pose_strength)
+    side_seed_bottom_pad = face_h * (0.08 - 0.10 * side_pose_strength)
+    keep_expand_x = face_w * (0.14 * side_pose_strength)
+    keep_expand_bottom = face_h * (0.18 * side_pose_strength)
 
     x_coords = np.broadcast_to(
         np.arange(frame_width, dtype=np.float32)[None, :],
@@ -325,21 +336,21 @@ def _build_outer_side_fringe_gates(
 
     side_seed_gate = (
         (
-            (x_coords <= left_temple_x + face_w * 0.16)
+            (x_coords <= left_temple_x + side_seed_inset)
             & (y_coords >= crown_y - face_h * 0.08)
-            & (y_coords <= left_ear_y + face_h * 0.08)
+            & (y_coords <= left_ear_y + side_seed_bottom_pad)
         )
         | (
-            (x_coords >= right_temple_x - face_w * 0.16)
+            (x_coords >= right_temple_x - side_seed_inset)
             & (y_coords >= crown_y - face_h * 0.08)
-            & (y_coords <= right_ear_y + face_h * 0.08)
+            & (y_coords <= right_ear_y + side_seed_bottom_pad)
         )
     )
     central_keep_gate = (
-        (x_coords >= left_temple_x + face_w * 0.02)
-        & (x_coords <= right_temple_x - face_w * 0.02)
+        (x_coords >= left_temple_x + face_w * 0.02 - keep_expand_x)
+        & (x_coords <= right_temple_x - face_w * 0.02 + keep_expand_x)
         & (y_coords >= crown_y - face_h * 0.24)
-        & (y_coords <= temple_y + face_h * 0.24)
+        & (y_coords <= temple_y + face_h * 0.24 + keep_expand_bottom)
     )
     if int(np.count_nonzero(side_seed_gate)) < 8:
         return None, None

@@ -1,6 +1,7 @@
 import { Link, useRouter } from '@tanstack/react-router'
 import { Eye, EyeClosed } from 'lucide-react'
 import { useState } from 'react'
+import { LoginButton } from '@/components/Auth/login-button'
 import { useLoginMutation } from '@/hooks/Auth/Login/useLoginMutation'
 import { auth } from '@/lib/auth'
 
@@ -57,6 +58,7 @@ export default function Login() {
               id="userID"
               type="text"
               value={input.userID}
+              maxLength={20}
               onChange={handleChange}
               placeholder="아이디를 입력하세요"
               className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
@@ -76,6 +78,7 @@ export default function Login() {
                 type={showPassword ? 'text' : 'password'}
                 value={input.password}
                 onChange={handleChange}
+                maxLength={20}
                 placeholder="비밀번호를 입력하세요"
                 className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface px-4 pr-12 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
               />
@@ -96,21 +99,15 @@ export default function Login() {
 
           {loginMutation.isError && (
             <p className="text-center text-sm text-red-500">
-              {loginMutation.error.message}
+              아이디 또는 비밀번호가 올바르지 않습니다.
             </p>
           )}
 
-          <button
-            type="submit"
-            disabled={!isFormValid || loginMutation.isPending}
-            className={`mt-4 h-12 w-full rounded-2xl text-lg font-bold text-white transition ${
-              !isFormValid || loginMutation.isPending
-                ? 'cursor-not-allowed bg-primary-100'
-                : 'cursor-pointer bg-primary-300 hover:bg-primary-200'
-            }`}
-          >
-            {loginMutation.isPending ? '로그인 중...' : '로그인'}
-          </button>
+          <LoginButton
+            className="mt-4"
+            disabled={!isFormValid}
+            isPending={loginMutation.isPending}
+          />
         </form>
 
         <p className="mt-10 text-center text-sm font-medium text-slate-500">

@@ -1,73 +1,41 @@
+import { useSearch } from '@tanstack/react-router'
 import { useMemo, useRef } from 'react'
-import FaceLandmarksView from '@/components/Camera/face-landmarks-view'
-import { useFaceLandmarker } from '@/hooks/Camera/useFaceLandmarker'
-import { useFaceTrackingLoop } from '@/hooks/Camera/useFaceTrackingLoop'
+
+import { HairCameraView } from '@/components/Camera/hair-camera-view'
 import { useUserMedia } from '@/hooks/Camera/useUserMedia'
 import {
-  HAIR_TRANSPORT,
-  RTC_CAPTURE_FPS,
-  RTC_CAPTURE_HEIGHT,
-  RTC_CAPTURE_WIDTH,
+  CAMERA_SOURCE_FPS,
+  CAMERA_SOURCE_HEIGHT,
+  CAMERA_SOURCE_WIDTH,
 } from '@/lib/Camera/runtime'
-import type { FaceFrame } from '@/lib/Camera/types'
 
 export default function Camera() {
-  const sourceVideoRef = useRef<HTMLVideoElement | null>(null)
+  const { applyLatest, hairId } = useSearch({ from: '/camera' })
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null)
-  const faceFrameRef = useRef<FaceFrame | null>(null)
 
-  const modelPath = useMemo(
-    () => `${import.meta.env.BASE_URL}models/face_landmarker.task`,
+  const mediaConstraints = useMemo<MediaStreamConstraints>(
+    () => ({
+      video: {
+        facingMode: 'user',
+        width: { ideal: CAMERA_SOURCE_WIDTH, max: CAMERA_SOURCE_WIDTH },
+        height: { ideal: CAMERA_SOURCE_HEIGHT, max: CAMERA_SOURCE_HEIGHT },
+        frameRate: { ideal: CAMERA_SOURCE_FPS, max: CAMERA_SOURCE_FPS },
+      },
+      audio: false,
+    }),
     [],
   )
 
-  const wasmPath = useMemo(() => `${import.meta.env.BASE_URL}mediapipe`, [])
-  const mediaConstraints = useMemo<MediaStreamConstraints | undefined>(() => {
-    if (HAIR_TRANSPORT !== 'rtc') {
-      return undefined
-    }
-
-    return {
-      video: {
-        facingMode: 'user',
-        width: { ideal: RTC_CAPTURE_WIDTH, max: RTC_CAPTURE_WIDTH },
-        height: { ideal: RTC_CAPTURE_HEIGHT, max: RTC_CAPTURE_HEIGHT },
-        frameRate: { ideal: RTC_CAPTURE_FPS, max: RTC_CAPTURE_FPS },
-      },
-      audio: false,
-    }
-  }, [])
-
-  const cam = useUserMedia({ videoRef: sourceVideoRef, constraints: mediaConstraints })
-  const shouldUseClientTracking = HAIR_TRANSPORT !== 'rtc'
-
-  const mp = useFaceLandmarker({
-    enabled: shouldUseClientTracking,
-    modelAssetPath: modelPath,
-    wasmBaseUrl: wasmPath,
-  })
-
-  useFaceTrackingLoop({
-    videoRef,
-    canvasRef,
-    landmarkerRef: mp.landmarkerRef,
-    enabled: shouldUseClientTracking && cam.ready && mp.ready,
-    yawSign: 1,
-    frameRef: faceFrameRef,
-    drawDebugOverlay: shouldUseClientTracking,
-    publishState: shouldUseClientTracking,
-  })
+  const cam = useUserMedia({ videoRef, constraints: mediaConstraints })
 
   return (
-    <FaceLandmarksView
-      sourceVideoRef={sourceVideoRef}
-      stream={cam.stream}
-      transport={HAIR_TRANSPORT}
+    <HairCameraView
       videoRef={videoRef}
-      canvasRef={canvasRef}
-      overlayCanvasRef={overlayCanvasRef}
+      cameraStream={cam.stream}
+      cameraReady={cam.ready}
+      cameraError={cam.error}
+      initialHairId={hairId ?? null}
+      autoSelectFirstHair={applyLatest ?? false}
     />
   )
 }

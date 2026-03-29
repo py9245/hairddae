@@ -17,7 +17,7 @@ interface Props {
 function toDate(value: string): Date | undefined {
   if (!value) return undefined
   const d = new Date(value)
-  return isNaN(d.getTime()) ? undefined : d
+  return Number.isNaN(d.getTime()) ? undefined : d
 }
 
 function toISOString(date: Date): string {

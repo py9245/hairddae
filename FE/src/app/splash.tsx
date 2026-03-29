@@ -1,6 +1,9 @@
 import { Link } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
-import { Button } from '@/components/ui/button'
+import Autoplay from 'embla-carousel-autoplay'
+import useEmblaCarousel from 'embla-carousel-react'
+import { useCallback, useEffect, useState } from 'react'
+import { PwaBanner } from '@/components/pwa-banner'
+import { SplashStartButton } from '@/components/splash-start-button'
 
 const slides = [
   {
@@ -21,37 +24,54 @@ const slides = [
 ] as const
 
 export default function Splash() {
+  const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true }, [
+    Autoplay({ delay: 3000, stopOnInteraction: false }),
+  ])
   const [activeSlide, setActiveSlide] = useState(0)
 
+  const onSelect = useCallback(() => {
+    if (!emblaApi) return
+    setActiveSlide(emblaApi.selectedScrollSnap())
+  }, [emblaApi])
+
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setActiveSlide((prev) => (prev + 1) % slides.length)
-    }, 3000)
-
-    return () => window.clearInterval(intervalId)
-  }, [])
-
-  const currentSlide = slides[activeSlide]
+    if (!emblaApi) return
+    onSelect()
+    emblaApi.on('select', onSelect)
+    emblaApi.on('reInit', onSelect)
+    return () => {
+      emblaApi.off('select', onSelect)
+      emblaApi.off('reInit', onSelect)
+    }
+  }, [emblaApi, onSelect])
 
   return (
-    <main className="app-frame-page flex flex-col overflow-hidden bg-bg-primary px-6 pt-16 text-[#2f2f2f]">
-      <div className="mx-auto flex w-full max-w-[390px] flex-1 flex-col">
-        <section className="flex flex-col items-center">
-          <h1 className="whitespace-pre-line px-8 text-center text-[20px] leading-[1.35] font-semibold tracking-[-0.03em] text-[#2f2f2f]">
-            {currentSlide.title}
-          </h1>
+    <main className="app-frame-page h-full overflow-y-auto bg-bg-primary px-6 pt-12 text-text-dark">
+      <div className="mx-auto flex min-h-full w-full max-w-[390px] flex-col pb-[5.5rem]">
+        <div className="w-full overflow-hidden" ref={emblaRef}>
+          <div className="flex">
+            {slides.map((slide, index) => (
+              <div className="min-w-0 flex-[0_0_100%]" key={slide.imageSrc}>
+                <section className="flex flex-col items-center">
+                  <h1 className="h-[54px] whitespace-pre-line px-8 text-center text-[20px] leading-[1.35] font-semibold tracking-[-0.03em] text-text-dark">
+                    {slide.title}
+                  </h1>
 
-          <div className="mt-[92px] flex w-full justify-center px-5">
-            <img
-              src={currentSlide.imageSrc}
-              alt={currentSlide.imageAlt}
-              width={398}
-              height={320}
-              loading="eager"
-              decoding="async"
-              className="h-auto w-full max-w-[398px] object-contain"
-              draggable={false}
-            />
+                  <div className="mt-12 flex w-full justify-center px-5 sm:mt-[92px]">
+                    <img
+                      src={slide.imageSrc}
+                      alt={slide.imageAlt}
+                      width={398}
+                      height={320}
+                      loading={index === 0 ? 'eager' : 'lazy'}
+                      decoding="async"
+                      className="h-auto w-full max-w-[398px] object-contain select-none"
+                      draggable={false}
+                    />
+                  </div>
+                </section>
+              </div>
+            ))}
           </div>
 
           <div className="mt-[30px] flex items-center justify-center gap-[7px]">
@@ -59,20 +79,21 @@ export default function Splash() {
               <span
                 key={slide.imageSrc}
                 className={`block size-[10px] rounded-full transition-colors ${
-                  index === activeSlide ? 'bg-[#f39ca6]' : 'bg-[#e3e3e8]'
+                  index === activeSlide
+                    ? 'bg-indicator-active'
+                    : 'bg-indicator-inactive'
                 }`}
               />
             ))}
           </div>
-        </section>
+        </div>
 
-        <div className="mt-auto">
-          <Button
-            asChild
-            className="h-14 w-full rounded-[8px] bg-[#ea7589] px-6 py-4 text-base font-medium leading-[1.4] text-[#f2f2f7] hover:bg-[#e1637b]"
-          >
+        <PwaBanner />
+
+        <div className="mt-8 pb-4">
+          <SplashStartButton asChild>
             <Link to="/auth/login">헤어 어때 시작하기</Link>
-          </Button>
+          </SplashStartButton>
         </div>
       </div>
     </main>

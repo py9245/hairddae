@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Meta, StoryObj } from '@storybook/react-vite'
+import { fn } from 'storybook/test'
 import { HairStyleCard } from '@/components/ui/hair-style-card'
 
 const meta = {
@@ -23,10 +24,11 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 const baseArgs = {
+  hairId: 1,
   imageSrc: '/hiar-style/style-01-image.png',
   imageAlt: '레이어드 컷 헤어 스타일 예시',
-  title: '우주 킹왕짱\n멋있는 헤어',
-  subtitle: '레이어드 컷',
+  hairName: '우주 킹왕짱\n멋있는 헤어',
+  hookText: '레이어드 컷',
 }
 
 export const Default: Story = {
@@ -36,19 +38,6 @@ export const Default: Story = {
   },
 }
 
-export const Liked: Story = {
-  args: {
-    ...baseArgs,
-    liked: true,
-  },
-}
-
-export const Priority: Story = {
-  args: {
-    ...baseArgs,
-    priority: true,
-  },
-}
 
 function InteractiveHairStyleCard() {
   const [liked, setLiked] = useState(false)
@@ -58,6 +47,7 @@ function InteractiveHairStyleCard() {
       {...baseArgs}
       liked={liked}
       onLikeToggle={() => setLiked((prev) => !prev)}
+      onApply={fn()}
     />
   )
 }
@@ -69,3 +59,4 @@ export const Interactive: Story = {
   },
   render: () => <InteractiveHairStyleCard />,
 }
+

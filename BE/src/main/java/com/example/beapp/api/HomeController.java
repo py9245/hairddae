@@ -10,7 +10,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.example.beapp.api.dto.home.CategoryCardListResponse;
+import com.example.beapp.api.dto.home.CategoryListResponse;
 import com.example.beapp.api.dto.home.CustomRankResponse;
+import com.example.beapp.api.dto.home.HairClickRequest;
+import com.example.beapp.api.dto.home.HairClickResponse;
 import com.example.beapp.api.dto.home.HairApplyResumeV2Request;
 import com.example.beapp.api.dto.home.HairApplyStartV2Request;
 import com.example.beapp.api.dto.home.HairApplyV2Response;
@@ -21,13 +25,10 @@ import com.example.beapp.service.HomeService;
 
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 
 @RestController
 @RequestMapping("/api/home")
 @Validated
-@SecurityRequirement(name = "bearerAuth")
 public class HomeController {
 
     private final HomeService homeService;
@@ -37,42 +38,68 @@ public class HomeController {
     }
 
     @GetMapping("/customrank")
-    public ResponseEntity<CustomRankResponse> customRank(
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<CustomRankResponse> customRank(Authentication authentication) {
+        return ResponseEntity.ok(homeService.getCustomRank(authentication.getName()));
+    }
+
+    @GetMapping({"/normalrank", "/normalrank/"})
+    public ResponseEntity<NormalRankResponse> normalRank(Authentication authentication) {
+        return ResponseEntity.ok(homeService.getNormalRank(userId(authentication)));
+    }
+
+    @GetMapping({"/categorylist", "/categorylist/"})
+    public ResponseEntity<CategoryListResponse> categoryList() {
+        return ResponseEntity.ok(homeService.getCategoryList());
+    }
+
+    @GetMapping({"/categorycardlist", "/categorycardlist/"})
+    public ResponseEntity<CategoryCardListResponse> categoryCardList(
             Authentication authentication,
-            @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size,
-            @RequestParam(required = false) String ageCategory,
-            @RequestParam(required = false) Integer gender) {
-        return ResponseEntity.ok(homeService.getCustomRank(authentication.getName(), ageCategory, gender, size));
+            @RequestParam(required = false) String categoryId) {
+        return ResponseEntity.ok(homeService.getCategoryCardList(userId(authentication), categoryId));
     }
 
-    @GetMapping("/nomalrank")
-    public ResponseEntity<NormalRankResponse> normalRank(
-            @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "50") @Min(1) @Max(500) int size,
-            @RequestParam(required = false) String category,
-            @RequestParam(required = false) String sort) {
-        return ResponseEntity.ok(homeService.getNormalRank(category, sort, size));
-    }
-
-    @PostMapping({"/hairapplybootstrap", "/hairapplybootstrap/", "/hairapplystart-v2", "/hairapplystart-v2/"})
+    @PostMapping({"/hairapplybootstrap", "/hairapplybootstrap/"})
     public ResponseEntity<HairApplyV2Response> hairApplyBootstrap(
             Authentication authentication,
             @Valid @RequestBody HairApplyStartV2Request request) {
-        return ResponseEntity.ok(homeService.startHairApplyV2(request, authentication.getName()));
+        return ResponseEntity.ok(homeService.startHairApplyV2(request, resolveCameraUserId(authentication, request.deviceId())));
     }
 
-    @PostMapping({"/hairapplyresume", "/hairapplyresume/", "/hairapplyresume-v2", "/hairapplyresume-v2/"})
+    @PostMapping({"/hairapplyresume", "/hairapplyresume/"})
     public ResponseEntity<HairApplyV2Response> hairApplyResume(
             Authentication authentication,
             @Valid @RequestBody HairApplyResumeV2Request request) {
-        return ResponseEntity.ok(homeService.resumeHairApplyV2(request, authentication.getName()));
+        return ResponseEntity.ok(homeService.resumeHairApplyV2(request, resolveCameraUserId(authentication, request.deviceId())));
     }
 
     @PostMapping("/recodehair")
     public ResponseEntity<RecodeHairResponse> recodeHair(
             Authentication authentication,
             @Valid @RequestBody RecodeHairRequest request) {
+        if (authentication == null || authentication.getName() == null) {
+            return ResponseEntity.ok(RecodeHairResponse.ok());
+        }
         return ResponseEntity.ok(homeService.recordHair(request, authentication.getName()));
+    }
+
+    @PostMapping({"/hairclick", "/hairclick/"})
+    @SecurityRequirement(name = "bearerAuth")
+    public ResponseEntity<HairClickResponse> hairClick(
+            Authentication authentication,
+            @Valid @RequestBody HairClickRequest request) {
+        return ResponseEntity.ok(homeService.recordAppliedHair(request, authentication.getName()));
+    }
+
+    private String resolveCameraUserId(Authentication authentication, String deviceId) {
+        if (authentication != null && authentication.getName() != null) {
+            return authentication.getName();
+        }
+        return "anon:%s".formatted(deviceId);
+    }
+
+    private String userId(Authentication authentication) {
+        return authentication == null ? null : authentication.getName();
     }
 }

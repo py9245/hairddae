@@ -13,16 +13,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.beapp.api.dto.hairs.HairDetailResponse;
-import com.example.beapp.api.dto.hairs.HairAssetIndexV2Response;
 import com.example.beapp.api.dto.hairs.HairLikeResponse;
 import com.example.beapp.api.dto.hairs.HairListResponse;
-import com.example.beapp.api.dto.hairs.HairRecommendResponse;
-import com.example.beapp.service.HairAssetBundleIndexService;
 import com.example.beapp.service.HairCatalogService;
 
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 
 @RestController
 @Validated
@@ -31,48 +26,27 @@ import jakarta.validation.constraints.Min;
 public class HairsController {
 
     private final HairCatalogService hairCatalogService;
-    private final HairAssetBundleIndexService hairAssetBundleIndexService;
 
-    public HairsController(
-            HairCatalogService hairCatalogService,
-            HairAssetBundleIndexService hairAssetBundleIndexService) {
+    public HairsController(HairCatalogService hairCatalogService) {
         this.hairCatalogService = hairCatalogService;
-        this.hairAssetBundleIndexService = hairAssetBundleIndexService;
     }
 
     @GetMapping({"", "/"})
     public ResponseEntity<HairListResponse> list(
             Authentication authentication,
-            @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(200) int size,
             @RequestParam(required = false) String category,
             @RequestParam(defaultValue = "recent") String sort) {
-        return ResponseEntity.ok(hairCatalogService.getHairList(userId(authentication), page, size, category, sort));
+        return ResponseEntity.ok(hairCatalogService.getHairList(userId(authentication), category, sort));
     }
 
-    @GetMapping("/recommend")
-    public ResponseEntity<HairRecommendResponse> recommend(
-            @RequestParam(required = false) Long hairId,
-            @RequestParam(required = false) Integer yaw1deg,
-            @RequestParam(required = false) Integer pitch1deg,
-            @RequestParam(required = false) Integer roll1deg) {
-        return ResponseEntity.ok(hairCatalogService.recommend(hairId, yaw1deg, pitch1deg, roll1deg));
-    }
-
-    @GetMapping({"/{hairId}/asset-index", "/{hairId}/asset-index-v2"})
-    public ResponseEntity<HairAssetIndexV2Response> assetIndexV2(
-            @PathVariable Long hairId) {
-        return ResponseEntity.ok(hairAssetBundleIndexService.getAssetIndex(hairId));
-    }
-
-    @GetMapping("/{hairId}")
+    @GetMapping("/{hairId:\\d+}")
     public ResponseEntity<HairDetailResponse> detail(
             Authentication authentication,
             @PathVariable Long hairId) {
         return ResponseEntity.ok(hairCatalogService.getHairDetail(userId(authentication), hairId));
     }
 
-    @PostMapping("/{hairId}/likes")
+    @PostMapping({"/{hairId:\\d+}/like", "/{hairId:\\d+}/like/"})
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<HairLikeResponse> like(
             Authentication authentication,
@@ -80,7 +54,7 @@ public class HairsController {
         return ResponseEntity.ok(hairCatalogService.like(authentication.getName(), hairId));
     }
 
-    @DeleteMapping("/{hairId}/likes")
+    @DeleteMapping({"/{hairId:\\d+}/like", "/{hairId:\\d+}/like/"})
     @SecurityRequirement(name = "bearerAuth")
     public ResponseEntity<HairLikeResponse> unlike(
             Authentication authentication,

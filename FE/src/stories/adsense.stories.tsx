@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import Adsense from '@/app/adsense'
+import Adsense from '@/components/adsense'
 
 const meta = {
   title: 'UI/Adsense',
@@ -10,7 +10,7 @@ const meta = {
   tags: ['autodocs'],
   decorators: [
     (Story) => (
-      <div className="flex min-h-screen items-start justify-center bg-gray-100 p-6">
+      <div className="flex min-h-screen items-start justify-center p-6">
         <Story />
       </div>
     ),
@@ -24,11 +24,13 @@ type Story = StoryObj<typeof meta>
 export const Default: Story = {
   args: {
     loading: false,
+    forceVisible: true,
   },
 }
 
 export const Skeleton: Story = {
   args: {
     loading: true,
+    forceVisible: true,
   },
 }

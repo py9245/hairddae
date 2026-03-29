@@ -7,6 +7,7 @@ import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
@@ -17,6 +18,8 @@ import com.example.beapp.common.api.FieldValidationError;
 import com.example.beapp.common.exception.ApiException;
 import com.example.beapp.common.exception.ErrorCode;
 
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
 import jakarta.servlet.http.HttpServletRequest;
 
 @RestControllerAdvice
@@ -82,6 +85,30 @@ public class GlobalExceptionHandler {
                         request.getRequestURI()));
     }
 
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingRequestParameter(
+            MissingServletRequestParameterException exception,
+            HttpServletRequest request) {
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of(
+                        ErrorCode.INVALID_REQUEST.getCode(),
+                        "%s 파라미터가 필요합니다.".formatted(exception.getParameterName()),
+                        List.of(new FieldValidationError(exception.getParameterName(), null, "필수 파라미터 누락")),
+                        request.getRequestURI()));
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ApiErrorResponse> handleConstraintViolation(
+            ConstraintViolationException exception,
+            HttpServletRequest request) {
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of(
+                        ErrorCode.INVALID_REQUEST.getCode(),
+                        ErrorCode.INVALID_REQUEST.getMessage(),
+                        exception.getConstraintViolations().stream().map(this::toFieldValidationError).toList(),
+                        request.getRequestURI()));
+    }
+
     @ExceptionHandler(NoResourceFoundException.class)
     public ResponseEntity<ApiErrorResponse> handleNoResourceFound(
             NoResourceFoundException exception,
@@ -98,5 +125,12 @@ public class GlobalExceptionHandler {
 
     private FieldValidationError toFieldValidationError(FieldError fieldError) {
         return new FieldValidationError(fieldError.getField(), fieldError.getRejectedValue(), fieldError.getDefaultMessage());
+    }
+
+    private FieldValidationError toFieldValidationError(ConstraintViolation<?> violation) {
+        String path = violation.getPropertyPath() == null ? "parameter" : violation.getPropertyPath().toString();
+        int separatorIndex = path.lastIndexOf('.');
+        String field = separatorIndex >= 0 ? path.substring(separatorIndex + 1) : path;
+        return new FieldValidationError(field, violation.getInvalidValue(), violation.getMessage());
     }
 }

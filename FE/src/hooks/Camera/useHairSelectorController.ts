@@ -32,13 +32,24 @@ export function useHairSelectorController({
   const isDraggingRef = useRef(false)
 
   const SLOT_WIDTH = 96
-  const swipeThreshold = 401
+  const swipeThreshold = 40
   const showSkeleton = loading || items.length === 0
 
-  const selectedIndex = useMemo(
-    () => items.findIndex((item) => item.id === selectedId),
-    [items, selectedId],
-  )
+  const selectedIndex = useMemo(() => {
+    const matchedIndex = items.findIndex((item) => item.id === selectedId)
+
+    if (matchedIndex >= 0) {
+      return matchedIndex
+    }
+
+    // If the requested hair id is not present in the loaded list yet,
+    // keep the "none" option on the left by centering the first real item.
+    if (selectedId > 0 && items.length > 1) {
+      return 1
+    }
+
+    return 0
+  }, [items, selectedId])
 
   useEffect(() => {
     const update = () => {
@@ -61,6 +72,7 @@ export function useHairSelectorController({
     if (showSkeleton || selectedIndex < 0 || frozen) return
 
     const nextIndex = clamp(selectedIndex + direction, 0, items.length - 1)
+
     if (nextIndex !== selectedIndex) {
       onSelect(items[nextIndex].id)
     }
@@ -68,6 +80,7 @@ export function useHairSelectorController({
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (showSkeleton || frozen) return
+
     pointerStartXRef.current = e.clientX
     pointerCurrentXRef.current = e.clientX
     isDraggingRef.current = false
@@ -78,6 +91,7 @@ export function useHairSelectorController({
     if (pointerStartXRef.current == null) return
 
     pointerCurrentXRef.current = e.clientX
+
     if (Math.abs(e.clientX - pointerStartXRef.current) > 8) {
       isDraggingRef.current = true
     }
@@ -116,7 +130,12 @@ export function useHairSelectorController({
       return
     }
 
-    onFreezeChange?.(true)
+    if (onFreezeChange) {
+      onFreezeChange(true)
+      return
+    }
+
+    onCapture?.()
   }
 
   const handleDownloadClick = () => {

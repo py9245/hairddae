@@ -9,6 +9,7 @@ import java.util.Locale;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.example.beapp.api.dto.hairs.HairMetadataSyncRequest;
@@ -34,26 +35,42 @@ public class HairMetadataSyncService {
 
     @Transactional
     public HairMetadataSyncResponse upsert(HairMetadataSyncRequest request, MultipartFile previewImage) {
-        String previewImagePath = storePreviewImage(request.datasetCode(), previewImage);
         HairEntity hair = hairJpaRepository.findByDatasetCode(request.datasetCode())
                 .or(() -> hairJpaRepository.findBySlug(request.slug()))
                 .orElseGet(() -> new HairEntity(
                         request.name(),
                         request.category(),
-                        previewImagePath,
+                        null,
                         request.description()));
 
+        String previewImagePath = resolvePreviewImagePath(hair, request, previewImage);
         boolean created = hair.getId() == null;
         hair.applyCatalogMetadata(
                 request.name(),
                 request.slug(),
                 request.category(),
                 request.datasetCode(),
+                firstText(request.datasetRootUrl(), hair.getDatasetRootUrl()),
+                firstText(request.assetIndexUrl(), hair.getAssetIndexUrl()),
+                firstText(request.representativeAssetId(), hair.getRepresentativeAssetId()),
                 previewImagePath,
                 request.description(),
                 request.active() == null || request.active());
         HairEntity saved = hairJpaRepository.save(hair);
         return HairMetadataSyncResponse.ok(saved.getId().intValue(), saved.getDatasetCode(), created);
+    }
+
+    private String resolvePreviewImagePath(HairEntity hair, HairMetadataSyncRequest request, MultipartFile previewImage) {
+        if (previewImage != null && !previewImage.isEmpty()) {
+            return storePreviewImage(request.datasetCode(), previewImage);
+        }
+        if (StringUtils.hasText(request.previewImageUrl())) {
+            return request.previewImageUrl().trim();
+        }
+        if (StringUtils.hasText(hair.getPreviewImageUrl())) {
+            return hair.getPreviewImageUrl();
+        }
+        throw new ApiException(ErrorCode.INVALID_REQUEST, "preview_image 또는 preview_image_url 중 하나는 필수입니다.");
     }
 
     private String storePreviewImage(String datasetCode, MultipartFile previewImage) {
@@ -124,5 +141,9 @@ public class HairMetadataSyncService {
         return (baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl)
                 + "/"
                 + relativePath;
+    }
+
+    private String firstText(String primary, String fallback) {
+        return StringUtils.hasText(primary) ? primary.trim() : fallback;
     }
 }

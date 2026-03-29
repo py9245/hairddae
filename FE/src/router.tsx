@@ -4,23 +4,42 @@ import {
   createRouter,
   Outlet,
   redirect,
+  useRouterState,
 } from '@tanstack/react-router'
-import type { ReactElement } from 'react'
-import Adsense from '@/app/adsense'
+import {
+  type ReactElement,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
+import { z } from 'zod'
 import Camera from '@/app/camera'
+import HairList from '@/app/hairlist'
+import Landing from '@/app/landing'
 import Login from '@/app/login'
+import Main from '@/app/main'
+import MyPage from '@/app/mypage'
 import SignUp from '@/app/sign-up'
 import Splash from '@/app/splash'
+import Adsense from '@/components/adsense'
 import { BottomNav } from '@/components/bottom-nav'
 import { NotFoundPage } from '@/components/not-found-page'
-import { PageShell } from '@/components/page-shell'
-import { ProfileCard } from '@/components/profile-card'
-import { Button } from '@/components/ui/button'
-import { type AuthStore, auth } from '@/lib/auth'
+import { ReviewModal } from '@/components/review-modal'
+import { type AuthStore, auth, fetchMe } from '@/lib/auth'
 
 type RouterContext = {
   auth: AuthStore
 }
+
+type ReviewModalPreference = {
+  dismissedUntil?: number
+  completed?: boolean
+}
+
+const REVIEW_MODAL_STORAGE_KEY = 'review-modal-preferences'
+const REVIEW_MODAL_DELAY_MS = 60_000
+const REVIEW_MODAL_DEFER_MS = 14 * 24 * 60 * 60 * 1000
 
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
@@ -33,6 +52,12 @@ const splashRoute = createRoute({
   component: Splash,
 })
 
+const landingRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: 'landing',
+  component: Landing,
+})
+
 const authRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: 'auth',
@@ -40,11 +65,16 @@ const authRoute = createRoute({
   notFoundComponent: NotFoundPage,
 })
 
+const loginSearchSchema = z.object({
+  redirect: z.string().optional(),
+})
+
 const loginRoute = createRoute({
   getParentRoute: () => authRoute,
   path: 'login',
-  beforeLoad: ({ context }) => {
-    if (context.auth.isAuthenticated()) {
+  validateSearch: (search) => loginSearchSchema.parse(search),
+  beforeLoad: async ({ context }) => {
+    if (await context.auth.ensureAuthenticated()) {
       throw redirect({ to: '/main' })
     }
   },
@@ -57,16 +87,32 @@ const signupRoute = createRoute({
   component: SignUp,
 })
 
+const hairListSearchSchema = z.object({
+  category: z.string().catch('').optional(),
+})
+
+const cameraSearchSchema = z.object({
+  applyLatest: z.coerce.boolean().optional(),
+  hairId: z.coerce.number().int().positive().optional(),
+})
+
 const mainRoute = createProtectedRoute('main', MainPage)
-const cameraRoute = createProtectedRoute('camera', Camera)
+const cameraRoute = createProtectedRoute('camera', Camera, (search) =>
+  cameraSearchSchema.parse(search),
+)
 const myPageRoute = createProtectedRoute('mypage', MyPage)
+const hairListRoute = createProtectedRoute('hairlist', HairList, (search) =>
+  hairListSearchSchema.parse(search),
+)
 
 const routeTree = rootRoute.addChildren([
   splashRoute,
+  landingRoute,
   authRoute.addChildren([loginRoute, signupRoute]),
   mainRoute,
   cameraRoute,
   myPageRoute,
+  hairListRoute,
 ])
 
 export const router = createRouter({
@@ -83,15 +129,20 @@ declare module '@tanstack/react-router' {
   }
 }
 
-function createProtectedRoute(
-  path: 'main' | 'camera' | 'mypage',
+function createProtectedRoute<
+  TPath extends string,
+  TSearchSchema extends Record<string, unknown> = Record<string, never>,
+>(
+  path: TPath,
   component: () => ReactElement,
+  validateSearch?: (search: Record<string, unknown>) => TSearchSchema,
 ) {
   return createRoute({
     getParentRoute: () => rootRoute,
     path,
-    beforeLoad: ({ context, location }) => {
-      if (!context.auth.isAuthenticated()) {
+    validateSearch,
+    beforeLoad: async ({ context, location }) => {
+      if (!(await context.auth.ensureAuthenticated())) {
         throw redirect({
           to: '/auth/login',
           search: {
@@ -105,6 +156,96 @@ function createProtectedRoute(
 }
 
 function RootLayout() {
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
+  const hasStartedReviewTimerRef = useRef(false)
+  const reviewTimerRef = useRef<number | null>(null)
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  })
+
+  const readReviewModalPreferences = useCallback(() => {
+    try {
+      const raw = window.localStorage.getItem(REVIEW_MODAL_STORAGE_KEY)
+      if (!raw) {
+        return {}
+      }
+
+      return JSON.parse(raw) as Record<string, ReviewModalPreference>
+    } catch {
+      return {}
+    }
+  }, [])
+
+  const writeReviewModalPreference = useCallback(
+    (userId: string, nextPreference: ReviewModalPreference) => {
+      const preferences = readReviewModalPreferences()
+      preferences[userId] = nextPreference
+      window.localStorage.setItem(
+        REVIEW_MODAL_STORAGE_KEY,
+        JSON.stringify(preferences),
+      )
+    },
+    [readReviewModalPreferences],
+  )
+
+  const deferReviewModal = useCallback(async () => {
+    const me = await fetchMe().catch(() => null)
+    if (me) {
+      writeReviewModalPreference(me.userID, {
+        dismissedUntil: Date.now() + REVIEW_MODAL_DEFER_MS,
+      })
+    }
+    setIsReviewModalOpen(false)
+  }, [writeReviewModalPreference])
+
+  const submitReviewModal = useCallback(async () => {
+    const me = await fetchMe().catch(() => null)
+    if (me) {
+      writeReviewModalPreference(me.userID, {
+        completed: true,
+      })
+    }
+    setIsReviewModalOpen(false)
+  }, [writeReviewModalPreference])
+
+  useEffect(() => {
+    if (pathname !== '/main' || hasStartedReviewTimerRef.current) {
+      return
+    }
+
+    hasStartedReviewTimerRef.current = true
+    reviewTimerRef.current = window.setTimeout(() => {
+      void (async () => {
+        const me = await fetchMe().catch(() => null)
+        if (!me) {
+          return
+        }
+
+        const preference = readReviewModalPreferences()[me.userID]
+        if (preference?.completed) {
+          return
+        }
+
+        if (
+          preference?.dismissedUntil != null &&
+          preference.dismissedUntil > Date.now()
+        ) {
+          return
+        }
+
+        setIsReviewModalOpen(true)
+      })()
+    }, REVIEW_MODAL_DELAY_MS)
+  }, [pathname, readReviewModalPreferences])
+
+  useEffect(() => {
+    return () => {
+      if (reviewTimerRef.current != null) {
+        window.clearTimeout(reviewTimerRef.current)
+      }
+    }
+  }, [])
+
   return (
     <div className="app-frame-shell flex items-center justify-center gap-10">
       <Adsense />
@@ -113,7 +254,39 @@ function RootLayout() {
           <Outlet />
         </div>
         <BottomNav />
+        {isReviewModalOpen ? (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+            <ReviewModal
+              open={isReviewModalOpen}
+              onClose={() => {
+                void deferReviewModal()
+              }}
+              onDefer={() => {
+                void deferReviewModal()
+              }}
+              onSubmit={() => {
+                void submitReviewModal()
+              }}
+            />
+          </div>
+        ) : null}
       </div>
+      {isReviewModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <ReviewModal
+            open={isReviewModalOpen}
+            onClose={() => {
+              void deferReviewModal()
+            }}
+            onDefer={() => {
+              void deferReviewModal()
+            }}
+            onSubmit={() => {
+              void submitReviewModal()
+            }}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -123,83 +296,5 @@ function AuthLayout() {
 }
 
 function MainPage() {
-  async function handleLogout() {
-    auth.logout()
-    await router.navigate({ to: '/' })
-  }
-
-  return (
-    <PageShell
-      accent="#0ea5e9"
-      badge="Main"
-      title="메인 페이지"
-      description="로그인 후 처음 진입하는 보호 영역입니다. 이후 실서비스 피드, 알림, 추천 동선 등을 연결할 수 있습니다."
-      action={
-        <Button
-          variant="outline"
-          className="rounded-full border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-          onClick={() => void handleLogout()}
-        >
-          로그아웃
-        </Button>
-      }
-    >
-      <div className="grid gap-4 md:grid-cols-3">
-        <GlassPanel
-          title="Service status"
-          body="백엔드 상태 카드나 요약 지표를 배치할 영역"
-        />
-        <GlassPanel
-          title="Recent activity"
-          body="최근 촬영 기록, 추천 콘텐츠, 배너 영역"
-        />
-        <GlassPanel
-          title="Quick actions"
-          body="Camera / My Page로 이동하는 액션 모듈"
-        />
-      </div>
-    </PageShell>
-  )
-}
-
-function MyPage() {
-  async function handleLogout() {
-    auth.logout()
-    await router.navigate({ to: '/' })
-  }
-
-  const profile = {
-    nickname: 'mijin.develop',
-    age: null, // null이면 비공개 처리됨
-    gender: null,
-    avatarVariant: 1 as const,
-  }
-
-  return (
-    <PageShell
-      accent="#8b5cf6"
-      badge="My Page"
-      title="마이페이지"
-      description="프로필, 기록, 환경설정 등을 담는 보호 페이지입니다."
-    >
-      <div className="grid gap-4">
-        <ProfileCard profile={profile} onLogout={() => void handleLogout()} />
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <GlassPanel title="History" body="촬영 이력, 즐겨찾기, 최근 활동" />
-          <GlassPanel title="Preferences" body="알림, 접근성, 화면 옵션" />
-          <GlassPanel title="Security" body="계정 관리, 연결된 인증 수단" />
-        </div>
-      </div>
-    </PageShell>
-  )
-}
-
-function GlassPanel({ title, body }: { title: string; body: string }) {
-  return (
-    <section className="rounded-[1.5rem] border border-white/15 bg-black/20 p-5">
-      <p className="text-sm font-semibold text-white/80">{title}</p>
-      <p className="mt-3 text-sm leading-6 text-white/65">{body}</p>
-    </section>
-  )
+  return <Main />
 }

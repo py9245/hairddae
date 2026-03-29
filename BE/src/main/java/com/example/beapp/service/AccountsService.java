@@ -1,23 +1,25 @@
 package com.example.beapp.service;
 
+import java.util.UUID;
+
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import com.example.beapp.api.dto.accounts.GoogleLoginRequest;
 import com.example.beapp.api.dto.accounts.LoginRequest;
-import com.example.beapp.api.dto.accounts.LoginResponse;
 import com.example.beapp.api.dto.accounts.LogoutRequest;
 import com.example.beapp.api.dto.accounts.SignoutRequest;
 import com.example.beapp.api.dto.accounts.SignupRequest;
-import com.example.beapp.api.dto.accounts.SignupResponse;
 import com.example.beapp.api.dto.accounts.SimpleResponse;
 import com.example.beapp.api.dto.accounts.TokenRefreshRequest;
-import com.example.beapp.api.dto.accounts.TokenRefreshResponse;
 import com.example.beapp.common.exception.ApiException;
 import com.example.beapp.common.exception.ErrorCode;
+import com.example.beapp.model.LoginType;
 import com.example.beapp.model.UserAccount;
 import com.example.beapp.repository.RefreshTokenRepository;
 import com.example.beapp.repository.UserAccountRepository;
+import com.example.beapp.security.GoogleIdTokenVerifier;
 import com.example.beapp.security.JwtTokenService;
 
 @Service
@@ -27,21 +29,28 @@ public class AccountsService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenService jwtTokenService;
+    private final GoogleIdTokenVerifier googleIdTokenVerifier;
 
     public AccountsService(
             UserAccountRepository userAccountRepository,
             RefreshTokenRepository refreshTokenRepository,
             PasswordEncoder passwordEncoder,
-            JwtTokenService jwtTokenService) {
+            JwtTokenService jwtTokenService,
+            GoogleIdTokenVerifier googleIdTokenVerifier) {
         this.userAccountRepository = userAccountRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenService = jwtTokenService;
+        this.googleIdTokenVerifier = googleIdTokenVerifier;
     }
 
     public AuthTokens login(LoginRequest request) {
         UserAccount userAccount = userAccountRepository.findByUserId(request.userID())
                 .orElseThrow(() -> new ApiException(ErrorCode.INVALID_CREDENTIALS));
+
+        if (!userAccount.loginType().isLocal()) {
+            throw new ApiException(ErrorCode.INVALID_CREDENTIALS, "일반 로그인 계정이 아닙니다.");
+        }
 
         if (!passwordEncoder.matches(request.password(), userAccount.encodedPassword())) {
             throw new ApiException(ErrorCode.INVALID_CREDENTIALS);
@@ -53,7 +62,48 @@ public class AccountsService {
                 issueAndStoreRefreshToken(userAccount.userID()));
     }
 
-    public SignupResponse signup(SignupRequest request) {
+    public AuthTokens googleLogin(GoogleLoginRequest request) {
+        GoogleIdTokenVerifier.GoogleIdentity googleIdentity = googleIdTokenVerifier.verify(request.idToken());
+        String normalizedEmail = googleIdentity.email();
+        String providerSubject = googleIdentity.subject();
+
+        UserAccount userAccount = userAccountRepository.findByProviderSubject(providerSubject)
+                .map(existingUserAccount -> userAccountRepository.save(new UserAccount(
+                        normalizedEmail,
+                        existingUserAccount.encodedPassword(),
+                        existingUserAccount.birthDate(),
+                        existingUserAccount.gender(),
+                        LoginType.GOOGLE,
+                        providerSubject)))
+                .orElseGet(() -> userAccountRepository.findByUserId(normalizedEmail)
+                        .map(existingUserAccount -> {
+                            if (existingUserAccount.loginType() != LoginType.GOOGLE) {
+                                throw new ApiException(ErrorCode.DUPLICATE_USER, "이미 일반 로그인으로 가입된 계정입니다.");
+                            }
+
+                            return userAccountRepository.save(new UserAccount(
+                                    normalizedEmail,
+                                    existingUserAccount.encodedPassword(),
+                                    existingUserAccount.birthDate(),
+                                    existingUserAccount.gender(),
+                                    LoginType.GOOGLE,
+                                    providerSubject));
+                        })
+                        .orElseGet(() -> userAccountRepository.save(new UserAccount(
+                                normalizedEmail,
+                                passwordEncoder.encode(UUID.randomUUID().toString()),
+                                null,
+                                null,
+                                LoginType.GOOGLE,
+                                providerSubject))));
+
+        return new AuthTokens(
+                userAccount.userID(),
+                jwtTokenService.issueAccessToken(userAccount.userID()),
+                issueAndStoreRefreshToken(userAccount.userID()));
+    }
+
+    public AuthTokens signup(SignupRequest request) {
         if (userAccountRepository.existsByUserId(request.userID())) {
             throw new ApiException(ErrorCode.DUPLICATE_USER, "이미 사용 중인 아이디입니다.");
         }
@@ -62,13 +112,17 @@ public class AccountsService {
             throw new ApiException(ErrorCode.INVALID_REQUEST, "비밀번호 확인이 일치하지 않습니다.");
         }
 
-        userAccountRepository.save(new UserAccount(
+        UserAccount savedUserAccount = userAccountRepository.save(new UserAccount(
                 request.userID(),
                 passwordEncoder.encode(request.password()),
                 request.birthDate(),
-                request.gender()));
+                request.gender(),
+                LoginType.LOCAL));
 
-        return SignupResponse.created(request.userID());
+        return new AuthTokens(
+                savedUserAccount.userID(),
+                jwtTokenService.issueAccessToken(savedUserAccount.userID()),
+                issueAndStoreRefreshToken(savedUserAccount.userID()));
     }
 
     public SimpleResponse logout(String accessToken, String refreshToken, LogoutRequest request) {

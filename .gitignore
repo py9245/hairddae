@@ -6,8 +6,9 @@ dist
 *.log
 logs
 .DS_Store
-static
+static/
 
 .codex
+/.playwright-mcp/
 
 !Inference/.env.example

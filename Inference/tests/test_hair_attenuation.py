@@ -250,6 +250,23 @@ def test_blend_scalp_reference_color_prefers_face_skin_over_dark_boundary() -> N
     assert float(np.abs(blended - skin).mean()) < float(np.abs(blended - boundary).mean())
 
 
+def test_compose_luma_preserving_scalp_matte_keeps_lowfreq_shading() -> None:
+    lowfreq = np.full((24, 24, 3), np.array([150, 172, 196], dtype=np.uint8), dtype=np.uint8)
+    lowfreq[:12, :, :] = np.array([132, 152, 174], dtype=np.uint8)
+    active_region = np.ones((24, 24), dtype=bool)
+
+    matte = HairAttenuator._compose_luma_preserving_scalp_matte(
+        lowfreq,
+        np.array([164.0, 186.0, 210.0], dtype=np.float32),
+        active_region=active_region,
+    )
+
+    assert matte.shape == lowfreq.shape
+    top_mean = float(matte[:12].mean())
+    bottom_mean = float(matte[12:].mean())
+    assert bottom_mean > top_mean
+
+
 def test_forehead_fringe_mask_extends_to_temple_sides() -> None:
     landmarks = _build_landmarks()
     attenuator = HairAttenuator()

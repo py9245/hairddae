@@ -128,6 +128,7 @@ class Settings:
     rtc_disable_hair_overlay: bool
     rtc_preserve_eyes_enabled: bool
     rtc_bald_test_mode: bool
+    rtc_luma_preserving_scalp_enabled: bool
     rtc_enable_h264_nvenc: bool
     rtc_enable_h264_cuvid: bool
     rtc_disable_user_parsing_in_latency_mode: bool
@@ -269,6 +270,7 @@ class Settings:
             rtc_disable_hair_overlay=_env_bool("INFERENCE_RTC_DISABLE_HAIR_OVERLAY", False),
             rtc_preserve_eyes_enabled=_env_bool("INFERENCE_RTC_PRESERVE_EYES_ENABLED", False),
             rtc_bald_test_mode=_env_bool("INFERENCE_RTC_BALD_TEST_MODE", False),
+            rtc_luma_preserving_scalp_enabled=_env_bool("INFERENCE_RTC_LUMA_PRESERVING_SCALP_ENABLED", True),
             rtc_enable_h264_nvenc=_env_bool("INFERENCE_RTC_ENABLE_H264_NVENC", False),
             rtc_enable_h264_cuvid=_env_bool("INFERENCE_RTC_ENABLE_H264_CUVID", False),
             rtc_disable_user_parsing_in_latency_mode=_env_bool(

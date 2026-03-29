@@ -47,6 +47,7 @@ def _build_hair_attenuator(settings: Settings) -> LazyHairAttenuator | None:
         disable_covered_suppression=settings.rtc_disable_covered_suppression,
         disable_outer_bulk_suppression=settings.rtc_disable_outer_bulk_suppression,
         bald_test_mode=settings.rtc_bald_test_mode,
+        luma_preserving_scalp_enabled=settings.rtc_luma_preserving_scalp_enabled,
     )
 
 

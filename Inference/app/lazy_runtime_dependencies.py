@@ -72,6 +72,7 @@ class LazyHairAttenuator:
         disable_covered_suppression: bool,
         disable_outer_bulk_suppression: bool,
         bald_test_mode: bool,
+        luma_preserving_scalp_enabled: bool,
     ) -> None:
         self._lock = Lock()
         self._attenuator: HairAttenuator | None = None
@@ -86,6 +87,7 @@ class LazyHairAttenuator:
         self._disable_covered_suppression = bool(disable_covered_suppression)
         self._disable_outer_bulk_suppression = bool(disable_outer_bulk_suppression)
         self._bald_test_mode = bool(bald_test_mode)
+        self._luma_preserving_scalp_enabled = bool(luma_preserving_scalp_enabled)
 
     def _instance(self) -> HairAttenuator:
         with self._lock:
@@ -102,6 +104,7 @@ class LazyHairAttenuator:
                     disable_covered_suppression=self._disable_covered_suppression,
                     disable_outer_bulk_suppression=self._disable_outer_bulk_suppression,
                     bald_test_mode=self._bald_test_mode,
+                    luma_preserving_scalp_enabled=self._luma_preserving_scalp_enabled,
                 )
             return self._attenuator
 

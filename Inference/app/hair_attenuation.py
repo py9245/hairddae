@@ -91,6 +91,7 @@ class HairAttenuationProfile:
     disable_fringe_suppression: bool = False
     disable_covered_suppression: bool = False
     disable_outer_bulk_suppression: bool = False
+    luma_preserving_scalp_enabled: bool = True
 
 
 @dataclass(frozen=True)
@@ -137,6 +138,7 @@ class HairAttenuator:
         disable_fringe_suppression: bool = False,
         disable_covered_suppression: bool = False,
         disable_outer_bulk_suppression: bool = False,
+        luma_preserving_scalp_enabled: bool = True,
     ) -> None:
         self.profile = HairAttenuationProfile(
             segmentation_confidence_threshold=float(np.clip(segmentation_confidence_threshold, 0.05, 0.95)),
@@ -150,6 +152,7 @@ class HairAttenuator:
             disable_fringe_suppression=bool(disable_fringe_suppression),
             disable_covered_suppression=bool(disable_covered_suppression),
             disable_outer_bulk_suppression=bool(disable_outer_bulk_suppression),
+            luma_preserving_scalp_enabled=bool(luma_preserving_scalp_enabled),
         )
         self._color_cache_lock = Lock()
         self._color_cache: HairColorEstimateCacheEntry | None = None
@@ -807,6 +810,36 @@ class HairAttenuator:
 
         blended = skin * (1.0 - boundary_weight) + boundary * boundary_weight
         return np.clip(blended, 0.0, 255.0).astype(np.float32)
+
+    @staticmethod
+    def _compose_luma_preserving_scalp_matte(
+        lowfreq_bgr: np.ndarray,
+        scalp_color: np.ndarray,
+        *,
+        active_region: np.ndarray | None = None,
+    ) -> np.ndarray:
+        scalp_color_float = np.clip(
+            np.asarray(scalp_color, dtype=np.float32).reshape(-1)[:3],
+            0.0,
+            255.0,
+        ).astype(np.float32)
+        scalp_fill = np.empty_like(lowfreq_bgr, dtype=np.float32)
+        scalp_fill[:] = scalp_color_float
+
+        local_luma = opencv_cvt_color(
+            lowfreq_bgr,
+            cv2.COLOR_BGR2GRAY,
+            min_pixels=8_192,
+        ).astype(np.float32)
+        if active_region is not None and bool(np.any(active_region)):
+            mean_luma = float(local_luma[active_region].mean())
+        else:
+            mean_luma = float(local_luma.mean())
+        mean_luma = max(mean_luma, 1.0)
+
+        shade = np.clip(local_luma / mean_luma, 0.96, 1.08)[..., None]
+        scalp_shaded = np.clip(scalp_fill * shade, 0.0, 255.0)
+        return scalp_shaded.astype(np.uint8)
 
     def _estimate_lower_boundary_skin_color(
         self,
@@ -1919,8 +1952,16 @@ class HairAttenuator:
                     scalp_color=scalp_color,
                 )
             if scalp_color is not None:
-                scalp_matte_work = np.empty_like(roi_work, dtype=np.uint8)
-                scalp_matte_work[:] = np.clip(scalp_color, 0.0, 255.0).astype(np.uint8)
+                if self.profile.luma_preserving_scalp_enabled:
+                    active_scalp_region = fringe_work if np.any(fringe_work) else binary_work_mask
+                    scalp_matte_work = self._compose_luma_preserving_scalp_matte(
+                        blurred_work,
+                        scalp_color,
+                        active_region=active_scalp_region,
+                    )
+                else:
+                    scalp_matte_work = np.empty_like(roi_work, dtype=np.uint8)
+                    scalp_matte_work[:] = np.clip(scalp_color, 0.0, 255.0).astype(np.uint8)
             if scalp_matte_work is not None and np.any(fringe_work):
                 weakened_work[fringe_work] = scalp_matte_work[fringe_work]
                 fringe_alpha = np.where(fringe_work, np.float32(1.0), np.float32(0.0))
@@ -2167,12 +2208,22 @@ class HairAttenuator:
                         crop_hsv = opencv_cvt_color(crop_frame, cv2.COLOR_BGR2HSV, min_pixels=0)
                         crop_active_x = active_x - crop_x0
                         crop_boundary = smoothed_boundary[active_x] - float(crop_y0)
+                        if self.profile.luma_preserving_scalp_enabled:
+                            boundary_reference_color = (
+                                boundary_skin_color
+                                if boundary_skin_color is not None
+                                else skin_color
+                            )
+                            if boundary_reference_color is None:
+                                boundary_reference_color = scalp_color
+                        else:
+                            boundary_reference_color = scalp_color
                         local_boundary_field = self._build_local_boundary_skin_field(
                             crop_frame,
                             crop_hair_mask,
                             crop_fringe_mask,
                             crop_landmarks,
-                            reference_skin_color=scalp_color,
+                            reference_skin_color=boundary_reference_color,
                             active_x=crop_active_x,
                             smoothed_boundary=crop_boundary,
                             frame_ycrcb=crop_ycrcb,

@@ -1,0 +1,482 @@
+가능해.
+올려준 결과를 보면 문제는 크게 두 가지야.
+
+첫째, **이마/헤어라인 쪽 피부화가 “단색 패치”처럼 보인다.**
+둘째, **실제 피부의 좌우 조명·그림자·온도 차를 못 따라가서**, 볼/관자/이마의 연결감이 끊긴다.
+
+업로드된 코드 기준으로 현재 파이프라인은 `hair_attenuation`에서 계산한 `hair_binary_mask`, `fringe_mask`, `background_color`, `scalp_color`를 `tracked_user_row`에 넣고, 이후 runtime과 postprocess가 그 값을 그대로 쓴다. 또 bundle render 경로에서는 `_hair_scalp_color`를 단일 `skin_replacement_color_rgb`로 넘기고, postprocess는 `_hair_background_color`와 coverage 기반 cleanup 위주로 처리한다. 즉 지금 구조는 **“로컬 피부장(field)”보다 “대표색 몇 개” 중심**이라, 올려준 이미지처럼 이마가 평평하게 보이기 쉬운 구조다.
+
+내 추천은 하나로 압축하면 이거야.
+
+## 가장 좋은 해법
+
+**단일 `scalp_color` 덮어쓰기 → “로컬 피부 색장 + luma(명암) 보존” 방식으로 바꾸기**
+
+이 방식이 좋은 이유는:
+
+* 모델을 하나 더 돌리지 않는다
+* segmentation/tracking 비용은 그대로다
+* 이미 있는 `fringe_mask`, `hair_binary_mask`, `background_color`, 경계 샘플링 로직을 재사용한다
+* 연산은 ROI 내부 색공간 변환 + 1D 보간 정도라서 부하 증가가 크지 않다
+
+---
+
+## 왜 지금 결과가 어색하냐
+
+현재 자연스러움이 깨지는 핵심은 **색 자체보다 “색을 입히는 방법”**이야.
+
+지금 구조상 피부화/두피화는 본질적으로 다음 패턴이 섞여 있어:
+
+* 얼굴/경계에서 샘플링한 색을 대표 `scalp_color` 하나로 만듦
+* fringe 쪽은 그 색 계열로 강하게 대체
+* 바깥 residual/outer bulk는 `background_color`로 정리
+* bundle render는 `_hair_scalp_color` 하나를 단일 `skin_replacement_color_rgb`로 사용
+
+이렇게 되면 피부의 실제 특성인
+
+* 좌우 광원 차
+* forehead 중앙/관자/헤어라인 아래쪽의 미세한 온도 차
+* 명암 구조
+  가 사라진다. 그래서 “피부색 자체는 비슷한데도 가짜처럼 보이는” 현상이 생긴다.
+
+---
+
+## 바꿔야 할 핵심 로직
+
+### 1. `scalp_color`를 “하나의 색”으로 쓰지 말고, **x축 기준 피부 색장(field)** 으로 바꿔
+
+좋은 점은 이미 코드 안에 힌트가 있다는 거야.
+
+postprocess 쪽은 background에 대해 `local_background_field`를 만들어서 좌우 색 차를 보간하고 있고, hair attenuation 쪽도 lower hairline 보정에서 **경계 아래 피부를 샘플링해서 column-wise field**를 만드는 로직이 이미 있다. 즉 아이디어 자체는 코드베이스 안에 이미 있어.
+
+그래서 피부화도 똑같이 가면 된다.
+
+#### 목표
+
+`scalp_color: [B,G,R]` 하나 대신
+`scalp_field_by_col: [W, 3]` 를 만든다.
+
+* 중앙 forehead는 현재 `skin_color` 쪽
+* 좌우 temple 쪽은 `boundary_skin_color` 쪽
+* 샘플이 충분하면 실측 피부 샘플 우선
+* 없으면 기존 `scalp_color` fallback
+
+이렇게만 해도 이마가 “한 장의 갈색/분홍색 판”처럼 보이는 문제가 많이 줄어든다.
+
+---
+
+### 2. 피부화할 때 **색상만 바꾸고 명암은 원본 저주파(low-frequency)에서 가져와**
+
+이게 제일 중요하다.
+
+피부가 자연스럽게 보이려면 보통
+
+* **색상(chroma)** 은 피부 샘플 기준
+* **밝기(luma)** 는 원래 장면의 조명/그림자 기준
+  으로 가야 한다.
+
+즉 BGR로 단순 overwrite 하지 말고,
+**YCrCb 기준으로**
+
+* `Y`는 원본 blur/lowfreq에서 유지
+* `Cr/Cb`만 피부 목표색 쪽으로 당겨
+  야 한다.
+
+이 방식은 계산이 무겁지 않다. ROI에서 색공간 변환 2회 정도면 된다.
+그리고 이미 현재 코드도 색 추정용으로 YCrCb/HSV를 쓰고 있으니 방향이 코드 스타일과도 맞다. bundle render도 `_hair_scalp_color`를 단일 skin replacement color로 넘기는 구조라, 여기서도 같은 원칙을 적용하는 게 맞다.
+
+---
+
+## 실제로 어디를 어떻게 바꾸면 되나
+
+### A. `hair_attenuation.py`에 helper 2개 추가
+
+#### helper 1: 컬럼별 피부 field 만들기
+
+이건 기존 경계 샘플링 아이디어를 work ROI에 맞게 축소해서 쓰면 된다.
+
+```python
+def _build_scalp_field_by_col(
+    self,
+    roi_work: np.ndarray,
+    fringe_work: np.ndarray,          # bool [H, W]
+    binary_work_mask: np.ndarray,     # bool [H, W]
+    *,
+    fallback_scalp_color: np.ndarray,
+    reference_skin_color: np.ndarray | None = None,
+) -> np.ndarray:
+    work_h, work_w = roi_work.shape[:2]
+
+    field_by_col = np.tile(
+        np.clip(fallback_scalp_color, 0.0, 255.0).astype(np.float32)[None, :],
+        (work_w, 1),
+    )
+
+    active_cols = np.flatnonzero(np.any(fringe_work, axis=0))
+    if active_cols.size < 4:
+        return field_by_col
+
+    # fringe의 "아래 경계"를 hairline으로 본다
+    reversed_fringe = fringe_work[::-1, :]
+    bottom_from_end = reversed_fringe.argmax(axis=0)
+    boundary_y = np.where(
+        np.any(fringe_work, axis=0),
+        fringe_work.shape[0] - 1 - bottom_from_end,
+        -1,
+    ).astype(np.int32)
+
+    sample_stride = max(2, int(round(active_cols.size / 16.0)))
+    patch_radius = max(2, int(round(work_w * 0.015)))
+    vertical_offset = max(1, int(round(work_h * 0.018)))
+
+    valid_mask = np.where(binary_work_mask, np.uint8(0), np.uint8(255))
+
+    sample_cols = []
+    sample_colors = []
+
+    roi_ycrcb = opencv_cvt_color(roi_work, cv2.COLOR_BGR2YCrCb, min_pixels=8192)
+    roi_hsv = opencv_cvt_color(roi_work, cv2.COLOR_BGR2HSV, min_pixels=8192)
+
+    reference_skin_ycrcb, reference_skin_hsv = self._reference_skin_channels(reference_skin_color)
+
+    for idx in range(0, active_cols.size, sample_stride):
+        col = int(active_cols[idx])
+        row = int(boundary_y[col])
+        if row < 0:
+            continue
+
+        sample = self._sample_patch_skin_median_with_valid_mask(
+            roi_work,
+            valid_mask,
+            center_x=float(col),
+            center_y=float(row + vertical_offset),
+            radius=patch_radius,
+            reference_skin_color=reference_skin_color,
+            frame_ycrcb=roi_ycrcb,
+            frame_hsv=roi_hsv,
+            reference_skin_ycrcb=reference_skin_ycrcb,
+            reference_skin_hsv=reference_skin_hsv,
+        )
+        if sample is None:
+            continue
+
+        sample_cols.append(col)
+        sample_colors.append(sample.astype(np.float32))
+
+    if len(sample_cols) < 2:
+        return field_by_col
+
+    sample_cols_np = np.asarray(sample_cols, dtype=np.int32)
+    sample_colors_np = np.stack(sample_colors, axis=0).astype(np.float32)
+
+    full_cols = np.arange(int(active_cols[0]), int(active_cols[-1]) + 1, dtype=np.int32)
+    interpolated = np.empty((full_cols.size, 3), dtype=np.float32)
+    for ch in range(3):
+        interpolated[:, ch] = np.interp(
+            full_cols.astype(np.float32),
+            sample_cols_np.astype(np.float32),
+            sample_colors_np[:, ch].astype(np.float32),
+        )
+
+    field_by_col[full_cols] = np.clip(interpolated, 0.0, 255.0)
+    return field_by_col
+```
+
+이건 기존 full-frame sampling보다 오히려 **work ROI 안에서만** 돌기 때문에 부담이 크지 않다.
+
+---
+
+#### helper 2: luma-preserving skin target 만들기
+
+이게 핵심이다.
+
+```python
+def _compose_luma_preserving_skin_target(
+    self,
+    lowfreq_bgr: np.ndarray,     # blurred_work 또는 scalp_lowfreq
+    field_by_col: np.ndarray,    # [W, 3], float32
+) -> np.ndarray:
+    h, w = lowfreq_bgr.shape[:2]
+
+    field_bgr = np.broadcast_to(field_by_col[None, :, :], (h, w, 3)).copy()
+    field_bgr_u8 = np.clip(field_bgr, 0.0, 255.0).astype(np.uint8)
+
+    src_ycrcb = opencv_cvt_color(lowfreq_bgr, cv2.COLOR_BGR2YCrCb, min_pixels=8192).astype(np.float32)
+    tgt_ycrcb = opencv_cvt_color(field_bgr_u8, cv2.COLOR_BGR2YCrCb, min_pixels=8192).astype(np.float32)
+
+    src_y = src_ycrcb[:, :, 0]
+    src_y_mean = max(1.0, float(np.mean(src_y)))
+    shade = np.clip(src_y / src_y_mean, 0.92, 1.10)
+
+    out = tgt_ycrcb.copy()
+    # 피부의 기본 밝기는 target skin 쪽으로 가되, 장면 조명은 src에서 가져옴
+    out[:, :, 0] = np.clip(
+        tgt_ycrcb[:, :, 0] * shade,
+        tgt_ycrcb[:, :, 0] - 12.0,
+        tgt_ycrcb[:, :, 0] + 12.0,
+    )
+
+    # chroma는 거의 target skin 쪽, 하지만 원본의 아주 약한 편차는 남김
+    out[:, :, 1] = tgt_ycrcb[:, :, 1] * 0.90 + src_ycrcb[:, :, 1] * 0.10
+    out[:, :, 2] = tgt_ycrcb[:, :, 2] * 0.90 + src_ycrcb[:, :, 2] * 0.10
+
+    out = np.clip(out, 0.0, 255.0).astype(np.uint8)
+    return opencv_cvt_color(out, cv2.COLOR_YCrCb2BGR, min_pixels=8192)
+```
+
+이 로직의 장점:
+
+* 머리 제거는 그대로 되는데
+* 피부가 flat fill처럼 안 보이고
+* 원본 광원 방향과 명암 구조가 남는다
+
+---
+
+### B. `apply_with_metadata()`에서 실제 교체 지점
+
+네가 가장 먼저 바꿔야 하는 건 **fringe fill 구간**이다.
+
+지금은 여기서 flat한 `scalp_matte_work` 성격으로 가고 있을 가능성이 높다.
+이걸 아래처럼 바꾸면 된다.
+
+#### 기존 개념
+
+* `scalp_color` 추정
+* `fringe_work` 영역을 그 scalar 계열로 덮음
+
+#### 변경 개념
+
+* `scalp_color`는 fallback으로만 사용
+* `field_by_col` 생성
+* `blurred_work` 기반 lowfreq 명암 유지
+* `scalp_target_work` 생성
+* `fringe_work`에는 `scalp_target_work`를 넣음
+* `alpha_work`는 지금 값 유지
+
+```python
+# color_estimation 이후
+scalp_target_work = None
+
+if scalp_color is not None and np.any(fringe_work):
+    scalp_color_float = np.clip(scalp_color, 0.0, 255.0).astype(np.float32)
+
+    field_by_col = self._build_scalp_field_by_col(
+        roi_work=roi_work,
+        fringe_work=fringe_work,
+        binary_work_mask=binary_work_mask,
+        fallback_scalp_color=scalp_color_float,
+        reference_skin_color=scalp_color_float,
+    )
+
+    # 기존 blurred_work 재사용 -> 추가 blur 비용 거의 없음
+    scalp_target_work = self._compose_luma_preserving_skin_target(
+        lowfreq_bgr=blurred_work,
+        field_by_col=field_by_col,
+    )
+
+if scalp_target_work is not None and np.any(fringe_work):
+    weakened_work = weakened_work.astype(np.float32)
+    scalp_target_float = scalp_target_work.astype(np.float32)
+    weakened_work[fringe_work] = scalp_target_float[fringe_work]
+    weakened_work = np.clip(weakened_work, 0.0, 255.0).astype(np.uint8)
+
+    # alpha는 기존 로직 유지
+    fringe_alpha = np.where(fringe_work, np.float32(1.0), np.float32(0.0))
+    alpha_work = np.where(
+        fringe_work[..., None],
+        np.maximum(alpha_work, fringe_alpha[..., None]),
+        alpha_work,
+    )
+```
+
+### 왜 이게 좋은가
+
+이 수정은
+
+* mask 로직 안 바꾸고
+* alpha 로직 거의 안 바꾸고
+* segmentation threshold 안 바꾸고
+* tracking 안 바꾸고
+* just “채우는 픽셀 값”만 자연스럽게 만드는 수정이야
+
+즉 결과의 큰 동작은 유지하면서 자연스러움만 좋아질 가능성이 높다.
+
+---
+
+## 바로 효과 큰 추가 수정 2개
+
+### 1. `boundary_skin_color` 비중을 좀 더 직접 쓰기
+
+지금은 `skin_color`와 `boundary_skin_color`를 섞어 `scalp_color` 하나로 만드는 흐름인데,
+실제 자연스러움엔 **경계 아래 피부색**이 더 중요할 때가 많다.
+
+특히 bangs/앞머리/짧은 머리에서
+
+* 볼 색
+* forehead 중앙 색
+* hairline 아래 실제 피부색
+  은 다르다.
+
+그래서 scalar fallback을 이렇게 바꿔.
+
+```python
+scalp_source_color = self._blend_scalp_reference_color(
+    skin_color,
+    boundary_skin_color,
+)
+```
+
+이건 유지하되,
+`field_by_col`가 생기면 각 column에서 boundary 샘플이 있으면 그걸 우선하고,
+없을 때만 위 scalar를 쓰는 구조가 좋다.
+
+즉:
+
+* **1순위: local boundary sample**
+* **2순위: interpolated field**
+* **3순위: scalar scalp_color**
+
+---
+
+### 2. lower hairline ring 로직은 남기되, source를 background가 아니라 scalp-aware로
+
+현재 lower hairline 보정은 방향이 좋아.
+문제는 메인 피부화가 flat하면, 그 아래 ring만 좋아져도 위쪽이 여전히 가짜 같아 보인다는 거다.
+
+그래서 순서는 이렇게 가면 된다.
+
+1. 메인 fringe fill을 `luma-preserving scalp target`으로 바꾼다
+2. 기존 lower hairline ring은 그대로 둔다
+3. ring에서 쓰는 `field_by_col`는 지금처럼 유지하되, 메인 fill에 쓴 field와 같은 fallback을 쓰게 맞춘다
+
+이렇게 하면
+
+* 위쪽 피부화와
+* 헤어라인 아래 연결부
+  가 같은 계열로 이어져서 훨씬 자연스럽다.
+
+---
+
+## postprocess 쪽에서 아주 싸게 보완하는 법
+
+지금 postprocess는 `_hair_background_color`와 cleanup mask를 기준으로 residual/outer ring을 backgroundize 한다. 이건 필요하지만, 중앙 forehead 쪽까지 background 계열이 조금 새면 피부화와 배경화가 섞여 보일 수 있다. 그래서 **face top central zone은 background보다 scalp-aware target을 우선**하는 분기를 넣는 게 좋다. `apply_overlay_postprocess()`는 이미 `hair_binary_mask`, `fringe_mask`, `coverage_mask`, `background_color`를 쓰고 있고, local background field도 계산한다. 여기에 `_hair_scalp_color` 또는 이후에 추가할 `_hair_scalp_field`만 하나 더 얹으면 된다.
+
+가장 싼 방식은:
+
+```python
+scalp_color = _as_color(user_row.get("_hair_scalp_color"))
+
+# cleanup_mask 중에서도
+# temples 사이 + forehead 위쪽 + face inner gate 바깥이 아닌 구역은
+# background_color 대신 scalp_color 쪽으로 blend
+```
+
+즉 postprocess 전체를 바꾸는 게 아니라,
+**cleanup target 선택만 분기**하는 거다.
+
+---
+
+## bundle render를 쓰는 경우 꼭 봐야 할 점
+
+이건 중요해.
+runtime 코드상 bundle render 경로는 `_hair_scalp_color`를 단일 `skin_replacement_color_rgb`로 변환해서 `compose_bundle_frame()`에 넘긴다. 즉 attenuation 쪽을 아무리 잘 바꿔도, bundle render가 여전히 **단색 skin replacement**를 하면 flat한 느낌이 남을 수 있다. 
+
+그래서 bundle render가 자주 켜진다면 최소한 이것도 같이 바꾸는 게 좋아.
+
+### 가장 싼 변경
+
+`compose_bundle_frame()` 쪽에서
+
+* `original_frame_image`는 이미 들어오고 있으니
+* replacement mask 영역에서
+
+  * `Y`는 original lowfreq에서 유지
+  * `Cr/Cb`만 `skin_replacement_color_rgb` 기준으로 이동
+
+하게 바꿔.
+
+즉 API는 그대로 두고 내부 합성만 바꾸면 된다.
+
+#### 아주 간단한 원칙
+
+* 지금: `skin_replacement_color_rgb`로 flat replace
+* 변경: `skin_replacement_color_rgb`는 **target chroma anchor**
+* 원본 frame의 명암은 유지
+
+이렇게만 바꿔도 번들 렌더 쪽 flatness가 크게 줄어든다.
+
+---
+
+## “부하 거의 안 늘게” 하려면 하지 말아야 할 것
+
+아래는 자연스러워질 수는 있지만 지금은 비추천이야.
+
+* 새 segmentation 모델 추가
+* bilateral / guided filter full-frame 반복
+* Poisson blending
+* 2D dense skin field를 full-frame에서 매 프레임 새로 추정
+* 얼굴 전체 relighting 모델 추가
+* neural inpaint 류
+
+이건 지금 네 요구사항인 “ms 큰 차이 없이”와 안 맞다.
+
+---
+
+## 내가 추천하는 실제 적용 순서
+
+### 1차 수정: 가장 추천
+
+`hair_attenuation.py / apply_with_metadata()`
+
+* 유지:
+
+  * `skin_color`, `boundary_skin_color`, `background_color`, `scalp_color` 추정 흐름
+  * `alpha_work`
+  * `fringe_work`, `outer_bulk_work`
+* 변경:
+
+  * scalar scalp fill → `field_by_col + luma preserve`
+
+이게 제일 효과 대비 비용이 좋다.
+
+### 2차 수정: 연결감 개선
+
+`lower_hairline_blend`에서 쓰는 field fallback을 1차 수정의 field와 맞춤
+
+### 3차 수정: bundle render 켜질 때
+
+`compose_bundle_frame()` 내부에서 flat skin replace → luma-preserving replace
+
+### 4차 수정: postprocess
+
+cleanup target이 background 쪽으로 너무 치우치는 픽셀만 scalp-aware 분기
+
+---
+
+## 검증은 이렇게 보면 된다
+
+패치 후에는 숫자보다 이 4개를 먼저 봐.
+
+1. **중앙 forehead가 한 톤 덩어리처럼 보이는지**
+2. **좌우 temple 밝기가 실제 얼굴 조명과 같이 가는지**
+3. **헤어라인 아래 경계가 핑크/회색 띠처럼 남는지**
+4. **고개를 조금 돌렸을 때 scalp tone이 프레임마다 튀는지**
+
+성능은
+
+* `color_estimation_ms`
+* `lower_hairline_blend_ms`
+* 전체 `attenuation`
+  만 비교하면 충분하다.
+
+이 수정은 새 모델 추론이 아니라 **ROI 색합성 방식 변경**이라, 보통 tracking/segmentation 급의 비용 증가는 안 난다.
+
+---
+
+## 한 줄 결론
+
+지금 필요한 건 **더 정확한 피부색 추정**이 아니라,
+**이미 추정한 피부색을 “단색 fill”로 쓰지 말고 “로컬 피부 field + 명암 보존”으로 바꾸는 것**이야.
+
+그게 가장 자연스럽고, 지금 부하 조건에도 제일 잘 맞는다.
+그리고 bundle render를 쓰고 있다면 거기도 동일하게 **Y 보존 + Cr/Cb 치환** 원칙으로 맞춰야 전체 결과가 통일된다.

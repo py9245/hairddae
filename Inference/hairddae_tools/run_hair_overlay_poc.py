@@ -93,6 +93,16 @@ HAIR_TONE_MATCH_DELTA_THRESHOLD = float(np.clip(_env_float("INFERENCE_RTC_HAIR_T
 ASSET_BUNDLE_CACHE_SIZE = max(8, int(os.environ.get("INFERENCE_RUNTIME_ASSET_BUNDLE_CACHE_SIZE", "64")))
 ASSET_EDGE_RISK_CACHE_SIZE = max(32, int(os.environ.get("INFERENCE_RUNTIME_ASSET_EDGE_RISK_CACHE_SIZE", "256")))
 PACKED_BUNDLES_ENABLED = _env_bool("INFERENCE_RUNTIME_PACKED_BUNDLES_ENABLED", True)
+LEGACY_AUX_ALIGN_ENABLED = _env_bool("INFERENCE_RTC_LEGACY_AUX_ALIGN_ENABLED", False)
+LEGACY_AUX_ALIGN_MAX_SHIFT_RATIO = float(
+    np.clip(_env_float("INFERENCE_RTC_LEGACY_AUX_ALIGN_MAX_SHIFT_RATIO", 0.028), 0.0, 0.08)
+)
+LEGACY_AUX_ALIGN_MAX_YSHIFT_RATIO = float(
+    np.clip(_env_float("INFERENCE_RTC_LEGACY_AUX_ALIGN_MAX_YSHIFT_RATIO", 0.024), 0.0, 0.08)
+)
+LEGACY_AUX_ALIGN_MAX_XSCALE_DELTA = float(
+    np.clip(_env_float("INFERENCE_RTC_LEGACY_AUX_ALIGN_MAX_XSCALE_DELTA", 0.028), 0.0, 0.08)
+)
 
 BUNDLE_PROFILE_FULL = "full"
 BUNDLE_PROFILE_LEGACY = "legacy"
@@ -902,6 +912,145 @@ def estimate_transform(src_anchors: dict[str, Any], dst_anchors: dict[str, Any])
     if matrix is not None:
         return matrix
     return cv2.getAffineTransform(src_pts[:3], dst_pts[:3])
+
+
+def _anchor_xy_array(anchors: dict[str, Any], name: str) -> np.ndarray | None:
+    payload = anchors.get(name)
+    if not isinstance(payload, dict):
+        return None
+    try:
+        return np.array([float(payload["x"]), float(payload["y"])], dtype=np.float32)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _x_scaled_affine_about_pivot(
+    matrix: np.ndarray,
+    scale_x: float,
+    pivot: tuple[float, float],
+) -> np.ndarray:
+    if abs(scale_x - 1.0) < 1e-4:
+        return matrix
+    pivot_x, pivot_y = pivot
+    scale_matrix = np.array(
+        [
+            [float(scale_x), 0.0, (1.0 - float(scale_x)) * float(pivot_x)],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+    matrix_3x3 = np.vstack([matrix.astype(np.float32), np.array([0.0, 0.0, 1.0], dtype=np.float32)])
+    return (scale_matrix @ matrix_3x3)[:2, :]
+
+
+def _translated_affine(
+    matrix: np.ndarray,
+    shift_x: float,
+    shift_y: float,
+) -> np.ndarray:
+    if abs(shift_x) < 1e-4 and abs(shift_y) < 1e-4:
+        return matrix
+    translated = np.array(matrix, copy=True, dtype=np.float32)
+    translated[0, 2] += float(shift_x)
+    translated[1, 2] += float(shift_y)
+    return translated
+
+
+def _refine_legacy_transform_with_aux_anchors(
+    matrix: np.ndarray,
+    src_anchors: dict[str, Any],
+    dst_anchors: dict[str, Any],
+    *,
+    face_bbox: dict[str, Any] | None,
+    pose: dict[str, Any] | None,
+) -> tuple[np.ndarray, dict[str, float] | None]:
+    if not LEGACY_AUX_ALIGN_ENABLED:
+        return matrix, None
+    if not isinstance(face_bbox, dict):
+        return matrix, None
+
+    try:
+        yaw_abs = abs(float((pose or {}).get("yaw_1deg", 0.0)))
+        roll_abs = abs(float((pose or {}).get("roll_1deg", 0.0)))
+    except (TypeError, ValueError):
+        yaw_abs = 0.0
+        roll_abs = 0.0
+    if yaw_abs > 18.0 or roll_abs > 12.0:
+        return matrix, None
+
+    src_left_ear = _anchor_xy_array(src_anchors, "left_ear_root")
+    src_right_ear = _anchor_xy_array(src_anchors, "right_ear_root")
+    src_crown = _anchor_xy_array(src_anchors, "crown")
+    dst_left_ear = _anchor_xy_array(dst_anchors, "left_ear_root")
+    dst_right_ear = _anchor_xy_array(dst_anchors, "right_ear_root")
+    dst_crown = _anchor_xy_array(dst_anchors, "crown")
+    if (
+        src_left_ear is None
+        or src_right_ear is None
+        or src_crown is None
+        or dst_left_ear is None
+        or dst_right_ear is None
+        or dst_crown is None
+    ):
+        return matrix, None
+
+    transformed = transform_points(
+        matrix,
+        np.vstack([src_left_ear, src_right_ear, src_crown]).astype(np.float32),
+    )
+    transformed_left_ear = transformed[0]
+    transformed_right_ear = transformed[1]
+    transformed_crown = transformed[2]
+
+    dst_ear_center = (dst_left_ear + dst_right_ear) * 0.5
+    transformed_ear_center = (transformed_left_ear + transformed_right_ear) * 0.5
+    dst_ear_span = max(1.0, float(abs(dst_right_ear[0] - dst_left_ear[0])))
+    transformed_ear_span = max(1.0, float(abs(transformed_right_ear[0] - transformed_left_ear[0])))
+    face_width = max(
+        1.0,
+        float(face_bbox.get("w", 0.0)) or dst_ear_span,
+    )
+    face_height = max(
+        1.0,
+        float(face_bbox.get("h", 0.0))
+        or abs(float(dst_crown[1]) - float((dst_left_ear[1] + dst_right_ear[1]) * 0.5)),
+    )
+
+    raw_scale_x = dst_ear_span / transformed_ear_span
+    scale_x = float(
+        np.clip(
+            raw_scale_x,
+            1.0 - LEGACY_AUX_ALIGN_MAX_XSCALE_DELTA,
+            1.0 + LEGACY_AUX_ALIGN_MAX_XSCALE_DELTA,
+        )
+    )
+    refined = _x_scaled_affine_about_pivot(
+        matrix,
+        scale_x,
+        (float(dst_ear_center[0]), float(dst_crown[1])),
+    )
+
+    transformed_after_scale = transform_points(
+        refined,
+        np.vstack([src_left_ear, src_right_ear, src_crown]).astype(np.float32),
+    )
+    scaled_ear_center = (transformed_after_scale[0] + transformed_after_scale[1]) * 0.5
+    scaled_crown = transformed_after_scale[2]
+
+    raw_shift_x = 0.88 * float(dst_ear_center[0] - scaled_ear_center[0]) + 0.12 * float(dst_crown[0] - scaled_crown[0])
+    raw_shift_y = 0.72 * float(dst_crown[1] - scaled_crown[1]) + 0.28 * float(dst_ear_center[1] - scaled_ear_center[1])
+    max_shift_x = face_width * LEGACY_AUX_ALIGN_MAX_SHIFT_RATIO
+    max_shift_y = face_height * LEGACY_AUX_ALIGN_MAX_YSHIFT_RATIO
+    shift_x = float(np.clip(raw_shift_x, -max_shift_x, max_shift_x))
+    shift_y = float(np.clip(raw_shift_y, -max_shift_y, max_shift_y))
+    refined = _translated_affine(refined, shift_x, shift_y)
+
+    return refined, {
+        "aux_scale_x": round(float(scale_x), 5),
+        "aux_shift_x": round(float(shift_x), 3),
+        "aux_shift_y": round(float(shift_y), 3),
+    }
 
 
 def _synthesize_full_frame_from_hair_rgba(
@@ -2292,6 +2441,13 @@ def build_legacy_overlay_layer(
         (height, width),
     )
     matrix = _scaled_affine_about_pivot(matrix, head_size_scale, head_scale_pivot)
+    matrix, aux_refine_debug = _refine_legacy_transform_with_aux_anchors(
+        matrix,
+        asset_anchors,
+        user_row["anchors"],
+        face_bbox=user_row.get("face_bbox"),
+        pose=user_row.get("pose"),
+    )
     src_corners = np.array(
         [
             [src_x0, src_y0],
@@ -2480,6 +2636,7 @@ def build_legacy_overlay_layer(
         debug_payload.update(
             {
                 "roi_setup_ms": roi_setup_ms,
+                "aux_anchor_refine": aux_refine_debug or {},
                 "warp_rgb_ms": warp_rgb_ms,
                 "warp_alpha_ms": warp_alpha_ms,
                 "warp_hair_ms": warp_hair_ms,

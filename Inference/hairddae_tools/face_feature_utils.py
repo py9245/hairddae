@@ -8,6 +8,7 @@ import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
+from cv2_cuda_utils import opencv_cvt_color
 from local_demo_paths import default_face_landmarker_model_path
 
 
@@ -53,7 +54,7 @@ def build_landmarker(
 
 
 def build_mp_image_from_bgr(image_bgr: Any) -> mp.Image:
-    rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    rgb = opencv_cvt_color(image_bgr, cv2.COLOR_BGR2RGB, min_pixels=200_000)
     if not rgb.flags["C_CONTIGUOUS"]:
         rgb = rgb.copy()
     return mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)

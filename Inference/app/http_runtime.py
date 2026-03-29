@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse, Response
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 
+from app.catalog import _resolve_asset_index_path
 from app.config import Settings
 from app.hairddae_runtime_manager import HairddaeRuntimeManager
 
@@ -36,12 +37,13 @@ class HttpFrameResult:
 
 
 def _load_dataset_summary(static_root: Path, dataset_code: str) -> dict[str, object]:
-    asset_index_path = static_root / dataset_code / "manifests" / "asset_index_v0.json"
-    if not asset_index_path.is_file():
+    asset_root_path = static_root / dataset_code
+    asset_index_path = _resolve_asset_index_path(asset_root_path)
+    if asset_index_path is None:
         return {
             "dataset_code": dataset_code,
             "asset_index_exists": False,
-            "asset_index_path": str(asset_index_path),
+            "asset_index_path": str(asset_root_path / "manifests" / "asset_index_v0.json"),
             "asset_count": 0,
             "approved_asset_count": 0,
         }
@@ -104,6 +106,7 @@ def _process_http_frame(
         dataset_code=dataset_code,
         frame_bgr=frame_bgr,
         session_id=apply_session_id,
+        encode_output=False,
     )
 
     output_frame_bgr = runtime_result.get("output_frame_bgr")

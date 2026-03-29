@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from threading import Lock
+import time
 
 import cv2
 import mediapipe as mp
@@ -13,6 +15,9 @@ from mediapipe.tasks.python import vision
 from app.auth import TicketClaims
 from app.config import Settings
 from app.models import FeatureMessageModel
+
+
+logger = logging.getLogger("uvicorn.error")
 
 
 FACE_LANDMARK_INDEX = {
@@ -223,18 +228,76 @@ def _pose_from_result(result: vision.FaceLandmarkerResult, face_index: int = 0) 
 
 
 class ServerFaceTracker:
-    def __init__(self, model_path: Path, num_faces: int = 1) -> None:
+    def __init__(self, model_path: Path, num_faces: int = 1, delegate: str = "cpu") -> None:
         resolved_model_path = model_path.expanduser().resolve()
-        options = vision.FaceLandmarkerOptions(
-            base_options=python.BaseOptions(model_asset_path=str(resolved_model_path)),
-            output_facial_transformation_matrixes=True,
+        requested_delegate = str(delegate or "cpu").strip().lower()
+        self.delegate = self._create_landmarker(
+            resolved_model_path,
+            requested_delegate,
             num_faces=max(1, int(num_faces)),
         )
-        self._landmarker = vision.FaceLandmarker.create_from_options(options)
         self._lock = Lock()
 
     def close(self) -> None:
         self._landmarker.close()
+
+    def warm_up(self) -> float:
+        blank_rgb = np.zeros((256, 256, 3), dtype=np.uint8)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=blank_rgb)
+        started_at = time.perf_counter()
+        with self._lock:
+            self._landmarker.detect(mp_image)
+        return round((time.perf_counter() - started_at) * 1000.0, 3)
+
+    def _create_landmarker(
+        self,
+        model_path: Path,
+        requested_delegate: str,
+        *,
+        num_faces: int,
+    ) -> str:
+        delegate_candidates = [requested_delegate] if requested_delegate == "cpu" else [requested_delegate, "cpu"]
+        last_error: Exception | None = None
+
+        for candidate in delegate_candidates:
+            try:
+                options = vision.FaceLandmarkerOptions(
+                    base_options=python.BaseOptions(
+                        model_asset_path=str(model_path),
+                        delegate=self._delegate_enum(candidate),
+                    ),
+                    output_facial_transformation_matrixes=True,
+                    num_faces=num_faces,
+                )
+                self._landmarker = vision.FaceLandmarker.create_from_options(options)
+                if candidate != requested_delegate:
+                    logger.warning(
+                        "face tracker delegate fallback: requested=%s active=%s",
+                        requested_delegate,
+                        candidate,
+                    )
+                else:
+                    logger.info("face tracker delegate active: %s", candidate)
+                return candidate
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "face tracker delegate init failed: requested=%s candidate=%s error=%s",
+                    requested_delegate,
+                    candidate,
+                    exc,
+                )
+                continue
+
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("failed to initialize face tracker")
+
+    @staticmethod
+    def _delegate_enum(delegate: str) -> python.BaseOptions.Delegate:
+        if str(delegate).strip().lower() == "gpu":
+            return python.BaseOptions.Delegate.GPU
+        return python.BaseOptions.Delegate.CPU
 
     def extract_tracking_result_from_rgb(
         self,
@@ -244,6 +307,7 @@ class ServerFaceTracker:
         settings: Settings,
         seq: int,
         ts_ms: int,
+        hair_id_override: int | None = None,
         reference_face_bbox: dict[str, object] | None = None,
     ) -> TrackingResult | None:
         if frame_rgb.ndim != 3 or frame_rgb.shape[2] != 3:
@@ -287,7 +351,7 @@ class ServerFaceTracker:
                 "seq": seq,
                 "ts_ms": ts_ms,
                 "apply_session_id": claims.apply_session_id,
-                "hair_id": claims.hair_id,
+                "hair_id": int(claims.hair_id if hair_id_override is None else hair_id_override),
                 "image_size": user_row["image_size"],
                 "pose": user_row["pose"],
                 "face_bbox": user_row["face_bbox"],
@@ -308,6 +372,7 @@ class ServerFaceTracker:
         settings: Settings,
         seq: int,
         ts_ms: int,
+        hair_id_override: int | None = None,
         reference_face_bbox: dict[str, object] | None = None,
     ) -> FeatureMessageModel | None:
         tracking_result = self.extract_tracking_result_from_rgb(
@@ -316,6 +381,7 @@ class ServerFaceTracker:
             settings=settings,
             seq=seq,
             ts_ms=ts_ms,
+            hair_id_override=hair_id_override,
             reference_face_bbox=reference_face_bbox,
         )
         if tracking_result is None:

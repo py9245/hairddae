@@ -5,4 +5,9 @@ __pycache__/
 .mypy_cache/
 .coverage
 htmlcov/
+performance
 .env.server
+debug/
+.cache
+.logs
+artifacts

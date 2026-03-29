@@ -64,6 +64,9 @@ class HairddaeRuntimeManager:
         os.environ["LOCAL_DEMO_USER_MASK_REUSE_BBOX_IOU_MIN"] = str(
             self._settings.rtc_user_parsing_bbox_iou_threshold
         )
+        os.environ["LOCAL_DEMO_DISABLE_USER_PARSING_IN_LATENCY_MODE"] = (
+            "1" if self._settings.rtc_disable_user_parsing_in_latency_mode else "0"
+        )
 
     def _runtime_for_dataset(self, dataset_code: str) -> HairOverlayRuntime:
         with self._lock:
@@ -77,7 +80,7 @@ class HairddaeRuntimeManager:
                 asset_root=asset_root,
                 model_path=self._settings.face_landmarker_model_path,
                 jpeg_quality=self._settings.http_test_jpeg_quality,
-                renderer_name="mesh_v3",
+                renderer_name=self._settings.rtc_renderer_name,
             )
             self._runtime_cache[dataset_code] = runtime
             return runtime
@@ -88,18 +91,29 @@ class HairddaeRuntimeManager:
         dataset_code: str,
         frame_bgr: np.ndarray,
         render_frame_bgr: np.ndarray | None = None,
+        source_frame_bgr: np.ndarray | None = None,
         tracked_user_row: dict[str, Any] | None = None,
         prefer_latency: bool = False,
         session_id: str,
+        representative_asset_id: str | None = None,
+        encode_output: bool = True,
     ) -> dict[str, Any]:
         runtime = self._runtime_for_dataset(dataset_code)
+        renderer_name = (
+            self._settings.rtc_latency_renderer_name
+            if prefer_latency and self._settings.rtc_latency_renderer_name
+            else self._settings.rtc_renderer_name
+        )
         return runtime.process_frame(
             frame_bgr,
-            renderer_name="mesh_v3",
+            renderer_name=renderer_name,
             render_frame_bgr=render_frame_bgr,
+            source_frame_bgr=source_frame_bgr,
             tracked_user_row=tracked_user_row,
             prefer_latency=prefer_latency,
             session_id=session_id,
+            representative_asset_id=representative_asset_id,
+            encode_output=encode_output,
         )
 
     def reference_face_bbox(self, dataset_code: str, session_id: str) -> dict[str, Any] | None:
@@ -109,6 +123,13 @@ class HairddaeRuntimeManager:
     def health(self, dataset_code: str) -> dict[str, Any]:
         runtime = self._runtime_for_dataset(dataset_code)
         return runtime.health()
+
+    def reset_session(self, dataset_code: str, session_id: str) -> None:
+        with self._lock:
+            runtime = self._runtime_cache.get(dataset_code)
+        if runtime is None:
+            return
+        runtime.reset_session(session_id)
 
     def close(self) -> None:
         with self._lock:

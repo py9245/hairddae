@@ -136,6 +136,7 @@ class Settings:
     hair_segmenter_delegate: str
     face_tracker_num_faces: int
     rtc_max_pending_frames: int
+    rtc_runtime_slots_per_dataset: int
     rtc_process_max_dimension: int
     rtc_process_min_dimension: int
     rtc_process_step_dimension: int
@@ -281,6 +282,10 @@ class Settings:
             hair_segmenter_delegate=_env_str("INFERENCE_HAIR_SEGMENTER_DELEGATE", "gpu"),
             face_tracker_num_faces=max(1, _env_int("INFERENCE_FACE_TRACKER_NUM_FACES", 1)),
             rtc_max_pending_frames=max(1, _env_int("INFERENCE_RTC_MAX_PENDING_FRAMES", 1)),
+            rtc_runtime_slots_per_dataset=max(
+                1,
+                min(4, _env_int("INFERENCE_RTC_RUNTIME_SLOTS_PER_DATASET", 1)),
+            ),
             rtc_process_max_dimension=_env_int("INFERENCE_RTC_PROCESS_MAX_DIMENSION", 960),
             rtc_process_min_dimension=_env_int("INFERENCE_RTC_PROCESS_MIN_DIMENSION", 640),
             rtc_process_step_dimension=_env_int("INFERENCE_RTC_PROCESS_STEP_DIMENSION", 160),

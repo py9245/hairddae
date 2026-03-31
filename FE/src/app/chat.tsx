@@ -139,6 +139,7 @@ function ChatRoomView({
   const [initialImageUrl, setInitialImageUrl] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
+  const [isRoomReady, setIsRoomReady] = useState(false)
   const [sendErrorMessage, setSendErrorMessage] = useState<string | null>(null)
 
   const lastMessageIdRef = useRef<number | string | null>(null)
@@ -223,6 +224,7 @@ function ChatRoomView({
 
     setMessages([])
     setInputValue('')
+    setIsRoomReady(false)
     setSendErrorMessage(null)
     lastMessageIdRef.current = null
     hasEnteredRoomRef.current = false
@@ -238,6 +240,7 @@ function ChatRoomView({
     setMessages((current) => {
       if (!hasEnteredRoomRef.current) {
         hasEnteredRoomRef.current = true
+        setIsRoomReady(true)
         lastMessageIdRef.current = getLastMessageId(incomingMessages)
         return incomingMessages
       }
@@ -263,7 +266,7 @@ function ChatRoomView({
   }, [messagesQuery.data])
 
   const isSendDisabled =
-    inputValue.trim() === '' || sendMessageMutation.isPending
+    !isRoomReady || inputValue.trim() === '' || sendMessageMutation.isPending
 
   return (
     <main className="app-frame-page relative h-full overflow-hidden bg-bg-primary">
@@ -353,6 +356,7 @@ function ChatRoomView({
               placeholder="메시지를 입력하세요"
               rows={2}
               className="min-h-[52px] flex-1 resize-none rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm text-text-dark outline-none transition focus:border-primary-250"
+              disabled={!isRoomReady}
             />
 
             <Button
@@ -377,6 +381,10 @@ function ChatRoomView({
           {sendErrorMessage ? (
             <p className="mt-2 text-sm text-error" role="alert">
               {sendErrorMessage}
+            </p>
+          ) : !isRoomReady ? (
+            <p className="mt-2 text-sm text-text-sub">
+              채팅방을 준비하는 중입니다. 잠시만 기다려 주세요.
             </p>
           ) : null}
         </section>

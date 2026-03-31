@@ -11,14 +11,12 @@ import {
 import {
   clearChatRoomDraft,
   createChatRoom,
-  dataUrlToBlob,
   readChatRoomDraft,
 } from '@/lib/chat'
 
 export default function DesignerList() {
   const navigate = useNavigate()
   const designers = readDesignerListCache()
-  const designerCount = designers.length
   const [requestMessage, setRequestMessage] = useState<string | null>(null)
 
   const chatRoomMutation = useMutation({
@@ -28,12 +26,10 @@ export default function DesignerList() {
         throw new Error('전송할 적용 이미지가 없습니다.')
       }
 
-      const appliedImage = await dataUrlToBlob(draft.appliedImageDataUrl)
-
       return createChatRoom({
         designerUserId: designer.name,
         hairId: draft.hairId,
-        appliedImage,
+        appliedImage: draft.appliedImage,
       })
     },
   })
@@ -73,7 +69,7 @@ export default function DesignerList() {
         ) : null}
 
         <section className="mt-5 flex flex-col gap-4 pb-6">
-          {designerCount > 0 ? (
+          {designers.length > 0 ? (
             designers.map((designer, index) => (
               <DesignerListCard
                 key={`${designer.id}-${designer.name}`}

@@ -446,13 +446,6 @@ export function HairCameraView({
     }
 
     const draftCanvas = frozenFrameCanvasRef.current
-    if (draftCanvas) {
-      writeChatRoomDraft({
-        hairId: displayHairId,
-        appliedImageDataUrl: draftCanvas.toDataURL('image/png'),
-      })
-    }
-
     if (typeof window === 'undefined' || !navigator.geolocation) {
       setDesignerLocationMessage('현재 위치를 지원하지 않는 환경입니다.')
       return
@@ -464,6 +457,14 @@ export function HairCameraView({
       (position) => {
         void (async () => {
           try {
+            if (draftCanvas) {
+              const appliedImage = await canvasToBlob(draftCanvas)
+              writeChatRoomDraft({
+                hairId: displayHairId,
+                appliedImage,
+              })
+            }
+
             const { latitude, longitude } = position.coords
             const response = await designerMutation.mutateAsync({
               latitude,

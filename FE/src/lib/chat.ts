@@ -1,10 +1,8 @@
 import { apiFetch } from '@/lib/api'
 
-const CHAT_REQUEST_DRAFT_STORAGE_KEY = 'chat-request-draft'
-
 export type ChatRoomDraft = {
   hairId: number
-  appliedImageDataUrl: string
+  appliedImage: Blob
 }
 
 export type CreateChatRoomRequest = {
@@ -28,6 +26,8 @@ type RawCreateChatRoomResponse = Partial<{
   chatRoomId: number | string
   chat_room_id: number | string
 }>
+
+let chatRoomDraft: ChatRoomDraft | null = null
 
 export async function createChatRoom({
   designerUserId,
@@ -72,42 +72,13 @@ export async function createChatRoom({
 }
 
 export function writeChatRoomDraft(draft: ChatRoomDraft) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.sessionStorage.setItem(
-    CHAT_REQUEST_DRAFT_STORAGE_KEY,
-    JSON.stringify(draft),
-  )
+  chatRoomDraft = draft
 }
 
 export function readChatRoomDraft(): ChatRoomDraft | null {
-  if (typeof window === 'undefined') {
-    return null
-  }
-
-  try {
-    const raw = window.sessionStorage.getItem(CHAT_REQUEST_DRAFT_STORAGE_KEY)
-    if (!raw) {
-      return null
-    }
-
-    return JSON.parse(raw) as ChatRoomDraft
-  } catch {
-    return null
-  }
+  return chatRoomDraft
 }
 
 export function clearChatRoomDraft() {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  window.sessionStorage.removeItem(CHAT_REQUEST_DRAFT_STORAGE_KEY)
-}
-
-export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
-  const response = await fetch(dataUrl)
-  return response.blob()
+  chatRoomDraft = null
 }

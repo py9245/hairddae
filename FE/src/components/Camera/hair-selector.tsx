@@ -12,6 +12,7 @@ type HairSelectorProps = {
   loading?: boolean
   frozen?: boolean
   aiEnhancePending?: boolean
+  hasAiEnhanced?: boolean
   onSelect: (id: number) => void
   onCapture?: () => void
   onFreezeChange?: (frozen: boolean) => void
@@ -55,6 +56,7 @@ export function HairSelector(props: HairSelectorProps) {
     selectedId,
     frozen = false,
     aiEnhancePending = false,
+    hasAiEnhanced = false,
     onFindDesigner,
     onAiEnhance,
   } = props
@@ -105,6 +107,8 @@ export function HairSelector(props: HairSelectorProps) {
                       <LoaderCircle className="size-4 animate-spin" />
                       AI 보정중...
                     </>
+                  ) : hasAiEnhanced ? (
+                    '다시 보정하기'
                   ) : (
                     'AI 보정하기'
                   )}

@@ -79,6 +79,7 @@ export function HairCameraView({
   const [captureToastVisible, setCaptureToastVisible] = useState(false)
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false)
   const [isFrameFrozen, setIsFrameFrozen] = useState(false)
+  const [hasAiEnhanced, setHasAiEnhanced] = useState(false)
   const [uiScale, setUiScale] = useState(1)
 
   const aiUpgradeMutation = useMutation({
@@ -183,6 +184,7 @@ export function HairCameraView({
 
     const timerId = window.setTimeout(() => {
       setAiEnhanceMessage(null)
+      setHasAiEnhanced(true)
     }, 2200)
 
     return () => {
@@ -301,6 +303,7 @@ export function HairCameraView({
     (nextFrozen: boolean) => {
       if (!nextFrozen) {
         setIsFrameFrozen(false)
+        setHasAiEnhanced(false)
         return
       }
 
@@ -368,6 +371,7 @@ export function HairCameraView({
         hairItems,
         onComplete: () => {
           setAiEnhanceMessage(null)
+          setHasAiEnhanced(false)
           setCaptureToastVisible(true)
         },
         selectedHairId: displayHairId,
@@ -382,6 +386,7 @@ export function HairCameraView({
       mirror: hasRemoteVideo ? false : RTC_STAGE_MIRRORED,
       onComplete: () => {
         setAiEnhanceMessage(null)
+        setHasAiEnhanced(false)
         setCaptureToastVisible(true)
       },
       selectedHairId: displayHairId,
@@ -570,6 +575,7 @@ export function HairCameraView({
             selectedId={displayHairId}
             loading={isHairItemsLoading}
             frozen={isFrameFrozen}
+            hasAiEnhanced={hasAiEnhanced}
             aiEnhancePending={
               aiUpgradeMutation.isPending || designerMutation.isPending
             }

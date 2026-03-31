@@ -31,13 +31,20 @@ type KakaoPostcodeData = {
   buildingName?: string
 }
 
+type KakaoPostcodeOpenOptions = {
+  left?: number
+  top?: number
+  width?: number
+  height?: number
+}
+
 declare global {
   interface Window {
     kakao?: {
       Postcode: new (options: {
         oncomplete: (data: KakaoPostcodeData) => void
       }) => {
-        open: () => void
+        open: (options?: KakaoPostcodeOpenOptions) => void
       }
     }
     __kakaoPostcodeLoader__?: Promise<void>
@@ -210,7 +217,12 @@ export function DesignerApplicationDialog({
           `${zonecode}${primaryAddress}${buildingName}`.trim(),
         )
       },
-    }).open()
+    }).open({
+      left: window.screenX + Math.max((window.outerWidth - 520) / 2, 0),
+      top: window.screenY + Math.max((window.outerHeight - 640) / 2, 0),
+      width: 520,
+      height: 640,
+    })
   }
 
   return (

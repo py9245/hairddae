@@ -79,7 +79,7 @@ export function HairSelector(props: HairSelectorProps) {
           onPointerCancel={handlePointerEnd}
           onPointerLeave={handlePointerEnd}
         >
-          <div className={overlayClassName} />
+          {frozen ? null : <div className={overlayClassName} />}
 
           {frozen ? (
             <div className="flex flex-col items-center gap-3">

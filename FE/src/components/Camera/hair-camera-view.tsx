@@ -506,7 +506,7 @@ export function HairCameraView({
 
           {captureToastVisible ? (
             <div className="pointer-events-none absolute left-1/2 top-24 z-40 -translate-x-1/2">
-              <div className="rounded-full bg-black/75 px-4 py-2 text-sm font-medium text-white shadow-[0_8px_24px_rgba(15,23,42,0.24)]">
+              <div className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-primary-300 shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
                 캡처가 완료되었어요
               </div>
             </div>

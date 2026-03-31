@@ -108,7 +108,7 @@ export function HairSelector(props: HairSelectorProps) {
                       AI 보정중...
                     </>
                   ) : hasAiEnhanced ? (
-                    '다시 보정하기'
+                    '다시 적용하기'
                   ) : (
                     'AI 보정하기'
                   )}

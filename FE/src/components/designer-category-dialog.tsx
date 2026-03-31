@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { useCategoryList } from '@/hooks/Home/useCategoryList'
 import {
   type DesignerCategoryRequest,
+  getDesignerSpecialties,
   submitDesignerCategoryList,
 } from '@/lib/mypage'
 
@@ -23,6 +24,15 @@ export function DesignerCategoryDialog({
   onOpenChange,
 }: DesignerCategoryDialogProps) {
   const { data, isLoading, isError } = useCategoryList()
+  const {
+    data: specialtiesData,
+    isLoading: isSpecialtiesLoading,
+    isError: isSpecialtiesError,
+  } = useQuery({
+    queryKey: ['designerSpecialties'],
+    queryFn: getDesignerSpecialties,
+    enabled: open,
+  })
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const mutation = useMutation({
     mutationFn: (payload: DesignerCategoryRequest) =>
@@ -49,13 +59,22 @@ export function DesignerCategoryDialog({
   }, [selectedCategories])
 
   useEffect(() => {
-    if (open) {
+    if (!open) {
+      setSelectedCategories([])
+      resetDesignerCategory()
       return
     }
 
-    setSelectedCategories([])
-    resetDesignerCategory()
-  }, [open, resetDesignerCategory])
+    if (!specialtiesData) {
+      return
+    }
+
+    const nextSelected = specialtiesData.specialties
+      .map((specialty) => specialty.categoryName)
+      .filter((categoryName) => selectableCategoryNames.includes(categoryName))
+
+    setSelectedCategories(nextSelected)
+  }, [open, resetDesignerCategory, selectableCategoryNames, specialtiesData])
 
   if (!open) {
     return null
@@ -93,7 +112,7 @@ export function DesignerCategoryDialog({
 
     mutation.mutate(
       {
-        choosecategory: selectedCategories,
+        categoryIds: selectedCategories,
       },
       {
         onSuccess: () => {
@@ -146,7 +165,7 @@ export function DesignerCategoryDialog({
 
         <div className="mt-5">
           <p className="text-sm font-semibold text-text-dark">카테고리 추가</p>
-          {isLoading ? (
+          {isLoading || isSpecialtiesLoading ? (
             <div className="mt-3 grid grid-cols-2 gap-2">
               {[0, 1, 2, 3].map((item) => (
                 <div
@@ -155,9 +174,9 @@ export function DesignerCategoryDialog({
                 />
               ))}
             </div>
-          ) : isError ? (
+          ) : isError || isSpecialtiesError ? (
             <p className="mt-3 text-sm text-error" role="alert">
-              카테고리 목록을 불러오지 못했습니다.
+              카테고리 정보를 불러오지 못했습니다.
             </p>
           ) : (
             <div className="mt-3 grid max-h-[260px] grid-cols-2 gap-2 overflow-y-auto pr-1">

@@ -41,12 +41,23 @@ export type DesignerApplicationResponse = {
 }
 
 export type DesignerCategoryRequest = {
-  choosecategory: string[]
+  categoryIds: string[]
 }
 
 export type DesignerCategoryResponse = {
   code: number
   message: string
+}
+
+export type DesignerSpecialtyItem = {
+  categoryID: string
+  categoryName: string
+}
+
+export type DesignerSpecialtiesResponse = {
+  code: number
+  message: string
+  specialties: DesignerSpecialtyItem[]
 }
 
 export async function getLikeList(): Promise<LikeListResponse> {
@@ -110,10 +121,35 @@ export async function submitDesignerApplication(
   }
 }
 
+export async function getDesignerSpecialties(): Promise<DesignerSpecialtiesResponse> {
+  const res = await apiFetch('/mypage/designer/specialties/', {
+    method: 'GET',
+  })
+
+  const data = (await res.json().catch(() => null)) as
+    | DesignerSpecialtiesResponse
+    | { message?: string }
+    | null
+
+  if (!res.ok) {
+    throw new Error(data?.message ?? '등록된 카테고리를 불러오지 못했습니다.')
+  }
+
+  return {
+    code:
+      data && 'code' in data && typeof data.code === 'number' ? data.code : 200,
+    message: data?.message ?? '조회 정상',
+    specialties:
+      data && 'specialties' in data && Array.isArray(data.specialties)
+        ? data.specialties
+        : [],
+  }
+}
+
 export async function submitDesignerCategoryList(
   payload: DesignerCategoryRequest,
 ): Promise<DesignerCategoryResponse> {
-  const res = await apiFetch('/mypage/categortlist/', {
+  const res = await apiFetch('/mypage/designer/specialties/', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

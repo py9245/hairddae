@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query'
 import { Search, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { BirthDatePicker } from '@/components/Auth/birth-date-picker'
 import { Button } from '@/components/ui/button'
 import {
   Field,
@@ -286,7 +287,7 @@ export function DesignerApplicationDialog({
 
             <FieldGroup className="gap-4">
               <Field>
-                <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="mb-1 flex items-center justify-between gap-3">
                   <FieldLabel
                     htmlFor="designer-certificate-number"
                     className="text-sm font-semibold text-text-dark"
@@ -315,19 +316,15 @@ export function DesignerApplicationDialog({
               <Field>
                 <FieldLabel
                   htmlFor="designer-acquisition-date"
-                  className="text-sm font-semibold text-text-dark"
+                  className="mb-1 block text-sm font-semibold text-text-dark"
                 >
                   취득일
                 </FieldLabel>
-                <input
-                  id="designer-acquisition-date"
-                  type="date"
+                <BirthDatePicker
                   value={form.acquisitionDate}
-                  onChange={(event) =>
-                    handleChange('acquisitionDate', event.target.value)
-                  }
-                  className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface px-4 text-base text-slate-700 outline-none focus:border-primary-200"
-                  disabled={mutation.isPending}
+                  onChange={(value) => handleChange('acquisitionDate', value)}
+                  onBlur={() => {}}
+                  hasError={Boolean(acquisitionDateError)}
                 />
                 <FieldError>{acquisitionDateError}</FieldError>
               </Field>
@@ -364,7 +361,9 @@ export function DesignerApplicationDialog({
                   className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
                   disabled={mutation.isPending || isAddressScriptLoading}
                 />
-                <FieldError>{salonAddressError ?? addressSearchError}</FieldError>
+                <FieldError>
+                  {salonAddressError ?? addressSearchError}
+                </FieldError>
               </Field>
             </FieldGroup>
 

@@ -34,6 +34,7 @@ import {
   RTC_STAGE_MIRRORED,
   RTC_STAGE_WIDTH,
 } from '@/lib/Camera/runtime'
+import { writeChatRoomDraft } from '@/lib/chat'
 
 type HairCameraViewProps = {
   videoRef: React.RefObject<HTMLVideoElement | null>
@@ -463,6 +464,13 @@ export function HairCameraView({
             })
 
             if (response.designers.length > 0) {
+              const draftCanvas = frozenFrameCanvasRef.current
+              if (draftCanvas) {
+                writeChatRoomDraft({
+                  hairId: displayHairId,
+                  appliedImageDataUrl: draftCanvas.toDataURL('image/png'),
+                })
+              }
               writeDesignerListCache(response.designers)
               setDesignerLocationMessage(null)
               await router.navigate({ to: '/designer-list' })

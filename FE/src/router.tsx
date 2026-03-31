@@ -114,12 +114,18 @@ const cameraSearchSchema = z.object({
   applyLatest: z.coerce.boolean().optional(),
   hairId: z.coerce.number().int().positive().optional(),
 })
+const chatSearchSchema = z.object({
+  roomId: z.string().optional(),
+  designerUserId: z.string().optional(),
+})
 
 const mainRoute = createProtectedRoute('main', MainPage)
 const cameraRoute = createProtectedRoute('camera', Camera, (search) =>
   cameraSearchSchema.parse(search),
 )
-const chatRoute = createProtectedRoute('chat', Chat)
+const chatRoute = createProtectedRoute('chat', Chat, (search) =>
+  chatSearchSchema.parse(search),
+)
 const designerListRoute = createProtectedRoute('designer-list', DesignerList)
 const myPageRoute = createProtectedRoute('mypage', MyPage)
 const hairListRoute = createProtectedRoute('hairlist', HairList, (search) =>

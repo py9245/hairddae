@@ -6,6 +6,8 @@ import type { DesignerListItem } from '@/lib/Camera/designer'
 type DesignerListCardProps = {
   designer: DesignerListItem
   rank: number
+  requestPending?: boolean
+  onRequest?: (designer: DesignerListItem) => void
 }
 
 function getAvatarProfileSrc(id: DesignerListItem['id']) {
@@ -20,7 +22,12 @@ function getAvatarProfileSrc(id: DesignerListItem['id']) {
   return `/icon/avatar-profile-${variant}.svg`
 }
 
-export function DesignerListCard({ designer, rank }: DesignerListCardProps) {
+export function DesignerListCard({
+  designer,
+  rank,
+  requestPending = false,
+  onRequest,
+}: DesignerListCardProps) {
   return (
     <article className="rounded-[28px] bg-card p-5 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
       <div className="flex items-start gap-4">
@@ -62,8 +69,10 @@ export function DesignerListCard({ designer, rank }: DesignerListCardProps) {
             type="button"
             variant="login"
             className="mt-auto h-10 rounded-xl text-sm"
+            onClick={() => onRequest?.(designer)}
+            disabled={requestPending}
           >
-            디자인 요청하기
+            {requestPending ? '요청 중...' : '디자인 요청하기'}
           </Button>
         </div>
       </div>

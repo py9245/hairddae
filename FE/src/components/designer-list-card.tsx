@@ -22,7 +22,7 @@ function getAvatarProfileSrc(id: DesignerListItem['id']) {
 
 export function DesignerListCard({ designer, rank }: DesignerListCardProps) {
   return (
-    <article className="group rounded-[28px] bg-card p-5 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
+    <article className="rounded-[28px] bg-card p-5 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
       <div className="flex items-start gap-4">
         <div className="flex h-32 w-[44%] shrink-0 items-center justify-center overflow-hidden rounded-[24px] bg-primary-100/40">
           <img
@@ -33,7 +33,7 @@ export function DesignerListCard({ designer, rank }: DesignerListCardProps) {
           />
         </div>
 
-        <div className="flex min-h-32 min-w-0 flex-1 flex-col">
+        <div className="flex h-32 min-w-0 flex-1 flex-col">
           <div className="flex items-center gap-2">
             <span className="shrink-0 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-bold text-primary-300">
               추천 {rank}
@@ -44,31 +44,24 @@ export function DesignerListCard({ designer, rank }: DesignerListCardProps) {
           </div>
 
           {designer.address ? (
-            <div className="mt-3 flex items-start gap-2">
+            <div className="mt-2 flex items-start gap-2">
               <MapPin className="mt-0.5 size-4 shrink-0 text-primary-300" />
-              <p className="text-sm leading-6 text-text-dark">
+              <p className="line-clamp-2 text-sm leading-5 text-text-dark">
                 {designer.address}
               </p>
             </div>
           ) : null}
 
-          {designer.distance ? (
-            <p className="mt-3 text-sm font-semibold text-text-sub">
+          {/* {designer.distance ? (
+            <p className="mt-2 text-sm font-semibold text-text-sub">
               {designer.distance}
             </p>
-          ) : null}
-
-          {designer.description ? (
-            <p className="mt-3 line-clamp-2 text-sm leading-6 text-text-sub">
-              {designer.description}
-            </p>
-          ) : null}
+          ) : null} */}
 
           <Button
             type="button"
             variant="login"
-            size="full"
-            className="mt-auto h-11 translate-y-2 rounded-xl opacity-0 transition duration-200 group-hover:translate-y-0 group-hover:opacity-100"
+            className="mt-auto h-10 rounded-xl text-sm"
           >
             디자인 요청하기
           </Button>

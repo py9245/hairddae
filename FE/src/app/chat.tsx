@@ -144,6 +144,8 @@ function ChatRoomView({
 
   const lastMessageIdRef = useRef<number | string | null>(null)
   const hasEnteredRoomRef = useRef(false)
+  const messageViewportRef = useRef<HTMLDivElement | null>(null)
+  const bottomAnchorRef = useRef<HTMLDivElement | null>(null)
 
   const fetchChatMessages = useCallback(async (nextRoomId: number | string) => {
     const response = await getChatMessages(nextRoomId, {
@@ -267,6 +269,23 @@ function ChatRoomView({
     })
   }, [messagesQuery.data])
 
+  useEffect(() => {
+    if (!initialImageUrl && messages.length === 0) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      bottomAnchorRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'end',
+      })
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [initialImageUrl, messages.length])
+
   const isSendDisabled =
     !isRoomReady || inputValue.trim() === '' || sendMessageMutation.isPending
 
@@ -287,9 +306,6 @@ function ChatRoomView({
         }
         centerContent={
           <div className="text-center">
-            <p className="text-xs font-semibold tracking-[0.18em] text-text-sub uppercase">
-              Direct Chat
-            </p>
             <p className="text-base font-bold text-text-dark">
               {designerUserId ?? '디자이너'}
             </p>
@@ -298,7 +314,10 @@ function ChatRoomView({
       />
 
       <div className="mx-auto flex h-full w-full max-w-[390px] flex-col pt-[76px]">
-        <section className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
+        <section
+          ref={messageViewportRef}
+          className="min-h-0 flex-1 overflow-y-auto px-4 py-5 pb-[148px]"
+        >
           {initialImageUrl || messages.length > 0 || messagesQuery.isPolling ? (
             <div className="space-y-4">
               {initialImageUrl ? (
@@ -347,6 +366,8 @@ function ChatRoomView({
                   </p>
                 </div>
               ) : null}
+
+              <div ref={bottomAnchorRef} />
             </div>
           ) : (
             <div className="flex h-full flex-col items-center justify-center px-8 text-center">
@@ -363,50 +384,52 @@ function ChatRoomView({
           )}
         </section>
 
-        <section className="border-t border-black/5 bg-white/96 px-4 pb-5 pt-4 backdrop-blur">
-          <div className="flex items-end gap-3 rounded-[28px] border border-black/6 bg-white px-3 py-3 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
-            <textarea
-              value={inputValue}
-              onChange={(event) => {
-                setInputValue(event.target.value)
-                if (sendErrorMessage) {
-                  setSendErrorMessage(null)
-                }
-              }}
-              placeholder="메시지를 입력하세요"
-              rows={1}
-              className="max-h-28 min-h-[28px] flex-1 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-text-dark outline-none placeholder:text-text-sub"
-              disabled={!isRoomReady}
-            />
+        <section className="absolute right-0 bottom-[62px] left-0 border-t border-black/5 bg-white/96 px-4 pb-4 pt-3 backdrop-blur">
+          <div className="mx-auto w-full max-w-[390px]">
+            <div className="flex items-end gap-3 rounded-[28px] border border-black/6 bg-white px-3 py-3 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
+              <textarea
+                value={inputValue}
+                onChange={(event) => {
+                  setInputValue(event.target.value)
+                  if (sendErrorMessage) {
+                    setSendErrorMessage(null)
+                  }
+                }}
+                placeholder="메시지를 입력하세요"
+                rows={1}
+                className="max-h-28 min-h-[28px] flex-1 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-text-dark outline-none placeholder:text-text-sub"
+                disabled={!isRoomReady}
+              />
 
-            <Button
-              type="button"
-              variant="login"
-              size="icon"
-              className="size-11 shrink-0 rounded-2xl"
-              onClick={() => {
-                void sendMessageMutation.mutateAsync()
-              }}
-              disabled={isSendDisabled}
-              aria-label="메시지 전송"
-            >
-              {sendMessageMutation.isPending ? (
-                <LoaderCircle className="size-5 animate-spin" />
-              ) : (
-                <SendHorizonal className="size-5" />
-              )}
-            </Button>
+              <Button
+                type="button"
+                variant="login"
+                size="icon"
+                className="size-11 shrink-0 rounded-2xl"
+                onClick={() => {
+                  void sendMessageMutation.mutateAsync()
+                }}
+                disabled={isSendDisabled}
+                aria-label="메시지 전송"
+              >
+                {sendMessageMutation.isPending ? (
+                  <LoaderCircle className="size-5 animate-spin" />
+                ) : (
+                  <SendHorizonal className="size-5" />
+                )}
+              </Button>
+            </div>
+
+            {sendErrorMessage ? (
+              <p className="mt-2 text-sm text-error" role="alert">
+                {sendErrorMessage}
+              </p>
+            ) : !isRoomReady ? (
+              <p className="mt-2 text-sm text-text-sub">
+                채팅방을 준비하는 중입니다. 잠시만 기다려 주세요.
+              </p>
+            ) : null}
           </div>
-
-          {sendErrorMessage ? (
-            <p className="mt-2 text-sm text-error" role="alert">
-              {sendErrorMessage}
-            </p>
-          ) : !isRoomReady ? (
-            <p className="mt-2 text-sm text-text-sub">
-              채팅방을 준비하는 중입니다. 잠시만 기다려 주세요.
-            </p>
-          ) : null}
         </section>
       </div>
     </main>

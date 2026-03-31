@@ -18,7 +18,7 @@ type UseChatMessagePollingArgs<TData> = {
 export function useChatMessagePolling<TData>({
   roomId,
   enabled = true,
-  pollIntervalMs = 5000,
+  pollIntervalMs = 1000,
   fetcher,
 }: UseChatMessagePollingArgs<TData>) {
   const timerRef = useRef<number | null>(null)

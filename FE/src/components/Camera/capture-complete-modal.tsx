@@ -1,4 +1,4 @@
-import { CheckCircle2, X } from 'lucide-react'
+import { CheckCircle2, LoaderCircle, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 
@@ -64,31 +64,44 @@ export function CaptureCompleteModal({
             다음 작업을 선택해 계속 진행해 보세요.
           </p>
 
-          {aiEnhanceMessage ? (
-            <p className="mt-4 text-sm leading-6 text-text-warm-400">
-              {aiEnhanceMessage}
-            </p>
-          ) : null}
+          {aiEnhancePending ? (
+            <div className="mt-6 flex flex-col items-center gap-3">
+              <LoaderCircle
+                className="h-8 w-8 animate-spin text-primary-300"
+                aria-hidden="true"
+              />
+              <p className="text-base font-semibold text-text-dark">
+                AI 보정중...
+              </p>
+              {aiEnhanceMessage ? (
+                <p className="text-sm leading-6 text-text-warm-400">
+                  {aiEnhanceMessage}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <>
+              {aiEnhanceMessage ? (
+                <p className="mt-4 text-sm leading-6 text-text-warm-400">
+                  {aiEnhanceMessage}
+                </p>
+              ) : null}
 
-          <div className="mt-6 flex w-full flex-col gap-3">
-            <Button
-              variant="login"
-              size="full"
-              onClick={onFindDesigner}
-              disabled={aiEnhancePending}
-            >
-              디자이너 찾기
-            </Button>
-            <Button
-              variant="outline"
-              size="full"
-              className="text-text-dark"
-              onClick={onAiEnhance}
-              disabled={aiEnhancePending}
-            >
-              {aiEnhancePending ? 'AI 보정 요청 중...' : 'AI 보정하기'}
-            </Button>
-          </div>
+              <div className="mt-6 flex w-full flex-col gap-3">
+                <Button variant="login" size="full" onClick={onFindDesigner}>
+                  디자이너 찾기
+                </Button>
+                <Button
+                  variant="outline"
+                  size="full"
+                  className="text-text-dark"
+                  onClick={onAiEnhance}
+                >
+                  AI 보정하기
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

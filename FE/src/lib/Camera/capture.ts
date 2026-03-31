@@ -26,6 +26,37 @@ type DrawCompositedSourceToCanvasArgs = {
   mirror: boolean
 }
 
+export async function drawImageUrlToCanvas({
+  imageUrl,
+  outputCanvas,
+  width,
+  height,
+}: {
+  imageUrl: string
+  outputCanvas: HTMLCanvasElement
+  width: number
+  height: number
+}) {
+  const image = new Image()
+  image.decoding = 'async'
+  image.crossOrigin = 'anonymous'
+
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve()
+    image.onerror = () =>
+      reject(new Error('보정 이미지를 불러오지 못했습니다.'))
+    image.src = imageUrl
+  })
+
+  return drawCompositedSourceToCanvas({
+    source: image,
+    outputCanvas,
+    width,
+    height,
+    mirror: false,
+  })
+}
+
 function getCaptureSourceSize(source: CaptureSource) {
   if (source instanceof HTMLVideoElement) {
     return {

@@ -2,35 +2,25 @@ import { apiFetch } from '@/lib/api'
 
 export type AiUpgradeRequest = {
   image: Blob
-  hairId: number
   deviceId?: string
-  promptOverride?: string
 }
 
 export type AiUpgradeResponse = {
   code: number
   message: string
   success: boolean
-  jobId: string
-  status: string
+  resultImageUrl: string | null
 }
 
 export async function postAiUpgrade({
   image,
-  hairId,
   deviceId,
-  promptOverride,
 }: AiUpgradeRequest): Promise<AiUpgradeResponse> {
   const formData = new FormData()
   formData.append('image', image, 'camera-capture.png')
-  formData.append('hair_id', String(hairId))
 
   if (deviceId) {
     formData.append('device_id', deviceId)
-  }
-
-  if (promptOverride) {
-    formData.append('prompt_override', promptOverride)
   }
 
   const response = await apiFetch('/camera/ai-upgrade/', {
@@ -38,25 +28,40 @@ export async function postAiUpgrade({
     body: formData,
   })
 
-  const data = (await response.json().catch(() => null)) as
-    | {
-        code?: number
-        message?: string
-        success?: boolean
-        job_id?: string
-        status?: string
-      }
-    | null
-
   if (!response.ok) {
+    const data = (await response.json().catch(() => null)) as {
+      message?: string
+    } | null
     throw new Error(data?.message ?? 'AI 보정 요청에 실패했습니다.')
   }
 
+  const contentType = response.headers.get('content-type') ?? ''
+
+  if (contentType.startsWith('image/')) {
+    const blob = await response.blob()
+
+    return {
+      code: 200,
+      message: 'AI 보정이 완료되었습니다.',
+      success: true,
+      resultImageUrl: URL.createObjectURL(blob),
+    }
+  }
+
+  const data = (await response.json().catch(() => null)) as {
+    code?: number
+    message?: string
+    success?: boolean
+    result_image_url?: string
+    result_url?: string
+    image_url?: string
+  } | null
+
   return {
-    code: data?.code ?? 202,
-    message: data?.message ?? 'AI 보정 작업이 접수되었습니다.',
+    code: data?.code ?? 200,
+    message: data?.message ?? 'AI 보정이 완료되었습니다.',
     success: data?.success ?? true,
-    jobId: data?.job_id ?? '',
-    status: data?.status ?? 'PENDING',
+    resultImageUrl:
+      data?.result_image_url ?? data?.result_url ?? data?.image_url ?? null,
   }
 }

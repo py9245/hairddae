@@ -20,6 +20,7 @@ import {
   captureCompositedImage,
   downloadCanvasImage,
   drawCompositedSourceToCanvas,
+  drawImageUrlToCanvas,
 } from '@/lib/Camera/capture'
 import {
   fetchHairItems,
@@ -347,8 +348,9 @@ export function HairCameraView({
 
   const handleAiEnhance = useCallback(async () => {
     const frozenCanvas = frozenFrameCanvasRef.current
+    const wrap = wrapRef.current
 
-    if (!frozenCanvas || displayHairId <= 0) {
+    if (!frozenCanvas || !wrap) {
       setAiEnhanceMessage('캡처 이미지를 먼저 준비해 주세요.')
       return
     }
@@ -357,19 +359,30 @@ export function HairCameraView({
       const image = await canvasToBlob(frozenCanvas)
       const response = await aiUpgradeMutation.mutateAsync({
         image,
-        hairId: displayHairId,
         deviceId: getOrCreateDeviceId(),
       })
 
-      setAiEnhanceMessage(
-        response.jobId
-          ? `${response.message} 작업 ID: ${response.jobId}`
-          : response.message,
-      )
+      if (!response.resultImageUrl) {
+        throw new Error('보정 이미지 URL이 없습니다.')
+      }
+
+      const didDraw = await drawImageUrlToCanvas({
+        imageUrl: response.resultImageUrl,
+        outputCanvas: frozenCanvas,
+        width: wrap.clientWidth,
+        height: wrap.clientHeight,
+      })
+
+      if (!didDraw) {
+        throw new Error('보정 이미지를 화면에 표시하지 못했습니다.')
+      }
+
+      setIsCaptureCompleteModalOpen(false)
+      setAiEnhanceMessage(null)
     } catch {
       setAiEnhanceMessage('AI 보정 요청에 실패했습니다.')
     }
-  }, [aiUpgradeMutation, displayHairId])
+  }, [aiUpgradeMutation])
 
   const handleTopLeftAction = useCallback(() => {
     if (isFrameFrozen) {

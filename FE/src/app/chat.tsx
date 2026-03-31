@@ -6,7 +6,13 @@ import {
   LoaderCircle,
   SendHorizonal,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 
 import { ChatMessageBubble } from '@/components/chat-message-bubble'
 import { Header } from '@/components/header'
@@ -134,6 +140,7 @@ function ChatRoomView({
   roomId: number | string
   designerUserId: string | undefined
 }) {
+  const navigate = useNavigate()
   const roomContext = readChatRoomContext()
   const roomKey = String(roomId)
   const [initialImageUrl, setInitialImageUrl] = useState<string | null>(null)
@@ -145,7 +152,6 @@ function ChatRoomView({
   const lastMessageIdRef = useRef<number | string | null>(null)
   const hasEnteredRoomRef = useRef(false)
   const messageViewportRef = useRef<HTMLDivElement | null>(null)
-  const bottomAnchorRef = useRef<HTMLDivElement | null>(null)
 
   const fetchChatMessages = useCallback(async (nextRoomId: number | string) => {
     const response = await getChatMessages(nextRoomId, {
@@ -222,16 +228,16 @@ function ChatRoomView({
   }, [roomContext, roomId])
 
   useEffect(() => {
-    if (roomKey === '') {
-      setInitialImageUrl(null)
-    }
-
     setMessages([])
     setInputValue('')
     setIsRoomReady(false)
     setSendErrorMessage(null)
     lastMessageIdRef.current = null
     hasEnteredRoomRef.current = false
+
+    if (roomKey === '') {
+      setInitialImageUrl(null)
+    }
   }, [roomKey])
 
   useEffect(() => {
@@ -269,22 +275,24 @@ function ChatRoomView({
     })
   }, [messagesQuery.data])
 
-  useEffect(() => {
-    if (!initialImageUrl && messages.length === 0) {
+  const messageCount = messages.length
+  const latestMessageId =
+    messageCount > 0 ? String(messages[messageCount - 1]?.id ?? '') : ''
+
+  useLayoutEffect(() => {
+    if (!initialImageUrl && messageCount === 0) {
       return
     }
 
-    const timer = window.setTimeout(() => {
-      bottomAnchorRef.current?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'end',
-      })
-    }, 0)
+    void latestMessageId
 
-    return () => {
-      window.clearTimeout(timer)
+    const viewport = messageViewportRef.current
+    if (!viewport) {
+      return
     }
-  }, [initialImageUrl, messages.length])
+
+    viewport.scrollTop = viewport.scrollHeight
+  }, [initialImageUrl, messageCount, latestMessageId])
 
   const isSendDisabled =
     !isRoomReady || inputValue.trim() === '' || sendMessageMutation.isPending
@@ -299,7 +307,12 @@ function ChatRoomView({
             variant="outline"
             size="icon-sm"
             aria-label="이전으로 이동"
-            onClick={() => window.history.back()}
+            onClick={() => {
+              void navigate({
+                to: '/chat',
+                search: {},
+              })
+            }}
           >
             <ChevronLeft className="size-5" />
           </Button>
@@ -366,8 +379,6 @@ function ChatRoomView({
                   </p>
                 </div>
               ) : null}
-
-              <div ref={bottomAnchorRef} />
             </div>
           ) : (
             <div className="flex h-full flex-col items-center justify-center px-8 text-center">
@@ -394,6 +405,19 @@ function ChatRoomView({
                   if (sendErrorMessage) {
                     setSendErrorMessage(null)
                   }
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter' || event.shiftKey) {
+                    return
+                  }
+
+                  event.preventDefault()
+
+                  if (isSendDisabled) {
+                    return
+                  }
+
+                  void sendMessageMutation.mutateAsync()
                 }}
                 placeholder="메시지를 입력하세요"
                 rows={1}

@@ -1,4 +1,5 @@
 import { Download } from 'lucide-react'
+
 import { Button } from '@/components/ui/button'
 import { HairSelectorItem } from '@/components/ui/hair-selector-item'
 import { useHairSelectorController } from '@/hooks/Camera/useHairSelectorController'
@@ -10,9 +11,12 @@ type HairSelectorProps = {
   selectedId: number
   loading?: boolean
   frozen?: boolean
+  aiEnhancePending?: boolean
   onSelect: (id: number) => void
   onCapture?: () => void
   onFreezeChange?: (frozen: boolean) => void
+  onFindDesigner?: () => void
+  onAiEnhance?: () => void
 }
 
 function HairSelectorSkeletonItem({
@@ -46,7 +50,14 @@ export function HairSelector(props: HairSelectorProps) {
     handleDownloadClick,
   } = useHairSelectorController(props)
 
-  const { items, selectedId, frozen = false } = props
+  const {
+    items,
+    selectedId,
+    frozen = false,
+    aiEnhancePending = false,
+    onFindDesigner,
+    onAiEnhance,
+  } = props
 
   const overlayClassName =
     'pointer-events-none absolute inset-y-0 left-1/2 z-10 w-24 -translate-x-1/2 rounded-full border border-white/30'
@@ -71,7 +82,27 @@ export function HairSelector(props: HairSelectorProps) {
           <div className={overlayClassName} />
 
           {frozen ? (
-            <div className="flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex w-full gap-2 px-4">
+                <Button
+                  type="button"
+                  variant="login"
+                  className="h-12 flex-1 rounded-xl"
+                  onClick={onFindDesigner}
+                  disabled={aiEnhancePending}
+                >
+                  디자이너 찾기
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-12 flex-1 rounded-xl bg-white text-text-dark hover:bg-neutral-100"
+                  onClick={onAiEnhance}
+                  disabled={aiEnhancePending}
+                >
+                  {aiEnhancePending ? 'AI 보정중...' : 'AI 보정하기'}
+                </Button>
+              </div>
               <Button
                 type="button"
                 variant="hair-download"
@@ -79,6 +110,7 @@ export function HairSelector(props: HairSelectorProps) {
                 onClick={handleDownloadClick}
                 data-testid="camera-download-button"
                 aria-label="캡처 다운로드"
+                disabled={aiEnhancePending}
               >
                 <Download className="size-12 text-slate-700" />
               </Button>

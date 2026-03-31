@@ -3,7 +3,6 @@ import { useRouter } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { CaptureCompleteModal } from '@/components/Camera/capture-complete-modal'
 import { HairCameraStage } from '@/components/Camera/hair-camera-stage'
 import { HairSelector } from '@/components/Camera/hair-selector'
 import { ApplyStyleModal, CameraNoticeModal } from '@/components/Camera/modal'
@@ -72,12 +71,12 @@ export function HairCameraView({
     title: string
     description: string[]
   } | null>(null)
-  const [isCaptureCompleteModalOpen, setIsCaptureCompleteModalOpen] =
-    useState(false)
   const [aiEnhanceMessage, setAiEnhanceMessage] = useState<string | null>(null)
+  const [captureToastVisible, setCaptureToastVisible] = useState(false)
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false)
   const [isFrameFrozen, setIsFrameFrozen] = useState(false)
   const [uiScale, setUiScale] = useState(1)
+
   const aiUpgradeMutation = useMutation({
     mutationFn: postAiUpgrade,
   })
@@ -157,6 +156,20 @@ export function HairCameraView({
   }, [])
 
   useEffect(() => {
+    if (!captureToastVisible) {
+      return
+    }
+
+    const timerId = window.setTimeout(() => {
+      setCaptureToastVisible(false)
+    }, 1800)
+
+    return () => {
+      window.clearTimeout(timerId)
+    }
+  }, [captureToastVisible])
+
+  useEffect(() => {
     void (async () => {
       const me = await fetchMe().catch(() => null)
       if (!me) {
@@ -177,15 +190,16 @@ export function HairCameraView({
 
     setIsHairItemsLoading(true)
     setHairItemsError(null)
+
     fetchHairItems(controller.signal)
       .then((items) => {
         if (items.length <= 1) {
           setHairItems(HAIR_ITEMS)
           setHairItemsError({
-            title: '헤어 스타일 목록을 불러올 수 없어요',
+            title: '헤어 스타일 목록을 불러올 수 없어요.',
             description: [
-              '현재 적용 가능한 헤어 스타일 정보가 없습니다.',
-              '홈 화면에서 적용하기를 선택해 주세요.',
+              '현재 적용 가능한 헤어 스타일 정보가 없어요.',
+              '다음 화면에서 적용하기를 선택해 주세요.',
             ],
           })
           return
@@ -197,7 +211,7 @@ export function HairCameraView({
         console.error('hair item load failed:', error)
         setHairItems(HAIR_ITEMS)
         setHairItemsError({
-          title: '헤어 스타일 목록을 불러올 수 없어요',
+          title: '헤어 스타일 목록을 불러올 수 없어요.',
           description: ['네트워크 상태를 확인한 뒤 다시 시도해 주세요.'],
         })
       })
@@ -319,7 +333,7 @@ export function HairCameraView({
         hairItems,
         onComplete: () => {
           setAiEnhanceMessage(null)
-          setIsCaptureCompleteModalOpen(true)
+          setCaptureToastVisible(true)
         },
         selectedHairId: displayHairId,
       })
@@ -333,7 +347,7 @@ export function HairCameraView({
       mirror: hasRemoteVideo ? false : RTC_STAGE_MIRRORED,
       onComplete: () => {
         setAiEnhanceMessage(null)
-        setIsCaptureCompleteModalOpen(true)
+        setCaptureToastVisible(true)
       },
       selectedHairId: displayHairId,
     })
@@ -377,7 +391,6 @@ export function HairCameraView({
         throw new Error('보정 이미지를 화면에 표시하지 못했습니다.')
       }
 
-      setIsCaptureCompleteModalOpen(false)
       setAiEnhanceMessage(null)
     } catch {
       setAiEnhanceMessage('AI 보정 요청에 실패했습니다.')
@@ -481,10 +494,31 @@ export function HairCameraView({
             selectedId={displayHairId}
             loading={isHairItemsLoading}
             frozen={isFrameFrozen}
+            aiEnhancePending={aiUpgradeMutation.isPending}
             onSelect={handleHairSelect}
             onCapture={handleCapture}
             onFreezeChange={handleFreezeChange}
+            onFindDesigner={() => {}}
+            onAiEnhance={() => {
+              void handleAiEnhance()
+            }}
           />
+
+          {captureToastVisible ? (
+            <div className="pointer-events-none absolute left-1/2 top-24 z-40 -translate-x-1/2">
+              <div className="rounded-full bg-black/75 px-4 py-2 text-sm font-medium text-white shadow-[0_8px_24px_rgba(15,23,42,0.24)]">
+                캡처가 완료되었어요
+              </div>
+            </div>
+          ) : null}
+
+          {aiEnhanceMessage ? (
+            <div className="pointer-events-none absolute left-1/2 top-40 z-40 -translate-x-1/2">
+              <div className="rounded-full bg-black/75 px-4 py-2 text-sm font-medium text-white shadow-[0_8px_24px_rgba(15,23,42,0.24)]">
+                {aiEnhanceMessage}
+              </div>
+            </div>
+          ) : null}
 
           {shouldShowGuideModal ? (
             <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/40 px-4">
@@ -522,22 +556,6 @@ export function HairCameraView({
                 onClose={() => {
                   void router.navigate({ to: '/main' })
                 }}
-                scale={uiScale}
-              />
-            </div>
-          ) : null}
-
-          {isCaptureCompleteModalOpen ? (
-            <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/20 px-4">
-              <CaptureCompleteModal
-                open={isCaptureCompleteModalOpen}
-                onClose={() => setIsCaptureCompleteModalOpen(false)}
-                onFindDesigner={() => {}}
-                onAiEnhance={() => {
-                  void handleAiEnhance()
-                }}
-                aiEnhancePending={aiUpgradeMutation.isPending}
-                aiEnhanceMessage={aiEnhanceMessage}
                 scale={uiScale}
               />
             </div>

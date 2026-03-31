@@ -3,10 +3,15 @@ import { X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import {
-  submitDesignerApplication,
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field'
+import {
   type DesignerApplicationRequest,
+  submitDesignerApplication,
 } from '@/lib/mypage'
 
 type DesignerApplicationDialogProps = {
@@ -112,7 +117,11 @@ export function DesignerApplicationDialog({
                 {mutation.data.message}
               </p>
             </div>
-            <Button variant="login" size="full" onClick={() => onOpenChange(false)}>
+            <Button
+              variant="login"
+              size="full"
+              onClick={() => onOpenChange(false)}
+            >
               닫기
             </Button>
           </div>
@@ -135,7 +144,8 @@ export function DesignerApplicationDialog({
                 디자이너 신청
               </h2>
               <p className="mt-2 text-sm leading-6 text-text-warm-400">
-                자격증 번호와 미용실 주소를 입력한 뒤 신청해 주세요.
+                자격증 번호와 미용실 주소를 <br />
+                입력한 뒤 신청해 주세요.
               </p>
             </div>
 
@@ -185,9 +195,7 @@ export function DesignerApplicationDialog({
 
             {mutation.isError ? (
               <p className="text-sm text-error" role="alert">
-                {mutation.error instanceof Error
-                  ? mutation.error.message
-                  : '디자이너 신청 중 오류가 발생했습니다.'}
+                디자이너 신청 중 오류가 발생했습니다.
               </p>
             ) : null}
 

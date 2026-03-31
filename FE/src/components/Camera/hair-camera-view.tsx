@@ -2,6 +2,7 @@ import { useRouter } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
+import { CaptureCompleteModal } from '@/components/Camera/capture-complete-modal'
 import { HairCameraStage } from '@/components/Camera/hair-camera-stage'
 import { HairSelector } from '@/components/Camera/hair-selector'
 import { ApplyStyleModal, CameraNoticeModal } from '@/components/Camera/modal'
@@ -66,6 +67,8 @@ export function HairCameraView({
     title: string
     description: string[]
   } | null>(null)
+  const [isCaptureCompleteModalOpen, setIsCaptureCompleteModalOpen] =
+    useState(false)
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false)
   const [isFrameFrozen, setIsFrameFrozen] = useState(false)
   const [uiScale, setUiScale] = useState(1)
@@ -305,6 +308,7 @@ export function HairCameraView({
     if (isFrameFrozen && frozenCanvas) {
       downloadCanvasImage(frozenCanvas, {
         hairItems,
+        onComplete: () => setIsCaptureCompleteModalOpen(true),
         selectedHairId: displayHairId,
       })
       setIsFrameFrozen(false)
@@ -316,6 +320,7 @@ export function HairCameraView({
       wrapRef,
       hairItems,
       mirror: hasRemoteVideo ? false : RTC_STAGE_MIRRORED,
+      onComplete: () => setIsCaptureCompleteModalOpen(true),
       selectedHairId: displayHairId,
     })
 
@@ -467,6 +472,16 @@ export function HairCameraView({
                 onClose={() => {
                   void router.navigate({ to: '/main' })
                 }}
+                scale={uiScale}
+              />
+            </div>
+          ) : null}
+
+          {isCaptureCompleteModalOpen ? (
+            <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/20 px-4">
+              <CaptureCompleteModal
+                open={isCaptureCompleteModalOpen}
+                onClose={() => setIsCaptureCompleteModalOpen(false)}
                 scale={uiScale}
               />
             </div>

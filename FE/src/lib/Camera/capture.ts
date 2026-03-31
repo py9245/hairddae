@@ -15,6 +15,7 @@ type CaptureCompositedImageArgs = {
 type DownloadCaptureArgs = {
   hairItems: HairItem[]
   selectedHairId: number
+  onComplete?: () => void
 }
 
 type DrawCompositedSourceToCanvasArgs = {
@@ -48,7 +49,7 @@ function getCaptureSourceSize(source: CaptureSource) {
 
 function downloadCaptureBlob(
   blob: Blob,
-  { hairItems, selectedHairId }: DownloadCaptureArgs,
+  { hairItems, selectedHairId, onComplete }: DownloadCaptureArgs,
 ) {
   const url = URL.createObjectURL(blob)
   const currentHair = hairItems.find((item) => item.id === selectedHairId)
@@ -61,6 +62,7 @@ function downloadCaptureBlob(
   document.body.appendChild(a)
   a.click()
   a.remove()
+  onComplete?.()
 
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
@@ -128,11 +130,11 @@ export function drawCompositedSourceToCanvas({
 
 export function downloadCanvasImage(
   canvas: HTMLCanvasElement,
-  { hairItems, selectedHairId }: DownloadCaptureArgs,
+  { hairItems, selectedHairId, onComplete }: DownloadCaptureArgs,
 ) {
   canvas.toBlob((blob) => {
     if (!blob) return
-    downloadCaptureBlob(blob, { hairItems, selectedHairId })
+    downloadCaptureBlob(blob, { hairItems, selectedHairId, onComplete })
   }, 'image/png')
 }
 
@@ -142,7 +144,8 @@ export function captureCompositedImage({
   hairItems,
   mirror,
   selectedHairId,
-}: CaptureCompositedImageArgs) {
+  onComplete,
+}: CaptureCompositedImageArgs & { onComplete?: () => void }) {
   const video = videoRef.current
   const wrap = wrapRef.current
 
@@ -164,6 +167,6 @@ export function captureCompositedImage({
 
   out.toBlob((blob) => {
     if (!blob) return
-    downloadCaptureBlob(blob, { hairItems, selectedHairId })
+    downloadCaptureBlob(blob, { hairItems, selectedHairId, onComplete })
   }, 'image/png')
 }

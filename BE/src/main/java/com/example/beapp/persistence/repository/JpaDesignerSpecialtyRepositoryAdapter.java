@@ -5,6 +5,7 @@ import java.util.List;
 import org.springframework.context.annotation.Primary;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.beapp.model.DesignerSpecialty;
 import com.example.beapp.persistence.entity.DesignerSpecialtyEntity;
@@ -29,6 +30,7 @@ public class JpaDesignerSpecialtyRepositoryAdapter implements DesignerSpecialtyR
     }
 
     @Override
+    @Transactional
     public List<DesignerSpecialty> replaceAll(String userId, List<String> categoryIds) {
         designerSpecialtyJpaRepository.deleteByUserId(userId);
         designerSpecialtyJpaRepository.flush();
@@ -45,6 +47,7 @@ public class JpaDesignerSpecialtyRepositoryAdapter implements DesignerSpecialtyR
     }
 
     @Override
+    @Transactional
     public List<DesignerSpecialty> saveAll(List<DesignerSpecialty> designerSpecialties) {
         return designerSpecialtyJpaRepository.saveAll(designerSpecialties.stream()
                         .map(specialty -> new DesignerSpecialtyEntity(specialty.userId(), specialty.categoryId()))
@@ -54,6 +57,7 @@ public class JpaDesignerSpecialtyRepositoryAdapter implements DesignerSpecialtyR
     }
 
     @Override
+    @Transactional
     public void deleteByUserId(String userId) {
         designerSpecialtyJpaRepository.deleteByUserId(userId);
     }

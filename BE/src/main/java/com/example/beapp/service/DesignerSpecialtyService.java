@@ -4,6 +4,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.example.beapp.api.dto.mypage.DesignerSpecialtiesRequest;
 import com.example.beapp.api.dto.mypage.DesignerSpecialtiesResponse;
@@ -31,6 +32,7 @@ public class DesignerSpecialtyService {
         this.hairCategoryLookupRepository = hairCategoryLookupRepository;
     }
 
+    @Transactional
     public DesignerSpecialtiesUpsertResponse replace(String userId, DesignerSpecialtiesRequest request) {
         UserAccount userAccount = getRequiredUser(userId);
         verifyApprovedDesigner(userAccount);
@@ -43,6 +45,7 @@ public class DesignerSpecialtyService {
         return DesignerSpecialtiesUpsertResponse.ok();
     }
 
+    @Transactional(readOnly = true)
     public DesignerSpecialtiesResponse get(String userId) {
         UserAccount userAccount = getRequiredUser(userId);
         verifyApprovedDesigner(userAccount);

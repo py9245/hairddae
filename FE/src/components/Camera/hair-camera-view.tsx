@@ -184,7 +184,6 @@ export function HairCameraView({
 
     const timerId = window.setTimeout(() => {
       setAiEnhanceMessage(null)
-      setHasAiEnhanced(true)
     }, 2200)
 
     return () => {
@@ -408,6 +407,8 @@ export function HairCameraView({
       setAiEnhanceMessage('캡처 이미지를 먼저 준비해 주세요.')
       return
     }
+
+    setHasAiEnhanced(true)
 
     try {
       const image = await canvasToBlob(frozenCanvas)

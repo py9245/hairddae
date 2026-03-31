@@ -1,5 +1,7 @@
 package com.example.beapp.api.dto.chat;
 
+import java.time.OffsetDateTime;
+
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 public record ChatMessageSendResponse(
@@ -8,9 +10,11 @@ public record ChatMessageSendResponse(
         @JsonProperty("room_id")
         Long roomId,
         @JsonProperty("message_id")
-        Long messageId
+        Long messageId,
+        @JsonProperty("created_at")
+        OffsetDateTime createdAt
 ) {
-    public static ChatMessageSendResponse ok(Long roomId, Long messageId) {
-        return new ChatMessageSendResponse(200, "메시지 전송 성공", roomId, messageId);
+    public static ChatMessageSendResponse ok(Long roomId, Long messageId, OffsetDateTime createdAt) {
+        return new ChatMessageSendResponse(200, "메시지 전송 성공", roomId, messageId, createdAt);
     }
 }

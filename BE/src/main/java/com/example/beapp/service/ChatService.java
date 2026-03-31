@@ -127,7 +127,7 @@ public class ChatService {
         ChatRoom room = getAuthorizedRoom(requesterUserId, roomId);
         String normalizedMessageText = normalizeRequiredText(request.messageText());
         ChatMessage saved = chatMessageRepository.save(ChatMessage.text(room.id(), requesterUserId, normalizedMessageText));
-        return ChatMessageSendResponse.ok(room.id(), saved.id());
+        return ChatMessageSendResponse.ok(room.id(), saved.id(), saved.createdAt());
     }
 
     private ChatRoom getAuthorizedRoom(String requesterUserId, Long roomId) {

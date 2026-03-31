@@ -199,7 +199,8 @@ class ChatApiIntegrationTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.room_id").value(roomId))
-                .andExpect(jsonPath("$.message_id").isNumber());
+                .andExpect(jsonPath("$.message_id").isNumber())
+                .andExpect(jsonPath("$.created_at").isNotEmpty());
 
         mockMvc.perform(get("/api/chat/rooms/{roomId}/messages", roomId)
                         .cookie(accessTokenCookie)

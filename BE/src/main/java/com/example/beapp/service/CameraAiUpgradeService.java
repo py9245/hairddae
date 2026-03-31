@@ -37,7 +37,7 @@ public class CameraAiUpgradeService {
     private final AppCameraAiProperties appCameraAiProperties;
     private final AppHairProperties appHairProperties;
 
-    
+
     public CameraAiUpgradeService(
             UserAccountRepository userAccountRepository,
             GmsImageGenerationClient gmsImageGenerationClient,
@@ -144,3 +144,4 @@ public class CameraAiUpgradeService {
         return normalizedValue;
     }
 }
+

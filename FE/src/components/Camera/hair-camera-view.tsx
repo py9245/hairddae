@@ -170,6 +170,20 @@ export function HairCameraView({
   }, [captureToastVisible])
 
   useEffect(() => {
+    if (!aiEnhanceMessage || aiUpgradeMutation.isPending) {
+      return
+    }
+
+    const timerId = window.setTimeout(() => {
+      setAiEnhanceMessage(null)
+    }, 2200)
+
+    return () => {
+      window.clearTimeout(timerId)
+    }
+  }, [aiEnhanceMessage, aiUpgradeMutation.isPending])
+
+  useEffect(() => {
     void (async () => {
       const me = await fetchMe().catch(() => null)
       if (!me) {
@@ -506,8 +520,8 @@ export function HairCameraView({
 
           {captureToastVisible ? (
             <div className="pointer-events-none absolute left-1/2 top-24 z-40 -translate-x-1/2">
-              <div className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-primary-300 shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
-                캡처가 완료되었어요
+              <div className="rounded-full bg-white px-6 py-3 text-base font-bold text-primary-300 shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
+                저장이 완료되었습니다
               </div>
             </div>
           ) : null}

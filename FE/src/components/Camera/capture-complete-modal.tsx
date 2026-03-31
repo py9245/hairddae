@@ -31,7 +31,7 @@ export function CaptureCompleteModal({
         transform: `scale(${scale})`,
       }}
     >
-      <div className="relative w-[380px] rounded-[24px] bg-white p-6 shadow-[0_24px_80px_rgba(2,6,23,0.24)]">
+      <div className="relative w-[380px] rounded-[24px] bg-white p-6 text-text-dark shadow-[0_24px_80px_rgba(2,6,23,0.24)]">
         <button
           type="button"
           onClick={onClose}
@@ -63,7 +63,12 @@ export function CaptureCompleteModal({
             <Button variant="login" size="full" onClick={onFindDesigner}>
               디자이너 찾기
             </Button>
-            <Button variant="outline" size="full" onClick={onAiEnhance}>
+            <Button
+              variant="outline"
+              size="full"
+              className="text-text-dark"
+              onClick={onAiEnhance}
+            >
               AI 보정하기
             </Button>
           </div>

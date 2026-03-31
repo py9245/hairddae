@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
-import { X } from 'lucide-react'
+import { LoaderCircle, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { HairCameraStage } from '@/components/Camera/hair-camera-stage'
@@ -581,6 +581,19 @@ export function HairCameraView({
               void handleAiEnhance()
             }}
           />
+
+          {aiUpgradeMutation.isPending ? (
+            <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/35">
+              <div className="flex flex-col items-center gap-4">
+                <div className="flex size-28 items-center justify-center rounded-full bg-white/10 backdrop-blur-sm">
+                  <LoaderCircle className="size-16 animate-spin text-primary-300" />
+                </div>
+                <p className="text-base font-semibold text-white">
+                  AI 보정중...
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           {captureToastVisible ? (
             <div className="pointer-events-none absolute left-1/2 top-24 z-40 -translate-x-1/2">

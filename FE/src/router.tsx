@@ -16,6 +16,7 @@ import {
 import { z } from 'zod'
 import Camera from '@/app/camera'
 import Chat from '@/app/chat'
+import DesignerList from '@/app/designer-list'
 import GoogleCallback from '@/app/google-callback'
 import HairList from '@/app/hairlist'
 import Landing from '@/app/landing'
@@ -119,6 +120,7 @@ const cameraRoute = createProtectedRoute('camera', Camera, (search) =>
   cameraSearchSchema.parse(search),
 )
 const chatRoute = createProtectedRoute('chat', Chat)
+const designerListRoute = createProtectedRoute('designer-list', DesignerList)
 const myPageRoute = createProtectedRoute('mypage', MyPage)
 const hairListRoute = createProtectedRoute('hairlist', HairList, (search) =>
   hairListSearchSchema.parse(search),
@@ -131,6 +133,7 @@ const routeTree = rootRoute.addChildren([
   mainRoute,
   cameraRoute,
   chatRoute,
+  designerListRoute,
   myPageRoute,
   hairListRoute,
 ])

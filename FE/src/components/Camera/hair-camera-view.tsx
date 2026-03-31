@@ -21,7 +21,7 @@ import {
   drawCompositedSourceToCanvas,
   drawImageUrlToCanvas,
 } from '@/lib/Camera/capture'
-import { postGetDesigner } from '@/lib/Camera/designer'
+import { postGetDesigner, writeDesignerListCache } from '@/lib/Camera/designer'
 import {
   fetchHairItems,
   HAIR_ITEMS,
@@ -461,6 +461,13 @@ export function HairCameraView({
               hairId: displayHairId,
             })
 
+            if (response.designers.length > 0) {
+              writeDesignerListCache(response.designers)
+              setDesignerLocationMessage(null)
+              await router.navigate({ to: '/designer-list' })
+              return
+            }
+
             setDesignerLocationMessage(response.message)
           } catch {
             setDesignerLocationMessage('디자이너 목록을 가져오지 못했습니다.')
@@ -476,7 +483,7 @@ export function HairCameraView({
         maximumAge: 0,
       },
     )
-  }, [designerMutation, displayHairId])
+  }, [designerMutation, displayHairId, router])
 
   const handleTopLeftAction = useCallback(() => {
     if (isFrameFrozen) {

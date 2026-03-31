@@ -5,12 +5,16 @@ import { Button } from '@/components/ui/button'
 type CaptureCompleteModalProps = {
   open: boolean
   onClose: () => void
+  onFindDesigner: () => void
+  onAiEnhance: () => void
   scale?: number
 }
 
 export function CaptureCompleteModal({
   open,
   onClose,
+  onFindDesigner,
+  onAiEnhance,
   scale = 1,
 }: CaptureCompleteModalProps) {
   if (!open) {
@@ -52,17 +56,17 @@ export function CaptureCompleteModal({
           <p className="mt-2 text-sm leading-6 text-text-warm-400">
             현재 스타일 이미지가 저장되었어요.
             <br />
-            마음에 드는 스타일을 다시 캡처해 비교해 보세요.
+            다음 작업을 선택해 계속 진행해 보세요.
           </p>
 
-          <Button
-            variant="login"
-            size="full"
-            className="mt-6"
-            onClick={onClose}
-          >
-            확인
-          </Button>
+          <div className="mt-6 flex w-full flex-col gap-3">
+            <Button variant="login" size="full" onClick={onFindDesigner}>
+              디자이너 찾기
+            </Button>
+            <Button variant="outline" size="full" onClick={onAiEnhance}>
+              AI 보정하기
+            </Button>
+          </div>
         </div>
       </div>
     </div>

@@ -311,7 +311,6 @@ export function HairCameraView({
         onComplete: () => setIsCaptureCompleteModalOpen(true),
         selectedHairId: displayHairId,
       })
-      setIsFrameFrozen(false)
       return
     }
 
@@ -323,8 +322,6 @@ export function HairCameraView({
       onComplete: () => setIsCaptureCompleteModalOpen(true),
       selectedHairId: displayHairId,
     })
-
-    setIsFrameFrozen(false)
   }, [
     displayHairId,
     hairItems,
@@ -482,6 +479,8 @@ export function HairCameraView({
               <CaptureCompleteModal
                 open={isCaptureCompleteModalOpen}
                 onClose={() => setIsCaptureCompleteModalOpen(false)}
+                onFindDesigner={() => {}}
+                onAiEnhance={() => {}}
                 scale={uiScale}
               />
             </div>

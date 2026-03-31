@@ -6,10 +6,10 @@ const MAX_CAMERA_FPS = 60
 
 const DEFAULT_RTC_STAGE_WIDTH = 288
 const DEFAULT_RTC_STAGE_HEIGHT = 512
-const DEFAULT_RTC_STAGE_FPS = 10
+const DEFAULT_RTC_STAGE_FPS = 13
 const DEFAULT_RTC_SENDER_START_BITRATE = 1_200_000
 const DEFAULT_RTC_SENDER_MAX_BITRATE = 1_500_000
-const DEFAULT_RTC_SENDER_MAX_FRAMERATE = 10
+const DEFAULT_RTC_SENDER_MAX_FRAMERATE = 13
 
 function resolveCameraFps(rawValue: string | undefined, fallback: number) {
   const parsed = Number.parseInt(rawValue ?? '', 10)

@@ -1,5 +1,6 @@
 import { MapPin, Scissors } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import type { DesignerListItem } from '@/lib/Camera/designer'
 
 type DesignerListCardProps = {
@@ -52,12 +53,21 @@ export function DesignerListCard({ designer, rank }: DesignerListCardProps) {
         </div>
       </div>
 
-      {designer.address ? (
-        <div className="mt-4 flex items-start gap-2 rounded-2xl bg-white px-4 py-3">
+      <div className="mt-4 rounded-2xl bg-white px-4 py-3">
+        <div className="flex items-start gap-2">
           <MapPin className="mt-0.5 size-4 shrink-0 text-primary-300" />
-          <p className="text-sm leading-6 text-text-dark">{designer.address}</p>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-text-dark">
+              {designer.name}
+            </p>
+            {designer.address ? (
+              <p className="mt-1 text-sm leading-6 text-text-dark">
+                {designer.address}
+              </p>
+            ) : null}
+          </div>
         </div>
-      ) : null}
+      </div>
 
       {designer.description ? (
         <p className="mt-4 text-sm leading-6 text-text-sub">
@@ -70,6 +80,10 @@ export function DesignerListCard({ designer, rank }: DesignerListCardProps) {
           {designer.distance}
         </p>
       ) : null}
+
+      <Button type="button" variant="login" size="full" className="mt-4">
+        디자인 요청하기
+      </Button>
     </article>
   )
 }

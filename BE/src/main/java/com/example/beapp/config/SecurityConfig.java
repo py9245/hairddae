@@ -36,6 +36,7 @@ import jakarta.servlet.http.HttpServletResponse;
         AppSecurityProperties.class,
         AppCorsProperties.class,
         AppHairProperties.class,
+        AppCameraAiProperties.class,
         AppInferenceProperties.class,
         AppGoogleSecurityProperties.class
 })
@@ -96,6 +97,9 @@ public class SecurityConfig {
                                 "/api/home/categorylist/",
                                 "/api/home/categorycardlist",
                                 "/api/home/categorycardlist/").permitAll()
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/camera/ai-upgrade",
+                                "/api/camera/ai-upgrade/").authenticated()
                         .requestMatchers(HttpMethod.POST,
                                 "/api/home/hairclick",
                                 "/api/home/hairclick/").authenticated()

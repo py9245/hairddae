@@ -325,6 +325,7 @@ export function DesignerApplicationDialog({
                   onChange={(value) => handleChange('acquisitionDate', value)}
                   onBlur={() => {}}
                   hasError={Boolean(acquisitionDateError)}
+                  placeholder="취득일 선택"
                 />
                 <FieldError>{acquisitionDateError}</FieldError>
               </Field>

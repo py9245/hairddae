@@ -1,24 +1,12 @@
 import { useMutation } from '@tanstack/react-query'
+import { X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
+import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import {
-  Field,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from '@/components/ui/field'
-import {
-  type DesignerApplicationRequest,
   submitDesignerApplication,
+  type DesignerApplicationRequest,
 } from '@/lib/mypage'
 
 type DesignerApplicationDialogProps = {
@@ -58,15 +46,19 @@ export function DesignerApplicationDialog({
     mutation.reset()
   }, [open, mutation])
 
+  if (!open) {
+    return null
+  }
+
   const certificateNumber = form.certificateNumber.trim()
   const salonAddress = form.salonAddress.trim()
+  const isFormValid = certificateNumber !== '' && salonAddress !== ''
   const certificateNumberError =
     submitAttempted && !certificateNumber
       ? '자격증 번호를 입력해 주세요.'
       : null
   const salonAddressError =
     submitAttempted && !salonAddress ? '미용실 주소를 입력해 주세요.' : null
-  const isFormValid = certificateNumber !== '' && salonAddress !== ''
 
   function handleChange<K extends keyof DesignerApplicationForm>(
     key: K,
@@ -76,6 +68,14 @@ export function DesignerApplicationDialog({
       ...prev,
       [key]: value,
     }))
+  }
+
+  function handleClose() {
+    if (mutation.isPending) {
+      return
+    }
+
+    onOpenChange(false)
   }
 
   function handleSubmit() {
@@ -92,42 +92,52 @@ export function DesignerApplicationDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        showCloseButton={!mutation.isPending}
-        className="max-w-[360px] rounded-[24px] border-none bg-card p-6"
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="designer-application-title"
+        className="pointer-events-auto w-full max-w-[360px] rounded-[24px] bg-card p-6 shadow-[0_20px_40px_rgba(15,23,42,0.18)]"
       >
         {mutation.isSuccess ? (
-          <>
-            <DialogHeader className="gap-3 text-left">
-              <DialogTitle className="text-xl font-bold text-text-warm-600">
-                디자이너 신청 완료
-              </DialogTitle>
-              <DialogDescription className="text-sm leading-6 text-text-warm-400">
-                {mutation.data.message}
-              </DialogDescription>
-            </DialogHeader>
-
-            <DialogFooter className="mt-2">
-              <Button
-                variant="login"
-                size="full"
-                onClick={() => onOpenChange(false)}
+          <div className="space-y-5">
+            <div className="space-y-2 text-left">
+              <h2
+                id="designer-application-title"
+                className="text-xl font-bold text-text-warm-600"
               >
-                닫기
-              </Button>
-            </DialogFooter>
-          </>
+                디자이너 신청 완료
+              </h2>
+              <p className="text-sm leading-6 text-text-warm-400">
+                {mutation.data.message}
+              </p>
+            </div>
+            <Button variant="login" size="full" onClick={() => onOpenChange(false)}>
+              닫기
+            </Button>
+          </div>
         ) : (
-          <>
-            <DialogHeader className="gap-2 text-left">
-              <DialogTitle className="text-xl font-bold text-text-warm-600">
+          <div className="space-y-5">
+            <div className="relative pr-10 text-left">
+              <button
+                type="button"
+                aria-label="디자이너 신청 모달 닫기"
+                className="absolute -right-1 -top-1 inline-flex h-9 w-9 items-center justify-center rounded-full text-text-warm-400 transition hover:bg-neutral-100 hover:text-text-dark"
+                onClick={handleClose}
+                disabled={mutation.isPending}
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <h2
+                id="designer-application-title"
+                className="text-xl font-bold text-text-warm-600"
+              >
                 디자이너 신청
-              </DialogTitle>
-              <DialogDescription className="text-sm leading-6 text-text-warm-400">
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-text-warm-400">
                 자격증 번호와 미용실 주소를 입력한 뒤 신청해 주세요.
-              </DialogDescription>
-            </DialogHeader>
+              </p>
+            </div>
 
             <FieldGroup className="gap-4">
               <Field>
@@ -156,7 +166,7 @@ export function DesignerApplicationDialog({
                   htmlFor="designer-salon-address"
                   className="text-sm font-semibold text-text-dark"
                 >
-                  미용실 주소
+                  미용실 위치
                 </FieldLabel>
                 <input
                   id="designer-salon-address"
@@ -181,27 +191,27 @@ export function DesignerApplicationDialog({
               </p>
             ) : null}
 
-            <DialogFooter className="mt-2">
+            <div className="flex gap-2">
               <Button
                 variant="outline"
-                className="h-12 rounded-xl"
-                onClick={() => onOpenChange(false)}
+                className="h-12 flex-1 rounded-xl"
+                onClick={handleClose}
                 disabled={mutation.isPending}
               >
                 취소
               </Button>
               <Button
                 variant="login"
-                className="h-12 rounded-xl"
+                className="h-12 flex-1 rounded-xl"
                 onClick={handleSubmit}
                 disabled={mutation.isPending}
               >
                 {mutation.isPending ? '신청 중...' : '신청하기'}
               </Button>
-            </DialogFooter>
-          </>
+            </div>
+          </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </div>
+    </div>
   )
 }

@@ -139,7 +139,7 @@ export default function MyPage() {
   }
 
   return (
-    <main className="app-frame-page h-full overflow-y-auto bg-bg-primary pb-[108px]">
+    <main className="app-frame-page relative h-full overflow-y-auto bg-bg-primary pb-[108px]">
       <div className="mx-auto flex w-full max-w-[390px] flex-col px-4 pt-3">
         <Header label="내정보" className="px-0 pb-3 pt-2" />
         <div className="mt-8">

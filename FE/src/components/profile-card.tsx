@@ -21,19 +21,12 @@ export function ProfileCard({
   onLogout,
   onDesignerApply,
 }: ProfileCardProps) {
-  const birthDateDisplay = profile.birthDate
-    ? profile.birthDate
-    : '?앸뀈?붿씪 鍮꾧났媛?'
-
-  const genderMap: Record<string, string> = { F: '?ъ옄', M: '?⑥옄' }
+  const birthDateDisplay = profile.birthDate || '생년월일 비공개'
+  const genderMap: Record<string, string> = { F: '여자', M: '남자' }
   const mappedGender = profile.gender
     ? (genderMap[profile.gender] ?? profile.gender)
     : null
-
-  const genderDisplay =
-    mappedGender == null || mappedGender === ''
-      ? '?깅퀎 鍮꾧났媛?'
-      : mappedGender
+  const genderDisplay = mappedGender || '성별 비공개'
 
   return (
     <section className="rounded-3xl bg-card p-6">
@@ -44,12 +37,12 @@ export function ProfileCard({
             {profile.userID}
           </p>
           <p className="mt-1 text-sm text-labels-secondary">
-            {birthDateDisplay} 쨌 {genderDisplay}
+            {birthDateDisplay} · {genderDisplay}
           </p>
         </div>
       </div>
       <Button variant="logout" size="full" className="mt-5" onClick={onLogout}>
-        濡쒓렇?꾩썐
+        로그아웃
       </Button>
       <Button
         variant="login"

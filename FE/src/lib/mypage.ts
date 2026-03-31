@@ -74,7 +74,7 @@ export async function applyMyPageHair(hairId: number): Promise<number> {
 export async function submitDesignerApplication(
   payload: DesignerApplicationRequest,
 ): Promise<DesignerApplicationResponse> {
-  const res = await apiFetch('/mypage/designer-application/', {
+  const res = await apiFetch('/mypage/designer/', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

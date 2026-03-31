@@ -24,10 +24,12 @@ import com.example.beapp.api.dto.hairs.HairListResponse;
 import com.example.beapp.api.dto.home.CategoryListResponse;
 import com.example.beapp.common.exception.ApiException;
 import com.example.beapp.common.exception.ErrorCode;
+import com.example.beapp.persistence.entity.HairCategoryEntity;
 import com.example.beapp.persistence.entity.HairEntity;
 import com.example.beapp.persistence.entity.HairLikeEntity;
 import com.example.beapp.persistence.entity.HistoryEntity;
 import com.example.beapp.persistence.entity.UserEntity;
+import com.example.beapp.persistence.repository.HairCategoryJpaRepository;
 import com.example.beapp.persistence.repository.HairJpaRepository;
 import com.example.beapp.persistence.repository.HairLikeJpaRepository;
 import com.example.beapp.persistence.repository.HistoryJpaRepository;
@@ -38,6 +40,7 @@ import com.example.beapp.persistence.repository.UserJpaRepository;
 public class HairCatalogService {
 
     private final HairJpaRepository hairJpaRepository;
+    private final HairCategoryJpaRepository hairCategoryJpaRepository;
     private final HairLikeJpaRepository hairLikeJpaRepository;
     private final HistoryJpaRepository historyJpaRepository;
     private final UserJpaRepository userJpaRepository;
@@ -45,12 +48,14 @@ public class HairCatalogService {
 
     public HairCatalogService(
             HairJpaRepository hairJpaRepository,
+            HairCategoryJpaRepository hairCategoryJpaRepository,
             HairLikeJpaRepository hairLikeJpaRepository,
             HistoryJpaRepository historyJpaRepository,
             UserJpaRepository userJpaRepository,
             HairStaticUrlResolver hairStaticUrlResolver
     ) {
         this.hairJpaRepository = hairJpaRepository;
+        this.hairCategoryJpaRepository = hairCategoryJpaRepository;
         this.hairLikeJpaRepository = hairLikeJpaRepository;
         this.historyJpaRepository = historyJpaRepository;
         this.userJpaRepository = userJpaRepository;
@@ -65,7 +70,7 @@ public class HairCatalogService {
 
         return candidates.stream()
                 .sorted(Comparator
-                        .comparingInt((HairEntity hair) -> preferenceWeights.getOrDefault(normalizeCategoryKey(hair.getCategory()), 0))
+                        .comparingInt((HairEntity hair) -> preferenceWeights.getOrDefault(normalizeCategoryKey(hair.getCategoryId()), 0))
                         .reversed()
                         .thenComparing(HairEntity::getLikeCount, Comparator.nullsLast(Comparator.reverseOrder()))
                         .thenComparing(HairEntity::getViewCount, Comparator.nullsLast(Comparator.reverseOrder()))
@@ -96,21 +101,40 @@ public class HairCatalogService {
     @Transactional(readOnly = true)
     public List<CategoryListResponse.CategoryItem> getCategoryItems() {
         List<HairEntity> hairs = hairJpaRepository.findByActiveTrue(popularSort());
+        List<HairCategoryEntity> categories = hairCategoryJpaRepository.findAllByActiveTrueOrderByDisplayOrderAscCreatedAtAsc();
         LinkedHashMap<String, CategoryListResponse.CategoryItem> items = new LinkedHashMap<>();
+        LinkedHashMap<String, HairEntity> representativeByCategoryId = new LinkedHashMap<>();
         String allPreviewImage = hairs.isEmpty() ? null : hairStaticUrlResolver.resolvePreviewImageUrl(hairs.get(0));
         items.put("all", new CategoryListResponse.CategoryItem("all", "전체", allPreviewImage));
 
         for (HairEntity hair : hairs) {
-            if (!StringUtils.hasText(hair.getCategory())) {
+            if (!StringUtils.hasText(hair.getCategoryId())) {
                 continue;
             }
-            items.putIfAbsent(
-                    hair.getCategory(),
-                    new CategoryListResponse.CategoryItem(
-                            hair.getCategory(),
-                            hair.getCategory(),
-                            hairStaticUrlResolver.resolvePreviewImageUrl(hair)));
+            representativeByCategoryId.putIfAbsent(hair.getCategoryId(), hair);
         }
+
+        for (HairCategoryEntity category : categories) {
+            HairEntity representativeHair = representativeByCategoryId.remove(category.getCategoryId());
+            if (representativeHair == null) {
+                continue;
+            }
+            String image = StringUtils.hasText(category.getPreviewImageUrl())
+                    ? category.getPreviewImageUrl()
+                    : hairStaticUrlResolver.resolvePreviewImageUrl(representativeHair);
+            items.put(category.getCategoryId(), new CategoryListResponse.CategoryItem(
+                    category.getCategoryId(),
+                    category.getCategoryName(),
+                    image));
+        }
+
+        representativeByCategoryId.forEach((categoryId, representativeHair) ->
+                items.putIfAbsent(
+                        categoryId,
+                        new CategoryListResponse.CategoryItem(
+                                categoryId,
+                                categoryId,
+                                hairStaticUrlResolver.resolvePreviewImageUrl(representativeHair))));
         return new ArrayList<>(items.values());
     }
 
@@ -118,7 +142,7 @@ public class HairCatalogService {
     public List<HairCard> getCategoryCards(String userId, String categoryId) {
         List<HairEntity> hairs = isAllCategory(categoryId)
                 ? hairJpaRepository.findByActiveTrue(latestSort())
-                : hairJpaRepository.findByActiveTrueAndCategoryIgnoreCase(categoryId, latestSort());
+                : hairJpaRepository.findByActiveTrueAndCategoryIdIgnoreCase(categoryId, latestSort());
         Set<Long> likedHairIds = resolveLikedHairIds(userId, hairs);
         return hairs.stream()
                 .map(hair -> toHairCard(hair, likedHairIds.contains(hair.getId())))
@@ -128,7 +152,7 @@ public class HairCatalogService {
     @Transactional(readOnly = true)
     public HairListResponse getHairList(String userId, String category, String sort) {
         List<HairEntity> hairs = StringUtils.hasText(category)
-                ? hairJpaRepository.findByActiveTrueAndCategoryIgnoreCase(category, resolveListSort(sort))
+                ? hairJpaRepository.findByActiveTrueAndCategoryIdIgnoreCase(category, resolveListSort(sort))
                 : hairJpaRepository.findByActiveTrue(resolveListSort(sort));
         Set<Long> likedHairIds = resolveLikedHairIds(userId, hairs);
         List<HairCard> hairList = hairs.stream()
@@ -151,7 +175,7 @@ public class HairCatalogService {
                 hair.getId().intValue(),
                 hair.getName(),
                 hair.getSlug(),
-                hair.getCategory(),
+                hair.getCategoryId(),
                 hairStaticUrlResolver.resolvePreviewImageUrl(hair),
                 safeCount(hair.getLikeCount()),
                 safeCount(hair.getViewCount()),
@@ -212,7 +236,7 @@ public class HairCatalogService {
                 buildHookText(hair),
                 hair.getName(),
                 resolveHairDatasetCode(hair),
-                hair.getCategory(),
+                hair.getCategoryId(),
                 hair.getCreatedAt());
     }
 
@@ -236,13 +260,13 @@ public class HairCatalogService {
 
         List<HairLikeEntity> likes = hairLikeJpaRepository.findAllByUserIdWithHairOrderByCreatedAtDesc(userId);
         for (HairLikeEntity like : likes) {
-            incrementWeight(preferenceWeights, like.getHair().getCategory(), 3);
+            incrementWeight(preferenceWeights, like.getHair().getCategoryId(), 3);
         }
 
         List<HistoryEntity> histories = historyJpaRepository.findRecentByUserIdWithHair(userId, 0);
         int weight = 5;
         for (HistoryEntity history : histories) {
-            incrementWeight(preferenceWeights, history.getHair().getCategory(), weight);
+            incrementWeight(preferenceWeights, history.getHair().getCategoryId(), weight);
             if (weight > 1) {
                 weight -= 1;
             }

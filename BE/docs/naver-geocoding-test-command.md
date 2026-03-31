@@ -36,7 +36,7 @@ curl -G "$NAVER_GEOCODING_BASE_URL/map-geocode/v2/geocode" \
   -H "X-NCP-APIGW-API-KEY-ID: $X_NCP_APIGW_API_KEY_ID" \
   -H "X-NCP-APIGW-API-KEY: $X_NCP_APIGW_API_KEY" \
   -H "Accept: application/json" \
-  --data-urlencode "query=서울특별시 강남구 테헤란로 1"
+  --data-urlencode "query=서울 강남구 테헤란로 212"
 ```
 
 ## 3. 정상 응답 예시

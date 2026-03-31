@@ -32,6 +32,7 @@ import com.example.beapp.service.NaverGeocodingClient;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -119,6 +120,34 @@ class DesignerApplicationApiIntegrationTest {
         assertEquals(java.time.LocalDate.of(2024, 1, 15), savedApplication.acquisitionDate());
         assertEquals(37.4981, savedApplication.salonLatitude());
         assertEquals(127.0276, savedApplication.salonLongitude());
+    }
+
+    @Test
+    void designerApplicationNormalizesSalonAddressForGeocodingButStoresOriginalAddress() throws Exception {
+        MockCookie accessTokenCookie = login();
+        given(naverGeocodingClient.geocodeAddress("서울 노원구 노원로 431 노원역지구대"))
+                .willReturn(new NaverGeocodingClient.GeocodingCoordinates(37.654321, 127.061234));
+
+        mockMvc.perform(post("/api/mypage/designer")
+                        .cookie(accessTokenCookie)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "certificateNumber": "CERT-777",
+                                  "salonAddress": "(01752) 서울 노원구 노원로 431 노원역지구대",
+                                  "acquisitionDate": "2024-01-15"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        then(naverGeocodingClient).should()
+                .geocodeAddress("서울 노원구 노원로 431 노원역지구대");
+
+        var savedApplication = designerApplicationRepository.findByUserId("TestUser01").orElseThrow();
+        assertEquals("(01752) 서울 노원구 노원로 431 노원역지구대", savedApplication.salonAddress());
+        assertEquals(37.654321, savedApplication.salonLatitude());
+        assertEquals(127.061234, savedApplication.salonLongitude());
     }
 
     @Test

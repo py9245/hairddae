@@ -1,5 +1,7 @@
 package com.example.beapp.service;
 
+import java.util.regex.Pattern;
+
 import org.springframework.stereotype.Service;
 
 import com.example.beapp.api.dto.mypage.DesignerApplicationRequest;
@@ -13,6 +15,9 @@ import com.example.beapp.repository.UserAccountRepository;
 
 @Service
 public class DesignerApplicationService {
+
+    private static final Pattern LEADING_POSTAL_CODE_PATTERN = Pattern.compile("^\\(\\d{5}\\)\\s*");
+    private static final Pattern MULTIPLE_WHITESPACE_PATTERN = Pattern.compile("\\s+");
 
     private final UserAccountRepository userAccountRepository;
     private final DesignerApplicationRepository designerApplicationRepository;
@@ -33,7 +38,8 @@ public class DesignerApplicationService {
 
         String certificateNumber = request.certificateNumber().trim();
         String salonAddress = request.salonAddress().trim();
-        NaverGeocodingClient.GeocodingCoordinates coordinates = naverGeocodingClient.geocodeAddress(salonAddress);
+        NaverGeocodingClient.GeocodingCoordinates coordinates = naverGeocodingClient.geocodeAddress(
+                normalizeSalonAddressForGeocoding(salonAddress));
 
         designerApplicationRepository.save(new DesignerApplication(
                 userAccount.userID(),
@@ -67,5 +73,10 @@ public class DesignerApplicationService {
         if (userAccount.grade() == 1 || designerApplicationRepository.existsByUserId(userAccount.userID())) {
             throw new ApiException(ErrorCode.DESIGNER_APPLICATION_ALREADY_EXISTS);
         }
+    }
+
+    private String normalizeSalonAddressForGeocoding(String salonAddress) {
+        String normalized = LEADING_POSTAL_CODE_PATTERN.matcher(salonAddress).replaceFirst("");
+        return MULTIPLE_WHITESPACE_PATTERN.matcher(normalized.trim()).replaceAll(" ");
     }
 }

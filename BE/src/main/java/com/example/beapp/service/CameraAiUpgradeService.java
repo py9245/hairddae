@@ -29,16 +29,7 @@ public class CameraAiUpgradeService {
             "image/webp");
 
     private static final String PROMPT = normalizePrompt("""
-            This is a retouch-only task for the exact input photo, not a new image generation task.
-            Preserve the original photo exactly as it is.
-            Do not change anything below the eyebrows under any circumstances.
-            Do not modify the face, skin, eyebrows, eyes, nose, mouth, ears, jawline, neck, body, clothes, background, lighting, framing, perspective, or camera characteristics.
-            Keep the person's identity exactly the same.
-            Preserve every non-hair pixel as close to the original as possible.
-            Only retouch the visible hair region and only fix obvious unnatural artifacts caused by the hairstyle application, such as harsh boundaries, blending seams, overlay artifacts, cutout errors, stray mismatched strands, or color mismatch.
-            Keep the currently visible hairstyle exactly the same. Do not redesign, restyle, enlarge, shrink, or replace the hair.
-            The result must look like the same real photo, not AI-generated, not beautified, not stylized, and not re-rendered.
-            If the hair already looks natural, make almost no change.
+            눈썹 아래론 건들지 말고 이마 부분의 경계선 어색한게 있다면 그것만 수정해줘
             """);
 
     private final UserAccountRepository userAccountRepository;

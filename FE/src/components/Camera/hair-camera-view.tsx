@@ -445,6 +445,14 @@ export function HairCameraView({
       return
     }
 
+    const draftCanvas = frozenFrameCanvasRef.current
+    if (draftCanvas) {
+      writeChatRoomDraft({
+        hairId: displayHairId,
+        appliedImageDataUrl: draftCanvas.toDataURL('image/png'),
+      })
+    }
+
     if (typeof window === 'undefined' || !navigator.geolocation) {
       setDesignerLocationMessage('현재 위치를 지원하지 않는 환경입니다.')
       return
@@ -464,13 +472,6 @@ export function HairCameraView({
             })
 
             if (response.designers.length > 0) {
-              const draftCanvas = frozenFrameCanvasRef.current
-              if (draftCanvas) {
-                writeChatRoomDraft({
-                  hairId: displayHairId,
-                  appliedImageDataUrl: draftCanvas.toDataURL('image/png'),
-                })
-              }
               writeDesignerListCache(response.designers)
               setDesignerLocationMessage(null)
               await router.navigate({ to: '/designer-list' })

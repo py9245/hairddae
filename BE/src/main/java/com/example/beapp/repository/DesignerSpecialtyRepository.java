@@ -7,6 +7,8 @@ import com.example.beapp.model.DesignerSpecialty;
 public interface DesignerSpecialtyRepository {
     List<DesignerSpecialty> findAllByUserId(String userId);
 
+    List<DesignerSpecialty> replaceAll(String userId, List<String> categoryIds);
+
     List<DesignerSpecialty> saveAll(List<DesignerSpecialty> designerSpecialties);
 
     void deleteByUserId(String userId);

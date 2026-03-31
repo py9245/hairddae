@@ -29,6 +29,22 @@ public class JpaDesignerSpecialtyRepositoryAdapter implements DesignerSpecialtyR
     }
 
     @Override
+    public List<DesignerSpecialty> replaceAll(String userId, List<String> categoryIds) {
+        designerSpecialtyJpaRepository.deleteByUserId(userId);
+        designerSpecialtyJpaRepository.flush();
+
+        if (categoryIds.isEmpty()) {
+            return List.of();
+        }
+
+        return designerSpecialtyJpaRepository.saveAll(categoryIds.stream()
+                        .map(categoryId -> new DesignerSpecialtyEntity(userId, categoryId))
+                        .toList()).stream()
+                .map(this::toModel)
+                .toList();
+    }
+
+    @Override
     public List<DesignerSpecialty> saveAll(List<DesignerSpecialty> designerSpecialties) {
         return designerSpecialtyJpaRepository.saveAll(designerSpecialties.stream()
                         .map(specialty -> new DesignerSpecialtyEntity(specialty.userId(), specialty.categoryId()))

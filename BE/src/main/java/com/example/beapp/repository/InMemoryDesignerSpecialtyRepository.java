@@ -27,6 +27,15 @@ public class InMemoryDesignerSpecialtyRepository implements DesignerSpecialtyRep
     }
 
     @Override
+    public List<DesignerSpecialty> replaceAll(String userId, List<String> categoryIds) {
+        deleteByUserId(userId);
+        List<DesignerSpecialty> specialties = categoryIds.stream()
+                .map(categoryId -> new DesignerSpecialty(userId, categoryId))
+                .toList();
+        return saveAll(specialties);
+    }
+
+    @Override
     public List<DesignerSpecialty> saveAll(List<DesignerSpecialty> designerSpecialties) {
         if (designerSpecialties.isEmpty()) {
             return List.of();

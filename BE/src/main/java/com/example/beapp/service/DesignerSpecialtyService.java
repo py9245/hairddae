@@ -10,7 +10,6 @@ import com.example.beapp.api.dto.mypage.DesignerSpecialtiesResponse;
 import com.example.beapp.api.dto.mypage.DesignerSpecialtiesUpsertResponse;
 import com.example.beapp.common.exception.ApiException;
 import com.example.beapp.common.exception.ErrorCode;
-import com.example.beapp.model.DesignerSpecialty;
 import com.example.beapp.model.UserAccount;
 import com.example.beapp.repository.DesignerSpecialtyRepository;
 import com.example.beapp.repository.HairCategoryLookupRepository;
@@ -39,10 +38,7 @@ public class DesignerSpecialtyService {
         List<String> normalizedCategoryIds = normalizeCategoryIds(request.categoryIds());
         validateCategoryIds(normalizedCategoryIds);
 
-        designerSpecialtyRepository.deleteByUserId(userId);
-        designerSpecialtyRepository.saveAll(normalizedCategoryIds.stream()
-                .map(categoryId -> new DesignerSpecialty(userId, categoryId))
-                .toList());
+        designerSpecialtyRepository.replaceAll(userId, normalizedCategoryIds);
 
         return DesignerSpecialtiesUpsertResponse.ok();
     }

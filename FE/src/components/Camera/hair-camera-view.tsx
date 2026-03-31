@@ -21,6 +21,7 @@ import {
   drawCompositedSourceToCanvas,
   drawImageUrlToCanvas,
 } from '@/lib/Camera/capture'
+import { postGetDesigner } from '@/lib/Camera/designer'
 import {
   fetchHairItems,
   HAIR_ITEMS,
@@ -82,6 +83,9 @@ export function HairCameraView({
 
   const aiUpgradeMutation = useMutation({
     mutationFn: postAiUpgrade,
+  })
+  const designerMutation = useMutation({
+    mutationFn: postGetDesigner,
   })
 
   const readGuidePreferences = useCallback(() => {
@@ -187,7 +191,7 @@ export function HairCameraView({
   }, [aiEnhanceMessage, aiUpgradeMutation.isPending])
 
   useEffect(() => {
-    if (!designerLocationMessage) {
+    if (!designerLocationMessage || designerMutation.isPending) {
       return
     }
 
@@ -198,7 +202,7 @@ export function HairCameraView({
     return () => {
       window.clearTimeout(timerId)
     }
-  }, [designerLocationMessage])
+  }, [designerLocationMessage, designerMutation.isPending])
 
   useEffect(() => {
     void (async () => {
@@ -227,10 +231,10 @@ export function HairCameraView({
         if (items.length <= 1) {
           setHairItems(HAIR_ITEMS)
           setHairItemsError({
-            title: '헤어 스타일 목록을 불러올 수 없어요.',
+            title: '?ㅼ뼱 ?ㅽ???紐⑸줉??遺덈윭?????놁뼱??',
             description: [
-              '현재 적용 가능한 헤어 스타일 정보가 없어요.',
-              '다음 화면에서 적용하기를 선택해 주세요.',
+              '?꾩옱 ?곸슜 媛?ν븳 ?ㅼ뼱 ?ㅽ????뺣낫媛 ?놁뼱??',
+              '?ㅼ쓬 ?붾㈃?먯꽌 ?곸슜?섍린瑜??좏깮??二쇱꽭??',
             ],
           })
           return
@@ -242,8 +246,8 @@ export function HairCameraView({
         console.error('hair item load failed:', error)
         setHairItems(HAIR_ITEMS)
         setHairItemsError({
-          title: '헤어 스타일 목록을 불러올 수 없어요.',
-          description: ['네트워크 상태를 확인한 뒤 다시 시도해 주세요.'],
+          title: '?ㅼ뼱 ?ㅽ???紐⑸줉??遺덈윭?????놁뼱??',
+          description: ['?ㅽ듃?뚰겕 ?곹깭瑜??뺤씤?????ㅼ떆 ?쒕룄??二쇱꽭??'],
         })
       })
       .finally(() => {
@@ -396,7 +400,7 @@ export function HairCameraView({
     const wrap = wrapRef.current
 
     if (!frozenCanvas || !wrap) {
-      setAiEnhanceMessage('캡처 이미지를 먼저 준비해 주세요.')
+      setAiEnhanceMessage('罹≪쿂 ?대?吏瑜?癒쇱? 以鍮꾪빐 二쇱꽭??')
       return
     }
 
@@ -408,7 +412,7 @@ export function HairCameraView({
       })
 
       if (!response.resultImageUrl) {
-        throw new Error('보정 이미지 URL이 없습니다.')
+        throw new Error('蹂댁젙 ?대?吏 URL???놁뒿?덈떎.')
       }
 
       const didDraw = await drawImageUrlToCanvas({
@@ -419,27 +423,44 @@ export function HairCameraView({
       })
 
       if (!didDraw) {
-        throw new Error('보정 이미지를 화면에 표시하지 못했습니다.')
+        throw new Error('蹂댁젙 ?대?吏瑜??붾㈃???쒖떆?섏? 紐삵뻽?듬땲??')
       }
 
       setAiEnhanceMessage(null)
     } catch {
-      setAiEnhanceMessage('AI 보정 요청에 실패했습니다.')
+      setAiEnhanceMessage('AI 蹂댁젙 ?붿껌???ㅽ뙣?덉뒿?덈떎.')
     }
   }, [aiUpgradeMutation])
 
   const handleFindDesigner = useCallback(() => {
+    if (displayHairId <= 0) {
+      setDesignerLocationMessage('적용된 헤어 정보를 찾을 수 없습니다.')
+      return
+    }
+
     if (typeof window === 'undefined' || !navigator.geolocation) {
       setDesignerLocationMessage('현재 위치를 지원하지 않는 환경입니다.')
       return
     }
 
+    setDesignerLocationMessage('현재 위치를 확인하고 있습니다...')
+
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const { latitude, longitude } = position.coords
-        setDesignerLocationMessage(
-          `현재 위치를 확인했어요 (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`,
-        )
+        void (async () => {
+          try {
+            const { latitude, longitude } = position.coords
+            const response = await designerMutation.mutateAsync({
+              latitude,
+              longitude,
+              hairId: displayHairId,
+            })
+
+            setDesignerLocationMessage(response.message)
+          } catch {
+            setDesignerLocationMessage('디자이너 목록을 가져오지 못했습니다.')
+          }
+        })()
       },
       () => {
         setDesignerLocationMessage('현재 위치를 가져오지 못했습니다.')
@@ -450,7 +471,7 @@ export function HairCameraView({
         maximumAge: 0,
       },
     )
-  }, [])
+  }, [designerMutation, displayHairId])
 
   const handleTopLeftAction = useCallback(() => {
     if (isFrameFrozen) {
@@ -537,7 +558,7 @@ export function HairCameraView({
                 size="camera-icon"
                 onClick={handleTopLeftAction}
                 data-testid="camera-back-button"
-                aria-label={isFrameFrozen ? '캡처 취소' : '닫기'}
+                aria-label={isFrameFrozen ? '罹≪쿂 痍⑥냼' : '?リ린'}
               >
                 <X className="size-12 text-white" />
               </Button>
@@ -549,7 +570,9 @@ export function HairCameraView({
             selectedId={displayHairId}
             loading={isHairItemsLoading}
             frozen={isFrameFrozen}
-            aiEnhancePending={aiUpgradeMutation.isPending}
+            aiEnhancePending={
+              aiUpgradeMutation.isPending || designerMutation.isPending
+            }
             onSelect={handleHairSelect}
             onCapture={handleCapture}
             onFreezeChange={handleFreezeChange}
@@ -562,7 +585,7 @@ export function HairCameraView({
           {captureToastVisible ? (
             <div className="pointer-events-none absolute left-1/2 top-24 z-40 -translate-x-1/2">
               <div className="rounded-full bg-white px-6 py-3 text-base font-bold text-primary-300 shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
-                저장이 완료되었습니다
+                ??μ씠 ?꾨즺?섏뿀?듬땲??
               </div>
             </div>
           ) : null}

@@ -1,106 +1,121 @@
 package com.example.beapp.service;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.http.client.MultipartBodyBuilder;
 
 import com.example.beapp.common.exception.ApiException;
 import com.example.beapp.common.exception.ErrorCode;
 import com.example.beapp.config.AppCameraAiProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class GmsImageGenerationClient {
 
     private static final Logger log = LoggerFactory.getLogger(GmsImageGenerationClient.class);
 
-    private final RestClient.Builder restClientBuilder;
     private final AppCameraAiProperties appCameraAiProperties;
+    private final ObjectMapper objectMapper;
 
-    public GmsImageGenerationClient(RestClient.Builder restClientBuilder, AppCameraAiProperties appCameraAiProperties) {
-        this.restClientBuilder = restClientBuilder;
+    public GmsImageGenerationClient(AppCameraAiProperties appCameraAiProperties, ObjectMapper objectMapper) {
         this.appCameraAiProperties = appCameraAiProperties;
+        this.objectMapper = objectMapper;
     }
 
     public GeneratedImage generateEditedImage(MultipartFile image, String prompt, String userId) {
         validateConfiguration();
 
         try {
-            MultipartBodyBuilder bodyBuilder = new MultipartBodyBuilder();
-            bodyBuilder.part("model", appCameraAiProperties.modelName());
-            bodyBuilder.part("prompt", prompt);
-            bodyBuilder.part("image", new NamedByteArrayResource(image.getBytes(), resolveFilename(image)))
-                    .header(HttpHeaders.CONTENT_TYPE, resolveContentType(image));
+            String boundary = "----BeAppGmsBoundary" + UUID.randomUUID();
+            byte[] requestBody;
+            try {
+                requestBody = buildMultipartBody(boundary, image, prompt);
+            } catch (IOException exception) {
+                throw new IllegalStateException("업로드 이미지를 읽지 못했습니다.", exception);
+            }
 
-            GmsImageResponse response = restClient().post()
-                    .uri("/images/edits")
-                    .headers(headers -> headers.setBearerAuth(appCameraAiProperties.providerAuthToken()))
-                    .contentType(MediaType.MULTIPART_FORM_DATA)
-                    .body(bodyBuilder.build())
-                    .retrieve()
-                    .body(GmsImageResponse.class);
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(resolveImagesEditsUrl()))
+                    .timeout(resolveTimeout())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + appCameraAiProperties.providerAuthToken())
+                    .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.MULTIPART_FORM_DATA_VALUE + "; boundary=" + boundary)
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(requestBody))
+                    .build();
 
-            if (response == null || response.data() == null || response.data().isEmpty()) {
+            HttpResponse<String> response = httpClient().send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+
+            if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                log.error(
+                        "GMS images/edits failed. status={} body={}",
+                        response.statusCode(),
+                        abbreviate(response.body(), 2000));
+                throw new ApiException(
+                        ErrorCode.CAMERA_AI_FAILED,
+                        "GMS 호출에 실패했습니다. status=%d".formatted(response.statusCode()));
+            }
+
+            GmsImageResponse parsedResponse = objectMapper.readValue(response.body(), GmsImageResponse.class);
+
+            if (parsedResponse.data() == null || parsedResponse.data().isEmpty()) {
                 throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "GMS 응답에 이미지 데이터가 없습니다.");
             }
 
-            GmsImageData firstImage = response.data().get(0);
+            GmsImageData firstImage = parsedResponse.data().get(0);
             if (!StringUtils.hasText(firstImage.b64Json())) {
                 throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "GMS 응답에 b64_json 이미지가 없습니다.");
             }
 
             try {
                 byte[] decodedImage = Base64.getDecoder().decode(firstImage.b64Json());
-                return new GeneratedImage(decodedImage, resolveOutputFormat(response, firstImage));
+                return new GeneratedImage(decodedImage, resolveOutputFormat(parsedResponse, firstImage));
             } catch (IllegalArgumentException exception) {
                 throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "GMS 이미지 응답을 해석하지 못했습니다.");
             }
-        } catch (IOException exception) {
-            throw new IllegalStateException("업로드 이미지를 읽지 못했습니다.", exception);
-        } catch (ResourceAccessException exception) {
+        } catch (HttpTimeoutException exception) {
             log.error("GMS images/edits timeout: {}", exception.getMessage());
             throw new ApiException(ErrorCode.CAMERA_AI_TIMEOUT, "GMS 요청이 시간 내에 완료되지 않았습니다.");
-        } catch (RestClientResponseException exception) {
-            log.error(
-                    "GMS images/edits failed. status={} body={}",
-                    exception.getStatusCode().value(),
-                    abbreviate(exception.getResponseBodyAsString(), 1000));
-            throw new ApiException(
-                    ErrorCode.CAMERA_AI_FAILED,
-                    "GMS 호출에 실패했습니다. status=%d".formatted(exception.getStatusCode().value()));
-        } catch (RestClientException exception) {
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            log.error("GMS images/edits interrupted: {}", exception.getMessage());
+            throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "GMS 호출이 중단되었습니다.");
+        } catch (ApiException exception) {
+            throw exception;
+        } catch (IOException exception) {
+            log.error("GMS images/edits response parse error: {}", exception.getMessage(), exception);
+            throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "GMS 응답을 해석하지 못했습니다.");
+        } catch (Exception exception) {
             log.error("GMS images/edits error: {}", exception.getMessage(), exception);
             throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "GMS 호출 중 오류가 발생했습니다.");
         }
     }
 
-    private RestClient restClient() {
-        Duration timeout = Duration.ofMillis(Math.max(appCameraAiProperties.requestTimeoutMs(), 1L));
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        requestFactory.setConnectTimeout(timeout);
-        requestFactory.setReadTimeout(timeout);
+    private HttpClient httpClient() {
+        return HttpClient.newBuilder()
+                .connectTimeout(resolveTimeout())
+                .build();
+    }
 
-        RestClient.Builder builder = restClientBuilder.requestFactory(requestFactory);
-        if (StringUtils.hasText(appCameraAiProperties.providerBaseUrl())) {
-            builder = builder.baseUrl(appCameraAiProperties.providerBaseUrl().trim());
-        }
-        return builder.build();
+    private Duration resolveTimeout() {
+        return Duration.ofMillis(Math.max(appCameraAiProperties.requestTimeoutMs(), 1L));
     }
 
     private void validateConfiguration() {
@@ -120,6 +135,47 @@ public class GmsImageGenerationClient {
 
     private String resolveContentType(MultipartFile image) {
         return StringUtils.hasText(image.getContentType()) ? image.getContentType() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
+    }
+
+    private String resolveImagesEditsUrl() {
+        String baseUrl = appCameraAiProperties.providerBaseUrl().trim();
+        return baseUrl.endsWith("/") ? baseUrl + "images/edits" : baseUrl + "/images/edits";
+    }
+
+    private byte[] buildMultipartBody(String boundary, MultipartFile image, String prompt) throws IOException {
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        writeTextPart(outputStream, boundary, "model", appCameraAiProperties.modelName());
+        writeTextPart(outputStream, boundary, "prompt", prompt);
+        writeBinaryPart(outputStream, boundary, "image", resolveFilename(image), resolveContentType(image), image.getBytes());
+        outputStream.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+        return outputStream.toByteArray();
+    }
+
+    private void writeTextPart(ByteArrayOutputStream outputStream, String boundary, String name, String value) throws IOException {
+        outputStream.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
+        outputStream.write(("Content-Disposition: form-data; name=\"" + escapeQuoted(name) + "\"\r\n\r\n")
+                .getBytes(StandardCharsets.UTF_8));
+        outputStream.write(value.getBytes(StandardCharsets.UTF_8));
+        outputStream.write("\r\n".getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void writeBinaryPart(
+            ByteArrayOutputStream outputStream,
+            String boundary,
+            String name,
+            String filename,
+            String contentType,
+            byte[] bytes) throws IOException {
+        outputStream.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
+        outputStream.write(("Content-Disposition: form-data; name=\"" + escapeQuoted(name)
+                + "\"; filename=\"" + escapeQuoted(filename) + "\"\r\n").getBytes(StandardCharsets.UTF_8));
+        outputStream.write(("Content-Type: " + contentType + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+        outputStream.write(bytes);
+        outputStream.write("\r\n".getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String escapeQuoted(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private String resolveOutputFormat(GmsImageResponse response, GmsImageData firstImage) {
@@ -156,20 +212,5 @@ public class GmsImageGenerationClient {
             @JsonProperty("b64_json") String b64Json,
             @JsonProperty("output_format") String outputFormat
     ) {
-    }
-
-    private static final class NamedByteArrayResource extends ByteArrayResource {
-
-        private final String filename;
-
-        private NamedByteArrayResource(byte[] byteArray, String filename) {
-            super(byteArray);
-            this.filename = filename;
-        }
-
-        @Override
-        public String getFilename() {
-            return filename;
-        }
     }
 }

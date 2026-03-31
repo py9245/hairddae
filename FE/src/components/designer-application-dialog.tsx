@@ -1,5 +1,5 @@
 import { useMutation } from '@tanstack/react-query'
-import { MapPin, Search, X } from 'lucide-react'
+import { Search, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,7 @@ type DesignerApplicationDialogProps = {
 
 type DesignerApplicationForm = {
   certificateNumber: string
+  acquisitionDate: string
   salonAddress: string
 }
 
@@ -51,6 +52,7 @@ declare global {
 
 const INITIAL_FORM: DesignerApplicationForm = {
   certificateNumber: '',
+  acquisitionDate: '',
   salonAddress: '',
 }
 
@@ -150,13 +152,18 @@ export function DesignerApplicationDialog({
   }
 
   const certificateNumber = form.certificateNumber.trim()
+  const acquisitionDate = form.acquisitionDate
   const salonAddress = form.salonAddress.trim()
-  const isFormValid = certificateNumber !== '' && salonAddress !== ''
+  const isFormValid =
+    certificateNumber !== '' && acquisitionDate !== '' && salonAddress !== ''
 
   const certificateNumberError =
     submitAttempted && !certificateNumber
       ? '자격증 번호를 입력해 주세요.'
       : null
+
+  const acquisitionDateError =
+    submitAttempted && !acquisitionDate ? '취득일을 선택해 주세요.' : null
 
   const salonAddressError =
     submitAttempted && !salonAddress ? '미용실 주소를 입력해 주세요.' : null
@@ -188,6 +195,7 @@ export function DesignerApplicationDialog({
 
     mutation.mutate({
       certificateNumber,
+      acquisitionDate,
       salonAddress,
     })
   }
@@ -269,7 +277,7 @@ export function DesignerApplicationDialog({
                 디자이너 신청
               </h2>
               <p className="mt-2 text-sm leading-6 text-text-warm-400">
-                자격증 번호와 미용실 주소를
+                자격증 정보와 미용실 주소를
                 <br />
                 입력한 뒤 신청해 주세요.
               </p>
@@ -286,6 +294,7 @@ export function DesignerApplicationDialog({
                 <input
                   id="designer-certificate-number"
                   type="text"
+                  maxLength={50}
                   value={form.certificateNumber}
                   onChange={(event) =>
                     handleChange('certificateNumber', event.target.value)
@@ -299,32 +308,36 @@ export function DesignerApplicationDialog({
 
               <Field>
                 <FieldLabel
-                  htmlFor="designer-salon-address"
+                  htmlFor="designer-acquisition-date"
                   className="text-sm font-semibold text-text-dark"
                 >
-                  미용실 위치
+                  취득일
                 </FieldLabel>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <MapPin className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-warm-400" />
-                    <input
-                      id="designer-salon-address"
-                      type="text"
-                      value={form.salonAddress}
-                      readOnly
-                      placeholder={
-                        isAddressScriptLoading
-                          ? '주소 검색을 준비하고 있습니다'
-                          : '주소 검색 버튼으로 미용실 주소를 선택해 주세요'
-                      }
-                      className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface pl-11 pr-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
-                      disabled={mutation.isPending || isAddressScriptLoading}
-                    />
-                  </div>
+                <input
+                  id="designer-acquisition-date"
+                  type="date"
+                  value={form.acquisitionDate}
+                  onChange={(event) =>
+                    handleChange('acquisitionDate', event.target.value)
+                  }
+                  className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface px-4 text-base text-slate-700 outline-none focus:border-primary-200"
+                  disabled={mutation.isPending}
+                />
+                <FieldError>{acquisitionDateError}</FieldError>
+              </Field>
+
+              <Field>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <FieldLabel
+                    htmlFor="designer-salon-address"
+                    className="text-sm font-semibold text-text-dark"
+                  >
+                    미용실 위치
+                  </FieldLabel>
                   <Button
                     type="button"
                     variant="outline"
-                    className="h-12 shrink-0 rounded-2xl px-4 text-text-dark"
+                    className="h-9 shrink-0 rounded-xl px-3 text-text-dark"
                     onClick={handleSearchAddress}
                     disabled={mutation.isPending || isAddressScriptLoading}
                   >
@@ -332,6 +345,19 @@ export function DesignerApplicationDialog({
                     주소 검색
                   </Button>
                 </div>
+                <input
+                  id="designer-salon-address"
+                  type="text"
+                  value={form.salonAddress}
+                  readOnly
+                  placeholder={
+                    isAddressScriptLoading
+                      ? '주소 검색을 준비하고 있습니다'
+                      : '주소 검색 버튼으로 미용실 주소를 선택해 주세요'
+                  }
+                  className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
+                  disabled={mutation.isPending || isAddressScriptLoading}
+                />
                 <FieldError>
                   {salonAddressError ?? addressSearchError}
                 </FieldError>

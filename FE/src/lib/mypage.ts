@@ -31,6 +31,7 @@ export type AppliedListResponse = {
 
 export type DesignerApplicationRequest = {
   certificateNumber: string
+  acquisitionDate: string
   salonAddress: string
 }
 

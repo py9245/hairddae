@@ -11,14 +11,6 @@ export default function DesignerList() {
       <div className="mx-auto flex w-full max-w-[390px] flex-col px-4 pt-3">
         <Header label="디자이너" className="px-0 pb-3 pt-2" />
 
-        <section className="rounded-[28px] bg-[linear-gradient(135deg,#FBE3E8_0%,#FFFFFF_100%)] px-5 py-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
-          <h1 className="mt-2 text-[24px] font-bold leading-8 text-text-dark">
-            {designerCount > 0
-              ? `주변 디자이너 ${designerCount}명을 불러왔어요`
-              : '추천 디자이너를 준비하고 있어요'}
-          </h1>
-        </section>
-
         <section className="mt-5 flex flex-col gap-4 pb-6">
           {designerCount > 0 ? (
             designers.map((designer, index) => (

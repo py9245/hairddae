@@ -1,4 +1,4 @@
-import { MapPin, Scissors } from 'lucide-react'
+import { MapPin } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import type { DesignerListItem } from '@/lib/Camera/designer'
@@ -34,35 +34,31 @@ export function DesignerListCard({ designer, rank }: DesignerListCardProps) {
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-primary-100 px-2.5 py-1 text-xs font-bold text-primary-300">
-              추천 {rank}
-            </span>
-          </div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-primary-100 px-2.5 py-1 text-xs font-bold text-primary-300">
+                  추천 {rank}
+                </span>
+              </div>
 
-          <h2 className="mt-3 truncate text-lg font-bold text-text-dark">
-            {designer.name}
-          </h2>
+              <h2 className="mt-3 truncate text-lg font-bold text-text-dark">
+                {designer.name}
+              </h2>
 
-          {designer.salonName ? (
-            <p className="mt-2 flex items-center gap-2 text-sm font-medium text-text-sub">
-              <Scissors className="size-4 text-primary-300" />
-              <span className="truncate">{designer.salonName}</span>
-            </p>
-          ) : null}
-        </div>
-      </div>
+              {designer.address ? (
+                <div className="mt-2 flex items-start gap-2">
+                  <MapPin className="mt-0.5 size-4 shrink-0 text-primary-300" />
+                  <p className="text-sm leading-6 text-text-dark">
+                    {designer.address}
+                  </p>
+                </div>
+              ) : null}
+            </div>
 
-      <div className="mt-4 rounded-2xl bg-white px-4 py-3">
-        <div className="flex items-start gap-2">
-          <MapPin className="mt-0.5 size-4 shrink-0 text-primary-300" />
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-text-dark">
-              {designer.name}
-            </p>
-            {designer.address ? (
-              <p className="mt-1 text-sm leading-6 text-text-dark">
-                {designer.address}
+            {designer.distance ? (
+              <p className="shrink-0 text-sm font-semibold text-text-sub">
+                {designer.distance}
               </p>
             ) : null}
           </div>
@@ -72,12 +68,6 @@ export function DesignerListCard({ designer, rank }: DesignerListCardProps) {
       {designer.description ? (
         <p className="mt-4 text-sm leading-6 text-text-sub">
           {designer.description}
-        </p>
-      ) : null}
-
-      {designer.distance ? (
-        <p className="mt-4 text-right text-sm font-semibold text-text-sub">
-          {designer.distance}
         </p>
       ) : null}
 

@@ -72,6 +72,9 @@ export function HairCameraView({
     description: string[]
   } | null>(null)
   const [aiEnhanceMessage, setAiEnhanceMessage] = useState<string | null>(null)
+  const [designerLocationMessage, setDesignerLocationMessage] = useState<
+    string | null
+  >(null)
   const [captureToastVisible, setCaptureToastVisible] = useState(false)
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false)
   const [isFrameFrozen, setIsFrameFrozen] = useState(false)
@@ -182,6 +185,20 @@ export function HairCameraView({
       window.clearTimeout(timerId)
     }
   }, [aiEnhanceMessage, aiUpgradeMutation.isPending])
+
+  useEffect(() => {
+    if (!designerLocationMessage) {
+      return
+    }
+
+    const timerId = window.setTimeout(() => {
+      setDesignerLocationMessage(null)
+    }, 2500)
+
+    return () => {
+      window.clearTimeout(timerId)
+    }
+  }, [designerLocationMessage])
 
   useEffect(() => {
     void (async () => {
@@ -411,6 +428,30 @@ export function HairCameraView({
     }
   }, [aiUpgradeMutation])
 
+  const handleFindDesigner = useCallback(() => {
+    if (typeof window === 'undefined' || !navigator.geolocation) {
+      setDesignerLocationMessage('현재 위치를 지원하지 않는 환경입니다.')
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords
+        setDesignerLocationMessage(
+          `현재 위치를 확인했어요 (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`,
+        )
+      },
+      () => {
+        setDesignerLocationMessage('현재 위치를 가져오지 못했습니다.')
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      },
+    )
+  }, [])
+
   const handleTopLeftAction = useCallback(() => {
     if (isFrameFrozen) {
       setIsFrameFrozen(false)
@@ -512,7 +553,7 @@ export function HairCameraView({
             onSelect={handleHairSelect}
             onCapture={handleCapture}
             onFreezeChange={handleFreezeChange}
-            onFindDesigner={() => {}}
+            onFindDesigner={handleFindDesigner}
             onAiEnhance={() => {
               void handleAiEnhance()
             }}
@@ -530,6 +571,14 @@ export function HairCameraView({
             <div className="pointer-events-none absolute left-1/2 top-40 z-40 -translate-x-1/2">
               <div className="rounded-full bg-black/75 px-4 py-2 text-sm font-medium text-white shadow-[0_8px_24px_rgba(15,23,42,0.24)]">
                 {aiEnhanceMessage}
+              </div>
+            </div>
+          ) : null}
+
+          {designerLocationMessage ? (
+            <div className="pointer-events-none absolute left-1/2 top-56 z-40 -translate-x-1/2">
+              <div className="rounded-full bg-black/75 px-4 py-2 text-sm font-medium text-white shadow-[0_8px_24px_rgba(15,23,42,0.24)]">
+                {designerLocationMessage}
               </div>
             </div>
           ) : null}

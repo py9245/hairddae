@@ -4,9 +4,10 @@ import { readDesignerListCache } from '@/lib/Camera/designer'
 
 export default function DesignerList() {
   const designers = readDesignerListCache()
+  const designerCount = designers.length
 
   return (
-    <main className="app-frame-page h-full overflow-y-auto bg-bg-primary pb-10">
+    <main className="app-frame-page h-full overflow-y-auto bg-bg-primary pb-[108px]">
       <div className="mx-auto flex w-full max-w-[390px] flex-col px-4 pt-3">
         <Header label="디자이너" className="px-0 pb-3 pt-2" />
 
@@ -15,16 +16,22 @@ export default function DesignerList() {
             위치 기반 추천
           </p>
           <h1 className="mt-2 text-[24px] font-bold leading-8 text-text-dark">
-            주변 디자이너 5명을 불러왔어요
+            {designerCount > 0
+              ? `주변 디자이너 ${designerCount}명을 불러왔어요`
+              : '추천 디자이너를 준비하고 있어요'}
           </h1>
           <p className="mt-2 text-sm leading-6 text-text-sub">
-            선택한 헤어 스타일과 현재 위치를 기준으로 가까운 디자이너를
-            확인해보세요.
+            카메라 화면에서 요청한
+            <br />
+            <code className="font-semibold text-text-dark">
+              /api/camera/get-designer/
+            </code>{' '}
+            응답을 기준으로 목록을 보여줍니다.
           </p>
         </section>
 
         <section className="mt-5 flex flex-col gap-4 pb-6">
-          {designers.length > 0 ? (
+          {designerCount > 0 ? (
             designers.map((designer, index) => (
               <DesignerListCard
                 key={`${designer.id}-${designer.name}`}

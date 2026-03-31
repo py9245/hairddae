@@ -42,7 +42,8 @@ const items: BottomNavItem[] = [
     label: '내정보',
     to: '/mypage',
     icon: UserRound,
-    match: (pathname) => pathname.startsWith('/mypage'),
+    match: (pathname) =>
+      pathname.startsWith('/mypage') || pathname.startsWith('/designer-list'),
   },
 ]
 
@@ -50,7 +51,8 @@ function shouldHideBottomNav(pathname: string) {
   return (
     !pathname.startsWith('/main') &&
     !pathname.startsWith('/chat') &&
-    !pathname.startsWith('/mypage')
+    !pathname.startsWith('/mypage') &&
+    !pathname.startsWith('/designer-list')
   )
 }
 

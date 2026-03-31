@@ -2,83 +2,37 @@
 
 작성일: 2026-03-31
 
-## 목적
+## 1. 목적
 
-사용자가 헤어 적용 후 `가까운 디자이너`를 조회하면,
-사용자 위치와 디자이너 미용실 위치를 기준으로
-가까운 디자이너 목록을 반환하는 기능을 만든다.
+사용자가 특정 헤어를 보고 `가까운 디자이너`를 조회하면,
+해당 헤어 카테고리에 자신있다고 등록한 디자이너들만 추려서
+현재 사용자 위치 기준 가까운 순으로 반환한다.
 
-이번 단계에서는 아래를 기준으로 구현한다.
-
-- 디자이너 여부는 `users.grade = 2` 로 판단
-- 디자이너 위치는 `디자이너 신청 시 입력한 salonAddress` 기준
-- `salonAddress` 는 신청 시 좌표로 변환해 DB에 저장
-- 조회 API 는 `/api/camera/get-designer/` 사용
-
-## 기본 방향
-
-디자이너 좌표는 조회 시마다 주소를 다시 변환하지 않고,
-신청 시점에 한 번 변환해서 저장하는 방향이 맞다.
-
-이유는 아래와 같다.
-
-- 조회 속도가 빨라진다.
-- 외부 주소 변환 API 호출을 줄일 수 있다.
-- 발표 중 네트워크 변수에 덜 흔들린다.
-- 거리 계산이 단순해진다.
-
-즉 흐름은 아래처럼 간다.
-
-1. 디자이너 신청 시 `salonAddress` 입력
-2. 백엔드가 주소를 좌표로 변환
-3. `designer_applications` 에 위도/경도 저장
-4. 디자이너 조회 시 사용자 위치와 저장된 좌표를 비교
-5. 가까운 순으로 반환
-
-## 필요한 데이터
-
-현재 `designer_applications` 에는 아래 정보가 있다.
-
-- `user_id`
-- `certificate_number`
-- `salon_address`
-
-가까운 디자이너 조회를 위해 아래 컬럼을 추가하는 것을 권장한다.
-
-- `salon_latitude DOUBLE PRECISION`
-- `salon_longitude DOUBLE PRECISION`
-
-이 두 값은 신청 시 `salonAddress` 를 기준으로 저장한다.
-
-## grade 기준
-
-디자이너 조회 대상은 아래 조건을 만족해야 한다.
-
-- `users.grade = 2`
-
-즉 신청만 한 사용자 `grade = 1` 은 조회 대상이 아니다.
-
-정리:
-
-- `grade = 1`
-  - 신청자
-- `grade = 2`
-  - 실제 디자이너 조회 대상
-
-## 디자이너 조회 API
-
-이번 단계에서는 아래 경로를 사용한다.
+사용할 API 경로는 아래로 고정한다.
 
 - `POST /api/camera/get-designer/`
 
-이유:
+## 2. 현재 전제
 
-- 사용자 위치 정보가 body 로 들어오므로 `POST` 가 단순하다.
-- 현재 카메라/헤어 적용 흐름과도 연결하기 쉽다.
+현재 백엔드에는 아래 구조가 이미 준비되어 있다.
 
-## 프론트 요청값
+- `hairs.category_id`
+  - 헤어가 어떤 카테고리에 속하는지 저장
+- `hair_categories`
+  - 카테고리 원본 테이블
+- `designer_specialties`
+  - 디자이너가 자신있는 카테고리 저장
+- `designer_applications`
+  - 디자이너 신청 정보와 미용실 주소 저장
+  - `salon_latitude`, `salon_longitude` 포함
+- `users.grade`
+  - `2`인 사용자만 승인된 디자이너
 
-프론트에서는 아래 정보를 전달한다.
+즉 이제는 `hair_id`를 실제 필터링에 사용할 수 있다.
+
+## 3. 프론트 요청값
+
+프론트는 아래 3개를 body로 전달한다.
 
 - `hair_id`
 - `latitude`
@@ -88,63 +42,70 @@
 
 ```json
 {
-  "latitude": 37.5012,
-  "longitude": 127.0396,
-  "hair_id": 12
+  "hair_id": 5,
+  "latitude": 37.503222148427824,
+  "longitude": 127.02794220562396
 }
 ```
 
-## hairId 처리 방향
+설명:
 
-현재 단계에서는 `hair_id` 는 받되, 실제 필터링에는 바로 사용하지 않는 것을 권장한다.
+- `hair_id`
+  - 사용자가 보고 있는 헤어 ID
+- `latitude`
+  - 현재 사용자 위치 위도
+- `longitude`
+  - 현재 사용자 위치 경도
 
-이유는 아래와 같다.
+## 4. 조회 조건
 
-- 현재 DB에는 디자이너와 헤어스타일 간 매핑 정보가 없다.
-- 따라서 `hair_id` 로 디자이너를 걸러낼 기준이 아직 없다.
+조회 대상 디자이너는 아래 조건을 모두 만족해야 한다.
 
-즉 1차에서는:
+1. `hair_id`로 조회한 헤어가 존재한다.
+2. 해당 헤어의 `category_id`가 존재한다.
+3. `designer_specialties.category_id = hairs.category_id`
+4. `users.grade = 2`
+5. `designer_applications` 레코드가 존재한다.
+6. `salon_latitude`, `salon_longitude`가 존재한다.
 
-- `hair_id` 는 요청값으로 받음
-- 필요하면 존재 여부만 검증
-- 실제 추천 기준은 거리 중심으로 처리
+즉 단순히 디자이너 등급만 있다고 나오는 것이 아니라,
+아래가 모두 있어야 한다.
 
-나중에 확장하려면 아래 같은 테이블이 필요하다.
+- 승인된 디자이너
+- 자신있는 헤어 카테고리 등록
+- 디자이너 신청 정보 존재
+- 미용실 좌표 존재
 
-- `designer_hair_specialties`
+## 5. 최종 조회 흐름
 
-하지만 발표용 범위에서는 여기까지 갈 필요는 없다.
+권장 조회 흐름은 아래와 같다.
 
-## 조회 대상 조건
+1. `hair_id`로 `hairs` 조회
+2. 조회한 헤어의 `category_id` 확인
+3. `designer_specialties`에서 해당 `category_id`를 가진 사용자 조회
+4. `users.grade = 2` 조건으로 승인 디자이너만 남김
+5. `designer_applications`에서 미용실 좌표 조회
+6. 사용자 위치와 미용실 위치 거리 계산
+7. 가까운 순으로 정렬
+8. 응답 반환
 
-가까운 디자이너 조회 대상은 아래 조건을 만족해야 한다.
+## 6. 거리 계산 방식
 
-- `users.grade = 2`
-- `designer_applications` 레코드가 존재
-- `salon_latitude IS NOT NULL`
-- `salon_longitude IS NOT NULL`
-
-즉 네가 DB에서 `grade = 2` 로 바꾼 사용자라도,
-`designer_applications` 정보가 없거나 좌표가 없으면 조회할 수 없다.
-
-## 거리 계산 방식
-
-거리 계산은 1차에서는 Java 서비스 레벨에서 처리하는 것이 가장 단순하다.
+발표용 1차 구현은 Java 서비스 레벨에서 거리 계산하는 것이 가장 단순하다.
 
 권장 방식:
 
 - Haversine 공식 사용
 
-처리 흐름:
+이유:
 
-1. `grade = 2` 인 디자이너 후보 조회
-2. 각 디자이너의 미용실 좌표와 사용자 좌표 거리 계산
-3. 가까운 순으로 정렬
-4. 상위 N명 반환
+- 현재 데이터 수가 많지 않다.
+- SQL을 복잡하게 만들 필요가 없다.
+- 디버깅이 쉽다.
 
-발표용 기준이면 이 방식으로 충분하다.
+## 7. 응답 형태
 
-## 응답 예시
+발표용 응답은 아래 정도면 충분하다.
 
 ```json
 {
@@ -154,110 +115,196 @@
     {
       "userId": "designer01",
       "salonAddress": "서울특별시 강남구 ...",
-      "distanceKm": 1.2
+      "distanceKm": 1.24,
+      "latitude": 37.5012,
+      "longitude": 127.0396
     },
     {
       "userId": "designer02",
       "salonAddress": "서울특별시 서초구 ...",
-      "distanceKm": 2.8
+      "distanceKm": 2.87,
+      "latitude": 37.4901,
+      "longitude": 127.0221
     }
   ]
 }
 ```
 
-필요하면 아래도 추가 가능하다.
+필수 응답 후보:
 
-- `certificateNumber`
-- `grade`
+- `userId`
+- `salonAddress`
+- `distanceKm`
+- `latitude`
+- `longitude`
 
-하지만 발표용이면 `userId`, `salonAddress`, `distanceKm` 정도면 충분하다.
+선택 응답 후보:
 
-## 백엔드 구성 제안
+- `categoryId`
+- `categoryName`
 
-### Migration
+## 8. 예외 처리 정책
 
-새 Flyway 마이그레이션 추가:
+권장 정책은 아래와 같다.
 
-- 예: `V8__add_designer_coordinates.sql`
+### 1. `hair_id`가 존재하지 않음
 
-추가 컬럼:
+- `404`
+- 메시지: `헤어를 찾을 수 없습니다.`
 
-- `salon_latitude DOUBLE PRECISION`
-- `salon_longitude DOUBLE PRECISION`
+### 2. `hair.category_id`가 비어 있음
 
-### Entity
+- `400` 또는 `404`
+- 권장: `400`
+- 메시지: `헤어 카테고리 정보가 없습니다.`
 
-수정 대상:
+### 3. 좌표 형식 오류
 
-- `persistence/entity/DesignerApplicationEntity`
+- `400`
+- 메시지: `위치 정보가 올바르지 않습니다.`
 
-추가 필드:
+### 4. 조건에 맞는 디자이너가 없음
 
-- `salonLatitude`
-- `salonLongitude`
+- `200`
+- `designers: []`
 
-### 신청 저장 로직
+이 경우는 오류로 볼 필요가 없다.
 
-수정 대상:
+## 9. API 인증
 
-- `service/DesignerApplicationService`
+현재 서비스 전제를 유지하면 로그인 사용자 기준으로 처리하는 것이 자연스럽다.
 
-추가 역할:
+권장:
 
-- `salonAddress` -> 좌표 변환
-- 좌표까지 같이 저장
+- 인증 필요
+- 쿠키 인증 사용자만 호출 가능
 
-### 조회 API
+이유:
+
+- 사용자 위치 정보가 포함된다.
+- 이후 개인화 흐름과도 연결하기 쉽다.
+
+## 10. 백엔드 구성 제안
+
+### Controller
+
+추가 또는 수정 대상:
+
+- `api/CameraController`
+
+추가 엔드포인트:
+
+- `POST /api/camera/get-designer/`
+
+### DTO
 
 추가 대상:
 
-- `api/CameraController`
-  - 또는 별도 컨트롤러
-- `service/NearbyDesignerService`
 - `api/dto/camera/GetNearbyDesignerRequest`
 - `api/dto/camera/GetNearbyDesignerResponse`
 
-## 주소 -> 좌표 변환
+요청 DTO:
 
-이 기능의 핵심은 주소를 좌표로 바꾸는 지오코딩이다.
+- `hair_id`
+- `latitude`
+- `longitude`
 
-이 부분은 별도 외부 API가 필요하다.
+응답 DTO:
 
-즉 실제 구현 전 아래를 먼저 정해야 한다.
+- `designers`
+  - `userId`
+  - `salonAddress`
+  - `distanceKm`
+  - `latitude`
+  - `longitude`
 
-- 어떤 주소 변환 API를 쓸지
-- 인증 키는 무엇인지
-- 서버 환경변수로 어떻게 넣을지
+### Service
 
-현재 단계에서는 기능 계획만 먼저 잡고,
-구현 직전 외부 API를 확정하는 것이 맞다.
+추가 대상:
 
-## 발표용 운영 주의사항
+- `service/NearbyDesignerService`
 
-발표 전에 `grade = 2` 로 바꿔둘 계정은 아래 조건을 만족해야 한다.
+역할:
 
-- `designer_applications` 레코드 존재
-- `salonAddress` 존재
-- 좌표 저장 완료
+- 헤어 조회
+- 카테고리 확인
+- 디자이너 후보 조회
+- 거리 계산
+- 가까운 순 정렬
+- 응답 DTO 변환
 
-즉 단순히 `users.grade = 2` 만 바꾸는 것으로는 부족하다.
-디자이너 신청 데이터와 좌표까지 있어야 조회 결과에 포함된다.
+### Repository
 
-## 구현 순서 제안
+추가 또는 확장 필요:
 
-1. `designer_applications` 에 좌표 컬럼 추가
-2. 신청 시 주소를 좌표로 변환해 저장
-3. 기존 디자이너 신청 데이터 좌표 백필
-4. `/api/camera/get-designer/` API 추가
-5. 거리 계산 및 가까운 순 정렬 구현
-6. 응답 반환 및 최소 테스트 추가
+- `DesignerSpecialtyRepository`
+  - `findAllByCategoryId(...)` 또는 유사 메서드 필요
+- `DesignerApplicationRepository`
+  - 후보 디자이너의 주소/좌표 조회 필요
+- `UserAccountRepository` 또는 JPA repository
+  - `grade = 2` 여부 확인 필요
 
-## 권장 결론
+## 11. 권장 구현 방식
 
-이번 기능은 아래 기준으로 구현하는 것이 가장 자연스럽다.
+발표용 기준으로는 아래 방식이 가장 단순하다.
 
-- 디자이너 위치는 `salonAddress` 기준
-- 주소는 신청 시 한 번 좌표로 변환해서 저장
-- 조회 시 `users.grade = 2` 인 사용자만 대상
-- 사용자 위치와 디자이너 좌표의 거리로 정렬
-- `hair_id` 는 1차에서는 받기만 하고 거리 조회 중심으로 사용
+1. `hair_id`로 헤어 1건 조회
+2. 해당 `category_id`를 가진 specialty 사용자 목록 조회
+3. 각 사용자에 대해:
+   - `grade = 2` 확인
+   - `designer_applications` 조회
+   - 좌표가 있으면 거리 계산
+4. 결과를 메모리에서 정렬 후 반환
+
+즉 SQL 한 방으로 복잡하게 묶기보다,
+서비스 레벨에서 조합하는 것이 구현 속도와 안정성 면에서 낫다.
+
+## 12. 구현 순서
+
+1. 요청/응답 DTO 추가
+2. `DesignerSpecialtyRepository`에 카테고리 기준 조회 메서드 추가
+3. `DesignerApplicationRepository`에 사용자별 신청 정보 조회 메서드 보강
+4. `NearbyDesignerService` 구현
+5. `CameraController`에 엔드포인트 추가
+6. 통합 테스트 작성
+
+## 13. 테스트 항목
+
+최소 테스트 항목은 아래와 같다.
+
+1. 인증 없이 호출 시 `401`
+2. 존재하지 않는 `hair_id` 호출 시 `404`
+3. 조건에 맞는 디자이너가 없으면 빈 배열 반환
+4. 같은 카테고리의 디자이너만 반환
+5. `grade = 2` 아닌 사용자는 제외
+6. 거리순 정렬이 맞는지 확인
+
+## 14. 발표용 1차 구현 범위
+
+이번 단계에서는 아래까지만 구현하면 충분하다.
+
+1. `hair_id -> category_id` 연결
+2. `designer_specialties` 기반 카테고리 매칭
+3. 승인된 디자이너만 필터링
+4. 사용자 위치 기준 거리 계산
+5. 가까운 순 정렬 응답
+
+즉 1차 목표는:
+
+- `헤어 카테고리가 맞는 디자이너`
+- `그중 가까운 디자이너`
+
+를 반환하는 것이다.
+
+## 15. 결론
+
+이제 `designer_specialties`와 `hairs.category_id`가 있으므로,
+`/api/camera/get-designer/`는 단순 거리 추천이 아니라
+실제 헤어 카테고리까지 반영한 디자이너 추천으로 구현할 수 있다.
+
+권장 구현 방향은 아래와 같다.
+
+- `hair_id`로 헤어 카테고리 확인
+- 해당 카테고리를 specialty로 가진 디자이너만 추림
+- `grade = 2`와 좌표 존재 여부까지 확인
+- 사용자 위치와의 거리 기준으로 정렬해서 반환

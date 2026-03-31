@@ -23,6 +23,13 @@ public class JpaDesignerSpecialtyRepositoryAdapter implements DesignerSpecialtyR
     }
 
     @Override
+    public List<DesignerSpecialty> findAllByCategoryId(String categoryId) {
+        return designerSpecialtyJpaRepository.findAllByCategoryIdIgnoreCaseOrderByIdAsc(categoryId).stream()
+                .map(this::toModel)
+                .toList();
+    }
+
+    @Override
     public List<DesignerSpecialty> findAllByUserId(String userId) {
         return designerSpecialtyJpaRepository.findAllByUserIdOrderByIdAsc(userId).stream()
                 .map(this::toModel)

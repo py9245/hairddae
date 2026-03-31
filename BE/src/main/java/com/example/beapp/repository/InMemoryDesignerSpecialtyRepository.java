@@ -18,6 +18,14 @@ public class InMemoryDesignerSpecialtyRepository implements DesignerSpecialtyRep
     private final Map<String, LinkedHashMap<String, DesignerSpecialty>> storage = new ConcurrentHashMap<>();
 
     @Override
+    public List<DesignerSpecialty> findAllByCategoryId(String categoryId) {
+        return storage.values().stream()
+                .flatMap(specialties -> specialties.values().stream())
+                .filter(specialty -> specialty.categoryId().equalsIgnoreCase(categoryId))
+                .toList();
+    }
+
+    @Override
     public List<DesignerSpecialty> findAllByUserId(String userId) {
         LinkedHashMap<String, DesignerSpecialty> specialties = storage.get(userId);
         if (specialties == null) {
@@ -40,12 +48,17 @@ public class InMemoryDesignerSpecialtyRepository implements DesignerSpecialtyRep
         if (designerSpecialties.isEmpty()) {
             return List.of();
         }
-        String userId = designerSpecialties.get(0).userId();
-        LinkedHashMap<String, DesignerSpecialty> specialties = storage.computeIfAbsent(userId, key -> new LinkedHashMap<>());
         for (DesignerSpecialty specialty : designerSpecialties) {
+            LinkedHashMap<String, DesignerSpecialty> specialties = storage.computeIfAbsent(
+                    specialty.userId(),
+                    key -> new LinkedHashMap<>());
             specialties.put(specialty.categoryId(), specialty);
         }
-        return new ArrayList<>(specialties.values());
+        return designerSpecialties.stream()
+                .map(DesignerSpecialty::userId)
+                .distinct()
+                .flatMap(userId -> storage.getOrDefault(userId, new LinkedHashMap<>()).values().stream())
+                .toList();
     }
 
     @Override

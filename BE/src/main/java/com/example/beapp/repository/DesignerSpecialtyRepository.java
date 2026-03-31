@@ -5,6 +5,8 @@ import java.util.List;
 import com.example.beapp.model.DesignerSpecialty;
 
 public interface DesignerSpecialtyRepository {
+    List<DesignerSpecialty> findAllByCategoryId(String categoryId);
+
     List<DesignerSpecialty> findAllByUserId(String userId);
 
     List<DesignerSpecialty> replaceAll(String userId, List<String> categoryIds);

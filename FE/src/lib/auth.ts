@@ -67,6 +67,7 @@ export type MeResponse = {
   code: number
   message: string
   userID: string
+  grade?: number | null
   birthDate: string | null
   gender: string | null
 }

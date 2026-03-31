@@ -13,6 +13,7 @@ function getAvatarVariant(userId: string): 1 | 2 | 3 | 4 | 5 {
   for (let i = 0; i < userId.length; i++) {
     sum += userId.charCodeAt(i)
   }
+
   return ((sum % 5) + 1) as 1 | 2 | 3 | 4 | 5
 }
 
@@ -27,31 +28,46 @@ export function ProfileCard({
     ? (genderMap[profile.gender] ?? profile.gender)
     : null
   const genderDisplay = mappedGender || '성별 비공개'
+  const grade = profile.grade ?? 0
+  const isDesignerPending = grade === 1
+  const isDesigner = grade === 2
 
   return (
     <section className="rounded-3xl bg-card p-6">
       <div className="flex items-center gap-3">
         <Avatar variant={getAvatarVariant(profile.userID)} />
-        <div>
-          <p className="text-lg font-bold text-labels-primary">
-            {profile.userID}
-          </p>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="truncate text-lg font-bold text-labels-primary">
+              {profile.userID}
+            </p>
+            {isDesigner ? (
+              <span className="shrink-0 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-semibold text-primary-300">
+                디자이너
+              </span>
+            ) : null}
+          </div>
           <p className="mt-1 text-sm text-labels-secondary">
             {birthDateDisplay} · {genderDisplay}
           </p>
         </div>
       </div>
+
       <Button variant="logout" size="full" className="mt-5" onClick={onLogout}>
         로그아웃
       </Button>
-      <Button
-        variant="login"
-        size="full"
-        className="mt-3"
-        onClick={onDesignerApply}
-      >
-        디자이너 신청
-      </Button>
+
+      {isDesigner ? null : (
+        <Button
+          variant="login"
+          size="full"
+          className="mt-3"
+          onClick={onDesignerApply}
+          disabled={isDesignerPending}
+        >
+          {isDesignerPending ? '디자이너 신청중' : '디자이너 신청'}
+        </Button>
+      )}
     </section>
   )
 }

@@ -1,6 +1,5 @@
 package com.example.beapp.service;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -11,7 +10,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
-import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,6 +22,8 @@ import org.springframework.web.multipart.MultipartFile;
 import com.example.beapp.common.exception.ApiException;
 import com.example.beapp.common.exception.ErrorCode;
 import com.example.beapp.config.AppCameraAiProperties;
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -44,28 +44,22 @@ public class GmsImageGenerationClient {
         validateConfiguration();
 
         try {
-            String boundary = "----BeAppGmsBoundary" + UUID.randomUUID();
-            byte[] requestBody;
-            try {
-                requestBody = buildMultipartBody(boundary, image, prompt);
-            } catch (IOException exception) {
-                throw new IllegalStateException("업로드 이미지를 읽지 못했습니다.", exception);
-            }
+            String requestBody = objectMapper.writeValueAsString(buildRequest(image, prompt));
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(resolveImagesEditsUrl()))
+                    .uri(URI.create(resolveGenerateContentUrl()))
                     .timeout(resolveTimeout())
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + appCameraAiProperties.providerAuthToken())
+                    .header("x-goog-api-key", appCameraAiProperties.providerAuthToken())
                     .header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
-                    .header(HttpHeaders.CONTENT_TYPE, MediaType.MULTIPART_FORM_DATA_VALUE + "; boundary=" + boundary)
-                    .POST(HttpRequest.BodyPublishers.ofByteArray(requestBody))
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
                     .build();
 
             HttpResponse<String> response = httpClient().send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
 
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 log.error(
-                        "GMS images/edits failed. status={} body={}",
+                        "Gemini generateContent failed. status={} body={}",
                         response.statusCode(),
                         abbreviate(response.body(), 2000));
                 throw new ApiException(
@@ -73,37 +67,35 @@ public class GmsImageGenerationClient {
                         "GMS 호출에 실패했습니다. status=%d".formatted(response.statusCode()));
             }
 
-            GmsImageResponse parsedResponse = objectMapper.readValue(response.body(), GmsImageResponse.class);
+            GeminiGenerateContentResponse parsedResponse = objectMapper.readValue(
+                    response.body(),
+                    GeminiGenerateContentResponse.class);
 
-            if (parsedResponse.data() == null || parsedResponse.data().isEmpty()) {
-                throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "GMS 응답에 이미지 데이터가 없습니다.");
-            }
-
-            GmsImageData firstImage = parsedResponse.data().get(0);
-            if (!StringUtils.hasText(firstImage.b64Json())) {
-                throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "GMS 응답에 b64_json 이미지가 없습니다.");
+            GeminiInlineData imageData = extractFirstInlineImage(parsedResponse);
+            if (imageData == null || !StringUtils.hasText(imageData.data())) {
+                throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "Gemini 응답에 이미지 데이터가 없습니다.");
             }
 
             try {
-                byte[] decodedImage = Base64.getDecoder().decode(firstImage.b64Json());
-                return new GeneratedImage(decodedImage, resolveOutputFormat(parsedResponse, firstImage));
+                byte[] decodedImage = Base64.getDecoder().decode(imageData.data());
+                return new GeneratedImage(decodedImage, resolveOutputFormat(imageData.mimeType()));
             } catch (IllegalArgumentException exception) {
-                throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "GMS 이미지 응답을 해석하지 못했습니다.");
+                throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "Gemini 이미지 응답을 해석하지 못했습니다.");
             }
         } catch (HttpTimeoutException exception) {
-            log.error("GMS images/edits timeout: {}", exception.getMessage());
+            log.error("Gemini generateContent timeout: {}", exception.getMessage());
             throw new ApiException(ErrorCode.CAMERA_AI_TIMEOUT, "GMS 요청이 시간 내에 완료되지 않았습니다.");
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            log.error("GMS images/edits interrupted: {}", exception.getMessage());
+            log.error("Gemini generateContent interrupted: {}", exception.getMessage());
             throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "GMS 호출이 중단되었습니다.");
         } catch (ApiException exception) {
             throw exception;
         } catch (IOException exception) {
-            log.error("GMS images/edits response parse error: {}", exception.getMessage(), exception);
-            throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "GMS 응답을 해석하지 못했습니다.");
+            log.error("Gemini generateContent response parse error: {}", exception.getMessage(), exception);
+            throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "Gemini 응답을 해석하지 못했습니다.");
         } catch (Exception exception) {
-            log.error("GMS images/edits error: {}", exception.getMessage(), exception);
+            log.error("Gemini generateContent error: {}", exception.getMessage(), exception);
             throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "GMS 호출 중 오류가 발생했습니다.");
         }
     }
@@ -129,63 +121,53 @@ public class GmsImageGenerationClient {
         }
     }
 
-    private String resolveFilename(MultipartFile image) {
-        return StringUtils.hasText(image.getOriginalFilename()) ? image.getOriginalFilename() : "camera-capture.png";
-    }
-
     private String resolveContentType(MultipartFile image) {
         return StringUtils.hasText(image.getContentType()) ? image.getContentType() : MediaType.APPLICATION_OCTET_STREAM_VALUE;
     }
 
-    private String resolveImagesEditsUrl() {
+    private String resolveGenerateContentUrl() {
         String baseUrl = appCameraAiProperties.providerBaseUrl().trim();
-        return baseUrl.endsWith("/") ? baseUrl + "images/edits" : baseUrl + "/images/edits";
+        String normalizedBaseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
+        return normalizedBaseUrl + "/models/" + appCameraAiProperties.modelName().trim() + ":generateContent";
     }
 
-    private byte[] buildMultipartBody(String boundary, MultipartFile image, String prompt) throws IOException {
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        writeTextPart(outputStream, boundary, "model", appCameraAiProperties.modelName());
-        writeTextPart(outputStream, boundary, "prompt", prompt);
-        writeBinaryPart(outputStream, boundary, "image", resolveFilename(image), resolveContentType(image), image.getBytes());
-        outputStream.write(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
-        return outputStream.toByteArray();
+    private GeminiGenerateContentRequest buildRequest(MultipartFile image, String prompt) throws IOException {
+        GeminiPart promptPart = new GeminiPart(prompt, null);
+        GeminiPart imagePart = new GeminiPart(
+                null,
+                new GeminiInlineData(resolveContentType(image), Base64.getEncoder().encodeToString(image.getBytes())));
+
+        return new GeminiGenerateContentRequest(
+                List.of(new GeminiContent("user", List.of(promptPart, imagePart))),
+                new GeminiGenerationConfig(List.of("TEXT", "IMAGE")));
     }
 
-    private void writeTextPart(ByteArrayOutputStream outputStream, String boundary, String name, String value) throws IOException {
-        outputStream.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
-        outputStream.write(("Content-Disposition: form-data; name=\"" + escapeQuoted(name) + "\"\r\n\r\n")
-                .getBytes(StandardCharsets.UTF_8));
-        outputStream.write(value.getBytes(StandardCharsets.UTF_8));
-        outputStream.write("\r\n".getBytes(StandardCharsets.UTF_8));
-    }
-
-    private void writeBinaryPart(
-            ByteArrayOutputStream outputStream,
-            String boundary,
-            String name,
-            String filename,
-            String contentType,
-            byte[] bytes) throws IOException {
-        outputStream.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
-        outputStream.write(("Content-Disposition: form-data; name=\"" + escapeQuoted(name)
-                + "\"; filename=\"" + escapeQuoted(filename) + "\"\r\n").getBytes(StandardCharsets.UTF_8));
-        outputStream.write(("Content-Type: " + contentType + "\r\n\r\n").getBytes(StandardCharsets.UTF_8));
-        outputStream.write(bytes);
-        outputStream.write("\r\n".getBytes(StandardCharsets.UTF_8));
-    }
-
-    private String escapeQuoted(String value) {
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
-    private String resolveOutputFormat(GmsImageResponse response, GmsImageData firstImage) {
-        if (StringUtils.hasText(firstImage.outputFormat())) {
-            return firstImage.outputFormat().trim();
+    private GeminiInlineData extractFirstInlineImage(GeminiGenerateContentResponse response) {
+        if (response == null || response.candidates() == null) {
+            return null;
         }
-        if (StringUtils.hasText(response.outputFormat())) {
-            return response.outputFormat().trim();
+
+        for (GeminiCandidate candidate : response.candidates()) {
+            if (candidate == null || candidate.content() == null || candidate.content().parts() == null) {
+                continue;
+            }
+            for (GeminiPart part : candidate.content().parts()) {
+                if (part != null && part.inlineData() != null && StringUtils.hasText(part.inlineData().data())) {
+                    return part.inlineData();
+                }
+            }
         }
-        return StringUtils.hasText(appCameraAiProperties.outputFormat()) ? appCameraAiProperties.outputFormat().trim() : "png";
+        return null;
+    }
+
+    private String resolveOutputFormat(String mimeType) {
+        if (StringUtils.hasText(mimeType) && mimeType.contains("/")) {
+            String subtype = mimeType.substring(mimeType.indexOf('/') + 1).trim().toLowerCase();
+            return "jpeg".equals(subtype) ? "jpg" : subtype;
+        }
+        return StringUtils.hasText(appCameraAiProperties.outputFormat())
+                ? appCameraAiProperties.outputFormat().trim()
+                : "png";
     }
 
     private String abbreviate(String value, int maxLength) {
@@ -201,16 +183,46 @@ public class GmsImageGenerationClient {
     ) {
     }
 
-    private record GmsImageResponse(
-            String model,
-            @JsonProperty("output_format") String outputFormat,
-            List<GmsImageData> data
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record GeminiGenerateContentRequest(
+            List<GeminiContent> contents,
+            @JsonProperty("generationConfig") GeminiGenerationConfig generationConfig
     ) {
     }
 
-    private record GmsImageData(
-            @JsonProperty("b64_json") String b64Json,
-            @JsonProperty("output_format") String outputFormat
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record GeminiContent(
+            String role,
+            List<GeminiPart> parts
+    ) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record GeminiPart(
+            String text,
+            @JsonProperty("inline_data") @JsonAlias("inlineData") GeminiInlineData inlineData
+    ) {
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private record GeminiInlineData(
+            @JsonProperty("mime_type") @JsonAlias("mimeType") String mimeType,
+            String data
+    ) {
+    }
+
+    private record GeminiGenerationConfig(
+            @JsonProperty("responseModalities") List<String> responseModalities
+    ) {
+    }
+
+    private record GeminiGenerateContentResponse(
+            List<GeminiCandidate> candidates
+    ) {
+    }
+
+    private record GeminiCandidate(
+            GeminiContent content
     ) {
     }
 }

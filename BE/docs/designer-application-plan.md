@@ -5,7 +5,7 @@
 ## 목적
 
 발표용 데모 기준으로, 로그인한 사용자가 마이페이지에서 `디자이너 신청`을 하면
-`certificateNumber` 와 `salonAddress` 를 저장하고,
+`certificateNumber`, `salonAddress`, `acquisitionDate` 를 저장하고,
 사용자 등급을 통해 일반 사용자와 디자이너를 구분할 수 있게 한다.
 
 이번 단계에서는 복잡한 승인 시스템이나 관리자 화면은 만들지 않는다.
@@ -24,7 +24,7 @@
 - `users.grade`
   - 현재 사용자 상태 확인용
 - `designer_applications`
-  - 신청 시 입력한 자격증 번호, 미용실 주소, 미용실 좌표 저장용
+  - 신청 시 입력한 자격증 번호, 발급 일자, 미용실 주소, 미용실 좌표 저장용
 
 ## grade 정의
 
@@ -57,6 +57,7 @@
 - `id BIGSERIAL PRIMARY KEY`
 - `user_id VARCHAR(50) NOT NULL`
 - `certificate_number VARCHAR(255) NOT NULL`
+- `acquisition_date DATE NULL`
 - `salon_address VARCHAR(500) NOT NULL`
 - `salon_latitude DOUBLE PRECISION NULL`
 - `salon_longitude DOUBLE PRECISION NULL`
@@ -71,6 +72,8 @@
 
 - `certificate_number`
   - 신청 모달에서 입력한 자격증 라이선스
+- `acquisition_date`
+  - 신청 모달에서 입력한 발급 일자
 - `salon_address`
   - 신청 모달에서 입력한 미용실 주소
 - `salon_latitude`, `salon_longitude`
@@ -78,8 +81,8 @@
 
 중요:
 
-- 프론트엔드 요청 필드는 `certificateNumber`, `salonAddress` 를 사용한다.
-- DB 컬럼명은 `certificate_number`, `salon_address` 로 저장한다.
+- 프론트엔드 요청 필드는 `certificateNumber`, `salonAddress`, `acquisitionDate` 를 사용한다.
+- DB 컬럼명은 `certificate_number`, `salon_address`, `acquisition_date` 로 저장한다.
 - 백엔드는 `salonAddress` 를 좌표로 변환해 `salon_latitude`, `salon_longitude` 도 함께 저장한다.
 
 ## 왜 별도 테이블을 두는가
@@ -94,7 +97,7 @@
 ## 1차 처리 흐름
 
 1. 로그인 사용자가 디자이너 신청 모달 오픈
-2. `certificateNumber`, `salonAddress` 입력
+2. `certificateNumber`, `salonAddress`, `acquisitionDate` 입력
 3. `POST /api/mypage/designer/` 호출
 4. 백엔드가 `salonAddress` 를 위도/경도로 변환
 5. `designer_applications` 에 신청 정보와 좌표 저장
@@ -129,7 +132,8 @@
 ```json
 {
   "certificateNumber": "1234-5678-ABCD",
-  "salonAddress": "서울특별시 강남구 ..."
+  "salonAddress": "서울특별시 강남구 ...",
+  "acquisitionDate": "2024-01-15"
 }
 ```
 
@@ -226,6 +230,7 @@ DTO 요청 필드도 프론트와 동일하게 아래 이름으로 받는 것을
 
 - `certificateNumber`
 - `salonAddress`
+- `acquisitionDate`
 
 백엔드는 요청으로 받은 `salonAddress` 를 기준으로
 위도/경도를 구해서 함께 저장하는 방식으로 구현한다.
@@ -255,7 +260,7 @@ DTO 요청 필드도 프론트와 동일하게 아래 이름으로 받는 것을
 
 - `users.grade` 추가
 - `designer_applications` 테이블 추가
-- 신청 시 `certificateNumber`, `salonAddress` 저장
+- 신청 시 `certificateNumber`, `salonAddress`, `acquisitionDate` 저장
 - 신청 시 미용실 좌표도 함께 저장
 - 신청 완료 시 `users.grade = 1`
 - 발표용 디자이너 계정은 DB에서 직접 `users.grade = 2` 로 변경

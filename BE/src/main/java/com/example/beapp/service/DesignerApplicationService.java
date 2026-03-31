@@ -39,6 +39,7 @@ public class DesignerApplicationService {
                 userAccount.userID(),
                 certificateNumber,
                 salonAddress,
+                request.acquisitionDate(),
                 coordinates.latitude(),
                 coordinates.longitude()));
 

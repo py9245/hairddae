@@ -1,5 +1,7 @@
 package com.example.beapp.persistence.entity;
 
+import java.time.LocalDate;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -30,6 +32,9 @@ public class DesignerApplicationEntity extends BaseTimeEntity {
     @Column(name = "salon_address", nullable = false, length = 500)
     private String salonAddress;
 
+    @Column(name = "acquisition_date")
+    private LocalDate acquisitionDate;
+
     @Column(name = "salon_latitude")
     private Double salonLatitude;
 
@@ -40,18 +45,20 @@ public class DesignerApplicationEntity extends BaseTimeEntity {
     }
 
     public DesignerApplicationEntity(String userId, String certificateNumber, String salonAddress) {
-        this(userId, certificateNumber, salonAddress, null, null);
+        this(userId, certificateNumber, salonAddress, null, null, null);
     }
 
     public DesignerApplicationEntity(
             String userId,
             String certificateNumber,
             String salonAddress,
+            LocalDate acquisitionDate,
             Double salonLatitude,
             Double salonLongitude) {
         this.userId = userId;
         this.certificateNumber = certificateNumber;
         this.salonAddress = salonAddress;
+        this.acquisitionDate = acquisitionDate;
         this.salonLatitude = salonLatitude;
         this.salonLongitude = salonLongitude;
     }
@@ -66,6 +73,10 @@ public class DesignerApplicationEntity extends BaseTimeEntity {
 
     public String getSalonAddress() {
         return salonAddress;
+    }
+
+    public LocalDate getAcquisitionDate() {
+        return acquisitionDate;
     }
 
     public Double getSalonLatitude() {

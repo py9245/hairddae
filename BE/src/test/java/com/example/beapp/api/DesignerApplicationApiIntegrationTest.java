@@ -80,7 +80,8 @@ class DesignerApplicationApiIntegrationTest {
                         .content("""
                                 {
                                   "certificateNumber": "CERT-001",
-                                  "salonAddress": "서울특별시 강남구"
+                                  "salonAddress": "서울특별시 강남구",
+                                  "acquisitionDate": "2024-01-15"
                                 }
                                 """))
                 .andExpect(status().isUnauthorized())
@@ -99,7 +100,8 @@ class DesignerApplicationApiIntegrationTest {
                         .content("""
                                 {
                                   "certificateNumber": "CERT-001",
-                                  "salonAddress": "서울특별시 강남구 테헤란로 1"
+                                  "salonAddress": "서울특별시 강남구 테헤란로 1",
+                                  "acquisitionDate": "2024-01-15"
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -114,6 +116,7 @@ class DesignerApplicationApiIntegrationTest {
         var savedApplication = designerApplicationRepository.findByUserId("TestUser01").orElseThrow();
         assertEquals("CERT-001", savedApplication.certificateNumber());
         assertEquals("서울특별시 강남구 테헤란로 1", savedApplication.salonAddress());
+        assertEquals(java.time.LocalDate.of(2024, 1, 15), savedApplication.acquisitionDate());
         assertEquals(37.4981, savedApplication.salonLatitude());
         assertEquals(127.0276, savedApplication.salonLongitude());
     }
@@ -130,7 +133,8 @@ class DesignerApplicationApiIntegrationTest {
                         .content("""
                                 {
                                   "certificateNumber": "CERT-001",
-                                  "salonAddress": "서울특별시 강남구 테헤란로 1"
+                                  "salonAddress": "서울특별시 강남구 테헤란로 1",
+                                  "acquisitionDate": "2024-01-15"
                                 }
                                 """))
                 .andExpect(status().isOk());
@@ -141,7 +145,8 @@ class DesignerApplicationApiIntegrationTest {
                         .content("""
                                 {
                                   "certificateNumber": "CERT-002",
-                                  "salonAddress": "서울특별시 송파구 올림픽로 2"
+                                  "salonAddress": "서울특별시 송파구 올림픽로 2",
+                                  "acquisitionDate": "2023-08-21"
                                 }
                                 """))
                 .andExpect(status().isConflict())
@@ -158,7 +163,8 @@ class DesignerApplicationApiIntegrationTest {
                         .content("""
                                 {
                                   "certificateNumber": " ",
-                                  "salonAddress": ""
+                                  "salonAddress": "",
+                                  "acquisitionDate": null
                                 }
                                 """))
                 .andExpect(status().isBadRequest())

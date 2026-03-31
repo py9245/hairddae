@@ -14,6 +14,10 @@ type DesignerCategoryDialogProps = {
   onOpenChange: (open: boolean) => void
 }
 
+function isAllCategory(categoryName: string) {
+  return categoryName.trim() === '전체'
+}
+
 export function DesignerCategoryDialog({
   open,
   onOpenChange,
@@ -27,6 +31,13 @@ export function DesignerCategoryDialog({
   const resetDesignerCategory = mutation.reset
 
   const categories = data?.categoryList ?? []
+  const selectableCategoryNames = useMemo(
+    () =>
+      categories
+        .map((category) => category.categoryName)
+        .filter((categoryName) => !isAllCategory(categoryName)),
+    [categories],
+  )
   const isSubmitDisabled = selectedCategories.length === 0 || mutation.isPending
 
   const selectedLabel = useMemo(() => {
@@ -59,6 +70,15 @@ export function DesignerCategoryDialog({
   }
 
   function handleToggleCategory(categoryName: string) {
+    if (isAllCategory(categoryName)) {
+      setSelectedCategories((current) =>
+        current.length === selectableCategoryNames.length
+          ? []
+          : selectableCategoryNames,
+      )
+      return
+    }
+
     setSelectedCategories((current) =>
       current.includes(categoryName)
         ? current.filter((item) => item !== categoryName)
@@ -142,9 +162,10 @@ export function DesignerCategoryDialog({
           ) : (
             <div className="mt-3 grid max-h-[260px] grid-cols-2 gap-2 overflow-y-auto pr-1">
               {categories.map((category) => {
-                const active = selectedCategories.includes(
-                  category.categoryName,
-                )
+                const active = isAllCategory(category.categoryName)
+                  ? selectableCategoryNames.length > 0 &&
+                    selectedCategories.length === selectableCategoryNames.length
+                  : selectedCategories.includes(category.categoryName)
 
                 return (
                   <button
@@ -184,7 +205,7 @@ export function DesignerCategoryDialog({
           </Button>
           <Button
             variant="login"
-            className="h-12 flex-1 rounded-xl"
+            className="h-12 flex-1 rounded-xl bg-primary-200 text-text-dark hover:bg-primary-200"
             onClick={handleSubmit}
             disabled={isSubmitDisabled}
           >

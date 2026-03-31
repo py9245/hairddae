@@ -11,6 +11,15 @@ export type ChatRoomContext = {
   appliedImage: Blob | null
 }
 
+export type ChatRoomListItem = {
+  roomId: number | string
+  designerUserId: string
+  lastMessageType: 'TEXT' | 'IMAGE' | null
+  lastMessageText: string | null
+  lastImageUrl: string | null
+  updatedAt: string | null
+}
+
 export type CreateChatRoomRequest = {
   designerUserId: string
   hairId: number
@@ -40,6 +49,12 @@ export type ChatMessagesResponse = {
   messages: ChatMessage[]
 }
 
+export type ChatRoomsResponse = {
+  code: number
+  message: string
+  rooms: ChatRoomListItem[]
+}
+
 export type GetChatMessagesOptions = {
   afterId?: number | string | null
 }
@@ -64,6 +79,28 @@ type RawCreateChatRoomResponse = Partial<{
   chat_room_id: number | string
 }>
 
+type RawChatRoom = Partial<{
+  roomId: number | string
+  room_id: number | string
+  id: number | string
+  designerUserId: string
+  designer_user_id: string
+  partnerUserId: string
+  partner_user_id: string
+  otherUserId: string
+  other_user_id: string
+  userId: string
+  user_id: string
+  lastMessageType: 'TEXT' | 'IMAGE'
+  last_message_type: 'TEXT' | 'IMAGE'
+  lastMessageText: string | null
+  last_message_text: string | null
+  lastImageUrl: string | null
+  last_image_url: string | null
+  updatedAt: string
+  updated_at: string
+}>
+
 type RawChatMessage = Partial<{
   id: number | string
   messageId: number | string
@@ -77,6 +114,21 @@ type RawChatMessage = Partial<{
   image_url: string | null
   createdAt: string
   created_at: string
+}>
+
+type RawChatRoomsResponse = Partial<{
+  code: number
+  message: string
+  rooms: RawChatRoom[]
+  chatRooms: RawChatRoom[]
+  roomList: RawChatRoom[]
+  data:
+    | RawChatRoom[]
+    | Partial<{
+        rooms: RawChatRoom[]
+        chatRooms: RawChatRoom[]
+        roomList: RawChatRoom[]
+      }>
 }>
 
 type RawChatMessagesResponse = Partial<{
@@ -107,6 +159,26 @@ type RawSendChatMessageResponse = Partial<{
 let chatRoomDraft: ChatRoomDraft | null = null
 let chatRoomContext: ChatRoomContext | null = null
 
+function normalizeChatRoom(room: RawChatRoom, index: number): ChatRoomListItem {
+  return {
+    roomId: room.roomId ?? room.room_id ?? room.id ?? `room-${index + 1}`,
+    designerUserId:
+      room.designerUserId ??
+      room.designer_user_id ??
+      room.partnerUserId ??
+      room.partner_user_id ??
+      room.otherUserId ??
+      room.other_user_id ??
+      room.userId ??
+      room.user_id ??
+      `디자이너 ${index + 1}`,
+    lastMessageType: room.lastMessageType ?? room.last_message_type ?? null,
+    lastMessageText: room.lastMessageText ?? room.last_message_text ?? null,
+    lastImageUrl: room.lastImageUrl ?? room.last_image_url ?? null,
+    updatedAt: room.updatedAt ?? room.updated_at ?? null,
+  }
+}
+
 function normalizeChatMessage(
   message: RawChatMessage,
   index: number,
@@ -122,6 +194,23 @@ function normalizeChatMessage(
     imageUrl: message.imageUrl ?? message.image_url ?? null,
     createdAt: message.createdAt ?? message.created_at ?? null,
   }
+}
+
+function extractRooms(data: RawChatRoomsResponse | null): ChatRoomListItem[] {
+  const list =
+    data?.rooms ??
+    data?.chatRooms ??
+    data?.roomList ??
+    (Array.isArray(data?.data)
+      ? data.data
+      : (data?.data?.rooms ?? data?.data?.chatRooms ?? data?.data?.roomList)) ??
+    []
+
+  if (!Array.isArray(list)) {
+    return []
+  }
+
+  return list.map(normalizeChatRoom)
 }
 
 function extractMessages(data: RawChatMessagesResponse | null): ChatMessage[] {
@@ -153,6 +242,26 @@ function extractSingleMessage(
   }
 
   return normalizeChatMessage(message, 0)
+}
+
+export async function getChatRooms(): Promise<ChatRoomsResponse> {
+  const response = await apiFetch('/chat/rooms/', {
+    method: 'GET',
+  })
+
+  const data = (await response
+    .json()
+    .catch(() => null)) as RawChatRoomsResponse | null
+
+  if (!response.ok) {
+    throw new Error(data?.message ?? '채팅방 목록을 불러오지 못했습니다.')
+  }
+
+  return {
+    code: data?.code ?? 200,
+    message: data?.message ?? '조회 정상',
+    rooms: extractRooms(data),
+  }
 }
 
 export async function createChatRoom({

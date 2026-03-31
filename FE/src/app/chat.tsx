@@ -1,7 +1,12 @@
-import { useMutation } from '@tanstack/react-query'
-import { useSearch } from '@tanstack/react-router'
-import { ChevronLeft, LoaderCircle, SendHorizonal } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useNavigate, useSearch } from '@tanstack/react-router'
+import {
+  ChevronLeft,
+  Image as ImageIcon,
+  LoaderCircle,
+  SendHorizonal,
+} from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import { ChatMessageBubble } from '@/components/chat-message-bubble'
 import { Header } from '@/components/header'
@@ -9,7 +14,9 @@ import { Button } from '@/components/ui/button'
 import { useChatMessagePolling } from '@/hooks/Chat/use-chat-message-polling'
 import {
   type ChatMessage,
+  type ChatRoomListItem,
   getChatMessages,
+  getChatRooms,
   readChatRoomContext,
   sendChatMessage,
 } from '@/lib/chat'
@@ -22,12 +29,113 @@ function getLastMessageId(messages: ChatMessage[]) {
   return messages[messages.length - 1]?.id ?? null
 }
 
-export default function Chat() {
-  const search = useSearch({ from: '/chat' })
+function ChatRoomListView({
+  rooms,
+  isLoading,
+  errorMessage,
+  onEnterRoom,
+}: {
+  rooms: ChatRoomListItem[]
+  isLoading: boolean
+  errorMessage: string | null
+  onEnterRoom: (room: ChatRoomListItem) => void
+}) {
+  return (
+    <main className="app-frame-page h-full overflow-y-auto bg-bg-primary pb-[108px]">
+      <div className="mx-auto flex w-full max-w-[390px] flex-col px-4 pt-3">
+        <Header label="채팅목록" className="px-0 pb-3 pt-2" />
+
+        {isLoading ? (
+          <div className="mt-6 flex items-center justify-center gap-2 rounded-[28px] bg-card px-5 py-10 text-sm text-text-sub shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
+            <LoaderCircle className="size-4 animate-spin" />
+            채팅방 목록을 불러오고 있습니다.
+          </div>
+        ) : null}
+
+        {errorMessage ? (
+          <div
+            className="mt-6 rounded-[28px] bg-card px-5 py-10 text-center text-sm text-error shadow-[0_18px_36px_rgba(15,23,42,0.08)]"
+            role="alert"
+          >
+            {errorMessage}
+          </div>
+        ) : null}
+
+        {!isLoading && !errorMessage ? (
+          <section className="mt-5 flex flex-col gap-4 pb-6">
+            {rooms.length > 0 ? (
+              rooms.map((room) => (
+                <button
+                  key={String(room.roomId)}
+                  type="button"
+                  className="overflow-hidden rounded-[28px] bg-card text-left shadow-[0_18px_36px_rgba(15,23,42,0.08)] transition hover:-translate-y-0.5"
+                  onClick={() => onEnterRoom(room)}
+                >
+                  <div className="flex items-stretch gap-4 p-5">
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="truncate text-base font-bold text-text-dark">
+                          {room.designerUserId}
+                        </p>
+                        <p className="shrink-0 text-xs text-text-sub">
+                          {room.updatedAt ?? ''}
+                        </p>
+                      </div>
+
+                      <div className="mt-3">
+                        {room.lastMessageType === 'IMAGE' &&
+                        room.lastImageUrl ? (
+                          <div className="flex items-center gap-2 text-sm text-text-sub">
+                            <ImageIcon className="size-4 text-primary-300" />
+                            사진을 보냈습니다.
+                          </div>
+                        ) : (
+                          <p className="line-clamp-2 text-sm leading-6 text-text-sub">
+                            {room.lastMessageText ?? '메시지가 없습니다.'}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    {room.lastMessageType === 'IMAGE' && room.lastImageUrl ? (
+                      <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-primary-100/40">
+                        <img
+                          src={room.lastImageUrl}
+                          alt={`${room.designerUserId} 최근 이미지`}
+                          className="h-full w-full object-cover"
+                          draggable={false}
+                        />
+                      </div>
+                    ) : null}
+                  </div>
+                </button>
+              ))
+            ) : (
+              <div className="rounded-[28px] bg-card px-5 py-10 text-center shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
+                <p className="text-base font-semibold text-text-dark">
+                  아직 채팅방이 없습니다.
+                </p>
+                <p className="mt-2 text-sm leading-6 text-text-sub">
+                  디자이너를 선택해 상담을 시작해 보세요.
+                </p>
+              </div>
+            )}
+          </section>
+        ) : null}
+      </div>
+    </main>
+  )
+}
+
+function ChatRoomView({
+  roomId,
+  designerUserId,
+}: {
+  roomId: number | string
+  designerUserId: string | undefined
+}) {
   const roomContext = readChatRoomContext()
-  const roomId = search.roomId ?? roomContext?.roomId ?? null
-  const roomKey = roomId == null ? '' : String(roomId)
-  const designerUserId = search.designerUserId ?? roomContext?.designerUserId
+  const roomKey = String(roomId)
   const [initialImageUrl, setInitialImageUrl] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputValue, setInputValue] = useState('')
@@ -54,10 +162,6 @@ export default function Chat() {
 
   const sendMessageMutation = useMutation({
     mutationFn: async () => {
-      if (roomId == null) {
-        throw new Error('채팅방 정보가 없습니다.')
-      }
-
       return sendChatMessage({
         roomId,
         messageText: inputValue.trim(),
@@ -68,7 +172,6 @@ export default function Chat() {
       setSendErrorMessage(null)
 
       const createdMessage = response.chatMessage
-
       if (!createdMessage) {
         return
       }
@@ -115,11 +218,12 @@ export default function Chat() {
 
   useEffect(() => {
     if (roomKey === '') {
-      setInputValue('')
-      setSendErrorMessage(null)
+      setInitialImageUrl(null)
     }
 
     setMessages([])
+    setInputValue('')
+    setSendErrorMessage(null)
     lastMessageIdRef.current = null
     hasEnteredRoomRef.current = false
   }, [roomKey])
@@ -159,9 +263,7 @@ export default function Chat() {
   }, [messagesQuery.data])
 
   const isSendDisabled =
-    roomId == null || inputValue.trim() === '' || sendMessageMutation.isPending
-
-  const renderedMessages = useMemo(() => messages, [messages])
+    inputValue.trim() === '' || sendMessageMutation.isPending
 
   return (
     <main className="app-frame-page relative h-full overflow-hidden bg-bg-primary">
@@ -194,8 +296,7 @@ export default function Chat() {
             상담이 시작되었어요
           </p>
           <p className="mt-2 text-sm leading-6 text-text-sub">
-            채팅방 생성 후 room_id로 입장했고, 이후 메시지는 after_id 기반으로
-            폴링합니다.
+            첫 입장 후에는 마지막 메시지 id 기준으로 after_id 폴링을 진행합니다.
           </p>
         </section>
 
@@ -208,14 +309,14 @@ export default function Chat() {
             />
           ) : null}
 
-          {messagesQuery.isPolling && !renderedMessages.length ? (
+          {messagesQuery.isPolling && !messages.length ? (
             <div className="flex items-center justify-center gap-2 py-10 text-sm text-text-sub">
               <LoaderCircle className="size-4 animate-spin" />
               메시지를 불러오고 있습니다.
             </div>
           ) : null}
 
-          {renderedMessages.map((message) => (
+          {messages.map((message) => (
             <ChatMessageBubble
               key={String(message.id)}
               align={message.senderUserId === designerUserId ? 'left' : 'right'}
@@ -226,7 +327,7 @@ export default function Chat() {
             />
           ))}
 
-          {!initialImageUrl && !renderedMessages.length ? (
+          {!initialImageUrl && !messages.length ? (
             <div className="flex h-full items-center justify-center py-10 text-sm text-text-sub">
               아직 주고받은 메시지가 없습니다.
             </div>
@@ -281,5 +382,49 @@ export default function Chat() {
         </section>
       </div>
     </main>
+  )
+}
+
+export default function Chat() {
+  const navigate = useNavigate()
+  const search = useSearch({ from: '/chat' })
+  const roomContext = readChatRoomContext()
+  const roomId = search.roomId ?? roomContext?.roomId ?? null
+  const designerUserId = search.designerUserId ?? roomContext?.designerUserId
+
+  const chatRoomsQuery = useQuery({
+    queryKey: ['chatRooms'],
+    queryFn: getChatRooms,
+    enabled: roomId == null,
+  })
+
+  if (roomId != null) {
+    return (
+      <ChatRoomView
+        roomId={roomId}
+        designerUserId={designerUserId ?? undefined}
+      />
+    )
+  }
+
+  return (
+    <ChatRoomListView
+      rooms={chatRoomsQuery.data?.rooms ?? []}
+      isLoading={chatRoomsQuery.isLoading}
+      errorMessage={
+        chatRoomsQuery.error instanceof Error
+          ? chatRoomsQuery.error.message
+          : null
+      }
+      onEnterRoom={(room) => {
+        void navigate({
+          to: '/chat',
+          search: {
+            roomId: String(room.roomId),
+            designerUserId: room.designerUserId,
+          },
+        })
+      }}
+    />
   )
 }

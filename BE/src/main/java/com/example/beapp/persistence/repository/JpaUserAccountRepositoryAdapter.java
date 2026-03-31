@@ -55,14 +55,16 @@ public class JpaUserAccountRepositoryAdapter implements UserAccountRepository {
                         userAccount.birthDate(),
                         userAccount.gender(),
                         userAccount.loginType().code(),
-                        userAccount.providerSubject()))
+                        userAccount.providerSubject(),
+                        userAccount.grade()))
                 .orElseGet(() -> new UserEntity(
                         userAccount.userID(),
                         userAccount.encodedPassword(),
                         userAccount.birthDate(),
                         userAccount.gender(),
                         userAccount.loginType().code(),
-                        userAccount.providerSubject()));
+                        userAccount.providerSubject(),
+                        userAccount.grade()));
 
         UserEntity saved = userJpaRepository.save(entity);
         return toModel(saved);
@@ -80,6 +82,7 @@ public class JpaUserAccountRepositoryAdapter implements UserAccountRepository {
                 entity.getBirthDate(),
                 entity.getGender(),
                 LoginType.fromCode(entity.getLoginType()),
-                entity.getProviderSubject());
+                entity.getProviderSubject(),
+                entity.getGrade());
     }
 }

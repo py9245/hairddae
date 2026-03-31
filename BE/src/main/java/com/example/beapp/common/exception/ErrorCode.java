@@ -14,6 +14,7 @@ public enum ErrorCode {
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, 404, "사용자를 찾을 수 없습니다."),
     HAIR_NOT_FOUND(HttpStatus.NOT_FOUND, 404, "헤어를 찾을 수 없습니다."),
     JOB_NOT_FOUND(HttpStatus.NOT_FOUND, 404, "작업을 찾을 수 없습니다."),
+    DESIGNER_APPLICATION_ALREADY_EXISTS(HttpStatus.CONFLICT, 409, "이미 디자이너 신청을 완료했습니다."),
     DUPLICATE_USER(HttpStatus.CONFLICT, 409, "이미 존재하는 사용자입니다."),
     INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, 401, "아이디 또는 비밀번호가 올바르지 않습니다.");
 

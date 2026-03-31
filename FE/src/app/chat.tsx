@@ -102,17 +102,6 @@ function ChatRoomListView({
                         )}
                       </div>
                     </div>
-
-                    {room.lastMessageType === 'IMAGE' && room.lastImageUrl ? (
-                      <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-primary-100/40">
-                        <img
-                          src={room.lastImageUrl}
-                          alt={`${room.designerUserId} 최근 이미지`}
-                          className="h-full w-full object-cover"
-                          draggable={false}
-                        />
-                      </div>
-                    ) : null}
                   </div>
                 </button>
               ))
@@ -300,13 +289,14 @@ function ChatRoomView({
   return (
     <main className="app-frame-page relative h-full overflow-hidden bg-[#f5f1f2]">
       <Header
-        className="border-b border-black/5 bg-white/92 px-4 pt-4 pb-3 backdrop-blur"
+        className="border-b border-black/5 bg-white/92 px-4 py-3 backdrop-blur"
         leftAction={
           <Button
             type="button"
-            variant="outline"
+            variant="ghost"
             size="icon-sm"
             aria-label="채팅 목록으로 이동"
+            className="border-0 bg-transparent shadow-none hover:bg-transparent"
             onClick={() => {
               void navigate({
                 to: '/chat',

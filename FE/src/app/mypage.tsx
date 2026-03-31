@@ -1,6 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
 import useEmblaCarousel from 'embla-carousel-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { DesignerApplicationDialog } from '@/components/designer-application-dialog'
 import { Header } from '@/components/header'
@@ -88,6 +88,14 @@ export default function MyPage() {
     likeData?.likeList.filter(
       (item) => likedIds[item.hairID.toString()] ?? item.liked,
     ) ?? []
+
+  useEffect(() => {
+    if (!meData) {
+      return
+    }
+
+    console.log('mypage meData:', meData)
+  }, [meData])
 
   async function handleLogout() {
     await auth.logout()

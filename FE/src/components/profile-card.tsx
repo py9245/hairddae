@@ -28,7 +28,10 @@ export function ProfileCard({
     ? (genderMap[profile.gender] ?? profile.gender)
     : null
   const genderDisplay = mappedGender || '성별 비공개'
-  const grade = profile.grade ?? 0
+  const grade =
+    typeof profile.grade === 'number'
+      ? profile.grade
+      : Number(profile.grade ?? 0)
   const isDesignerPending = grade === 1
   const isDesigner = grade === 2
 

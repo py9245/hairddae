@@ -5,6 +5,8 @@ import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -26,6 +28,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @Service
 public class GmsImageGenerationClient {
 
+    private static final Logger log = LoggerFactory.getLogger(GmsImageGenerationClient.class);
+
     private final RestClient.Builder restClientBuilder;
     private final AppCameraAiProperties appCameraAiProperties;
 
@@ -41,16 +45,6 @@ public class GmsImageGenerationClient {
             MultipartBodyBuilder bodyBuilder = new MultipartBodyBuilder();
             bodyBuilder.part("model", appCameraAiProperties.modelName());
             bodyBuilder.part("prompt", prompt);
-            bodyBuilder.part("n", "1");
-            bodyBuilder.part("size", appCameraAiProperties.size());
-            bodyBuilder.part("quality", appCameraAiProperties.quality());
-            bodyBuilder.part("output_format", appCameraAiProperties.outputFormat());
-            if (StringUtils.hasText(appCameraAiProperties.inputFidelity())) {
-                bodyBuilder.part("input_fidelity", appCameraAiProperties.inputFidelity());
-            }
-            if (StringUtils.hasText(userId)) {
-                bodyBuilder.part("user", userId);
-            }
             bodyBuilder.part("image", new NamedByteArrayResource(image.getBytes(), resolveFilename(image)))
                     .header(HttpHeaders.CONTENT_TYPE, resolveContentType(image));
 
@@ -80,12 +74,18 @@ public class GmsImageGenerationClient {
         } catch (IOException exception) {
             throw new IllegalStateException("업로드 이미지를 읽지 못했습니다.", exception);
         } catch (ResourceAccessException exception) {
+            log.error("GMS images/edits timeout: {}", exception.getMessage());
             throw new ApiException(ErrorCode.CAMERA_AI_TIMEOUT, "GMS 요청이 시간 내에 완료되지 않았습니다.");
         } catch (RestClientResponseException exception) {
+            log.error(
+                    "GMS images/edits failed. status={} body={}",
+                    exception.getStatusCode().value(),
+                    abbreviate(exception.getResponseBodyAsString(), 1000));
             throw new ApiException(
                     ErrorCode.CAMERA_AI_FAILED,
                     "GMS 호출에 실패했습니다. status=%d".formatted(exception.getStatusCode().value()));
         } catch (RestClientException exception) {
+            log.error("GMS images/edits error: {}", exception.getMessage(), exception);
             throw new ApiException(ErrorCode.CAMERA_AI_FAILED, "GMS 호출 중 오류가 발생했습니다.");
         }
     }
@@ -130,6 +130,13 @@ public class GmsImageGenerationClient {
             return response.outputFormat().trim();
         }
         return StringUtils.hasText(appCameraAiProperties.outputFormat()) ? appCameraAiProperties.outputFormat().trim() : "png";
+    }
+
+    private String abbreviate(String value, int maxLength) {
+        if (value == null || value.length() <= maxLength) {
+            return value;
+        }
+        return value.substring(0, maxLength) + "...";
     }
 
     public record GeneratedImage(

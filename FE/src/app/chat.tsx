@@ -21,6 +21,7 @@ import { useChatMessagePolling } from '@/hooks/Chat/use-chat-message-polling'
 import {
   type ChatMessage,
   type ChatRoomListItem,
+  clearChatRoomContext,
   getChatMessages,
   getChatRooms,
   readChatRoomContext,
@@ -298,6 +299,7 @@ function ChatRoomView({
             aria-label="채팅 목록으로 이동"
             className="border-0 bg-transparent shadow-none hover:bg-transparent"
             onClick={() => {
+              clearChatRoomContext()
               void navigate({
                 to: '/chat',
                 search: {},
@@ -454,8 +456,10 @@ export default function Chat() {
   const navigate = useNavigate()
   const search = useSearch({ from: '/chat' })
   const roomContext = readChatRoomContext()
-  const roomId = search.roomId ?? roomContext?.roomId ?? null
-  const designerUserId = search.designerUserId ?? roomContext?.designerUserId
+  const roomId = search.roomId ?? null
+  const designerUserId =
+    search.designerUserId ??
+    (roomId != null ? roomContext?.designerUserId : null)
 
   const chatRoomsQuery = useQuery({
     queryKey: ['chatRooms'],

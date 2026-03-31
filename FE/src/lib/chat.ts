@@ -389,3 +389,7 @@ export function writeChatRoomContext(context: ChatRoomContext) {
 export function readChatRoomContext(): ChatRoomContext | null {
   return chatRoomContext
 }
+
+export function clearChatRoomContext() {
+  chatRoomContext = null
+}

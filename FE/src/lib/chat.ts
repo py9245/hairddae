@@ -40,6 +40,21 @@ export type ChatMessagesResponse = {
   messages: ChatMessage[]
 }
 
+export type GetChatMessagesOptions = {
+  afterId?: number | string | null
+}
+
+export type SendChatMessageRequest = {
+  roomId: number | string
+  messageText: string
+}
+
+export type SendChatMessageResponse = {
+  code: number
+  message: string
+  chatMessage: ChatMessage | null
+}
+
 type RawCreateChatRoomResponse = Partial<{
   code: number
   message: string
@@ -56,10 +71,10 @@ type RawChatMessage = Partial<{
   sender_user_id: string
   messageType: 'TEXT' | 'IMAGE'
   message_type: 'TEXT' | 'IMAGE'
-  messageText: string
-  message_text: string
-  imageUrl: string
-  image_url: string
+  messageText: string | null
+  message_text: string | null
+  imageUrl: string | null
+  image_url: string | null
   createdAt: string
   created_at: string
 }>
@@ -79,6 +94,14 @@ type RawChatMessagesResponse = Partial<{
         chatMessages: RawChatMessage[]
         messageList: RawChatMessage[]
       }>
+}>
+
+type RawSendChatMessageResponse = Partial<{
+  code: number
+  message: string
+  chatMessage: RawChatMessage
+  messageData: RawChatMessage
+  data: RawChatMessage
 }>
 
 let chatRoomDraft: ChatRoomDraft | null = null
@@ -118,6 +141,18 @@ function extractMessages(data: RawChatMessagesResponse | null): ChatMessage[] {
   }
 
   return list.map(normalizeChatMessage)
+}
+
+function extractSingleMessage(
+  data: RawSendChatMessageResponse | null,
+): ChatMessage | null {
+  const message = data?.chatMessage ?? data?.messageData ?? data?.data ?? null
+
+  if (!message || typeof message !== 'object') {
+    return null
+  }
+
+  return normalizeChatMessage(message, 0)
 }
 
 export async function createChatRoom({
@@ -164,8 +199,20 @@ export async function createChatRoom({
 
 export async function getChatMessages(
   roomId: number | string,
+  options?: GetChatMessagesOptions,
 ): Promise<ChatMessagesResponse> {
-  const response = await apiFetch(`/chat/rooms/${roomId}/messages/`, {
+  const params = new URLSearchParams()
+
+  if (options?.afterId != null && `${options.afterId}` !== '') {
+    params.set('after_id', String(options.afterId))
+  }
+
+  const query = params.toString()
+  const path = query
+    ? `/chat/rooms/${roomId}/messages/?${query}`
+    : `/chat/rooms/${roomId}/messages/`
+
+  const response = await apiFetch(path, {
     method: 'GET',
   })
 
@@ -182,6 +229,35 @@ export async function getChatMessages(
     message: data?.message ?? '조회 정상',
     roomId: data?.roomId ?? data?.room_id ?? roomId,
     messages: extractMessages(data),
+  }
+}
+
+export async function sendChatMessage({
+  roomId,
+  messageText,
+}: SendChatMessageRequest): Promise<SendChatMessageResponse> {
+  const response = await apiFetch(`/chat/rooms/${roomId}/messages/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      message_text: messageText,
+    }),
+  })
+
+  const data = (await response
+    .json()
+    .catch(() => null)) as RawSendChatMessageResponse | null
+
+  if (!response.ok) {
+    throw new Error(data?.message ?? '메시지 전송에 실패했습니다.')
+  }
+
+  return {
+    code: data?.code ?? 200,
+    message: data?.message ?? '메시지를 전송했습니다.',
+    chatMessage: extractSingleMessage(data),
   }
 }
 

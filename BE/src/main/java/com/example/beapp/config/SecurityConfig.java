@@ -37,7 +37,7 @@ import jakarta.servlet.http.HttpServletResponse;
         AppCorsProperties.class,
         AppHairProperties.class,
         AppCameraAiProperties.class,
-        AppKakaoLocalProperties.class,
+        AppNaverGeocodingProperties.class,
         AppInferenceProperties.class,
         AppGoogleSecurityProperties.class
 })

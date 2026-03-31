@@ -28,7 +28,7 @@ import com.example.beapp.security.AuthCookieManager;
 import com.example.beapp.security.GoogleIdTokenVerifier;
 import com.example.beapp.service.CategoryMetadataSyncService;
 import com.example.beapp.service.HairMetadataSyncService;
-import com.example.beapp.service.KakaoLocalGeocodingClient;
+import com.example.beapp.service.NaverGeocodingClient;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
@@ -57,7 +57,7 @@ class DesignerApplicationApiIntegrationTest {
     private GoogleIdTokenVerifier googleIdTokenVerifier;
 
     @MockBean
-    private KakaoLocalGeocodingClient kakaoLocalGeocodingClient;
+    private NaverGeocodingClient naverGeocodingClient;
 
     @BeforeEach
     void setUp() {
@@ -90,8 +90,8 @@ class DesignerApplicationApiIntegrationTest {
     @Test
     void designerApplicationUpdatesGradeAndStoresRequest() throws Exception {
         MockCookie accessTokenCookie = login();
-        given(kakaoLocalGeocodingClient.geocodeAddress(anyString()))
-                .willReturn(new KakaoLocalGeocodingClient.GeocodingCoordinates(37.4981, 127.0276));
+        given(naverGeocodingClient.geocodeAddress(anyString()))
+                .willReturn(new NaverGeocodingClient.GeocodingCoordinates(37.4981, 127.0276));
 
         mockMvc.perform(post("/api/mypage/designer")
                         .cookie(accessTokenCookie)
@@ -121,8 +121,8 @@ class DesignerApplicationApiIntegrationTest {
     @Test
     void designerApplicationRejectsDuplicateRequest() throws Exception {
         MockCookie accessTokenCookie = login();
-        given(kakaoLocalGeocodingClient.geocodeAddress(anyString()))
-                .willReturn(new KakaoLocalGeocodingClient.GeocodingCoordinates(37.4981, 127.0276));
+        given(naverGeocodingClient.geocodeAddress(anyString()))
+                .willReturn(new NaverGeocodingClient.GeocodingCoordinates(37.4981, 127.0276));
 
         mockMvc.perform(post("/api/mypage/designer")
                         .cookie(accessTokenCookie)

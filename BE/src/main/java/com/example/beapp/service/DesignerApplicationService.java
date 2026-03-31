@@ -16,15 +16,15 @@ public class DesignerApplicationService {
 
     private final UserAccountRepository userAccountRepository;
     private final DesignerApplicationRepository designerApplicationRepository;
-    private final KakaoLocalGeocodingClient kakaoLocalGeocodingClient;
+    private final NaverGeocodingClient naverGeocodingClient;
 
     public DesignerApplicationService(
             UserAccountRepository userAccountRepository,
             DesignerApplicationRepository designerApplicationRepository,
-            KakaoLocalGeocodingClient kakaoLocalGeocodingClient) {
+            NaverGeocodingClient naverGeocodingClient) {
         this.userAccountRepository = userAccountRepository;
         this.designerApplicationRepository = designerApplicationRepository;
-        this.kakaoLocalGeocodingClient = kakaoLocalGeocodingClient;
+        this.naverGeocodingClient = naverGeocodingClient;
     }
 
     public DesignerApplicationResponse submit(String userId, DesignerApplicationRequest request) {
@@ -33,7 +33,7 @@ public class DesignerApplicationService {
 
         String certificateNumber = request.certificateNumber().trim();
         String salonAddress = request.salonAddress().trim();
-        KakaoLocalGeocodingClient.GeocodingCoordinates coordinates = kakaoLocalGeocodingClient.geocodeAddress(salonAddress);
+        NaverGeocodingClient.GeocodingCoordinates coordinates = naverGeocodingClient.geocodeAddress(salonAddress);
 
         designerApplicationRepository.save(new DesignerApplication(
                 userAccount.userID(),

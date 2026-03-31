@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
+
 import { ProfileCard, ProfileCardSkeleton } from '@/components/profile-card'
 
 const mockProfile = {
@@ -33,6 +34,7 @@ export const Default: Story = {
   args: {
     profile: mockProfile,
     onLogout: () => alert('로그아웃'),
+    onDesignerApply: () => alert('디자이너 신청'),
   },
 }
 
@@ -40,6 +42,7 @@ export const Skeleton: Story = {
   args: {
     profile: mockProfile,
     onLogout: () => {},
+    onDesignerApply: () => {},
   },
   render: () => <ProfileCardSkeleton />,
 }

@@ -2,6 +2,7 @@ import { useNavigate } from '@tanstack/react-router'
 import useEmblaCarousel from 'embla-carousel-react'
 import { useState } from 'react'
 
+import { DesignerApplicationDialog } from '@/components/designer-application-dialog'
 import { Header } from '@/components/header'
 import { ProfileCard, ProfileCardSkeleton } from '@/components/profile-card'
 import { HairStyleCard } from '@/components/ui/hair-style-card'
@@ -79,6 +80,7 @@ export default function MyPage() {
   const { data: appliedData, isLoading: isAppliedLoading } = useAppliedList()
   const { data: likeData, isLoading: isLikeLoading } = useLikeList()
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({})
+  const [isDesignerDialogOpen, setIsDesignerDialogOpen] = useState(false)
   const { mutate: toggleLike } = useToggleLike()
   const appliedList = appliedData?.hairList ?? []
   const visibleLikeList =
@@ -144,7 +146,11 @@ export default function MyPage() {
           {isLoading ? (
             <ProfileCardSkeleton />
           ) : meData ? (
-            <ProfileCard profile={meData} onLogout={handleLogout} />
+            <ProfileCard
+              profile={meData}
+              onLogout={handleLogout}
+              onDesignerApply={() => setIsDesignerDialogOpen(true)}
+            />
           ) : (
             <div className="rounded-3xl bg-card p-6 text-center text-sm text-text-warm-300">
               로그인 정보가 없습니다.
@@ -172,6 +178,10 @@ export default function MyPage() {
           onApply={handleApply}
         />
       </div>
+      <DesignerApplicationDialog
+        open={isDesignerDialogOpen}
+        onOpenChange={setIsDesignerDialogOpen}
+      />
     </main>
   )
 }

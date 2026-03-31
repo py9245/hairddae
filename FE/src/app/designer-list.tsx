@@ -12,9 +12,6 @@ export default function DesignerList() {
         <Header label="디자이너" className="px-0 pb-3 pt-2" />
 
         <section className="rounded-[28px] bg-[linear-gradient(135deg,#FBE3E8_0%,#FFFFFF_100%)] px-5 py-6 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
-          <p className="text-sm font-semibold text-primary-300">
-            위치 기반 추천
-          </p>
           <h1 className="mt-2 text-[24px] font-bold leading-8 text-text-dark">
             {designerCount > 0
               ? `주변 디자이너 ${designerCount}명을 불러왔어요`

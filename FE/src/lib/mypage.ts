@@ -149,8 +149,21 @@ export async function getDesignerSpecialties(): Promise<DesignerSpecialtiesRespo
 export async function submitDesignerCategoryList(
   payload: DesignerCategoryRequest,
 ): Promise<DesignerCategoryResponse> {
+  return saveDesignerCategoryList(payload, 'POST')
+}
+
+export async function updateDesignerCategoryList(
+  payload: DesignerCategoryRequest,
+): Promise<DesignerCategoryResponse> {
+  return saveDesignerCategoryList(payload, 'PUT')
+}
+
+async function saveDesignerCategoryList(
+  payload: DesignerCategoryRequest,
+  method: 'POST' | 'PUT',
+): Promise<DesignerCategoryResponse> {
   const res = await apiFetch('/mypage/designer/specialties/', {
-    method: 'POST',
+    method,
     headers: {
       'Content-Type': 'application/json',
     },

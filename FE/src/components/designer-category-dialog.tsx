@@ -8,6 +8,7 @@ import {
   type DesignerCategoryRequest,
   getDesignerSpecialties,
   submitDesignerCategoryList,
+  updateDesignerCategoryList,
 } from '@/lib/mypage'
 
 type DesignerCategoryDialogProps = {
@@ -35,8 +36,16 @@ export function DesignerCategoryDialog({
   })
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const mutation = useMutation({
-    mutationFn: (payload: DesignerCategoryRequest) =>
-      submitDesignerCategoryList(payload),
+    mutationFn: ({
+      hasExistingSpecialties,
+      payload,
+    }: {
+      hasExistingSpecialties: boolean
+      payload: DesignerCategoryRequest
+    }) =>
+      hasExistingSpecialties
+        ? updateDesignerCategoryList(payload)
+        : submitDesignerCategoryList(payload),
   })
   const resetDesignerCategory = mutation.reset
 
@@ -112,7 +121,10 @@ export function DesignerCategoryDialog({
 
     mutation.mutate(
       {
-        categoryIds: selectedCategories,
+        hasExistingSpecialties: (specialtiesData?.specialties.length ?? 0) > 0,
+        payload: {
+          categoryIds: selectedCategories,
+        },
       },
       {
         onSuccess: () => {

@@ -286,12 +286,17 @@ export function DesignerApplicationDialog({
 
             <FieldGroup className="gap-4">
               <Field>
-                <FieldLabel
-                  htmlFor="designer-certificate-number"
-                  className="text-sm font-semibold text-text-dark"
-                >
-                  자격증 번호
-                </FieldLabel>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <FieldLabel
+                    htmlFor="designer-certificate-number"
+                    className="text-sm font-semibold text-text-dark"
+                  >
+                    자격증 번호
+                  </FieldLabel>
+                  <span className="shrink-0 text-sm text-gray-400">
+                    {certificateNumberLength}/12자
+                  </span>
+                </div>
                 <input
                   id="designer-certificate-number"
                   type="text"
@@ -304,12 +309,7 @@ export function DesignerApplicationDialog({
                   className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
                   disabled={mutation.isPending}
                 />
-                <div className="mt-1.5 flex items-center justify-between gap-3">
-                  <FieldError>{certificateNumberError}</FieldError>
-                  <span className="shrink-0 text-sm text-gray-400">
-                    {certificateNumberLength}/12자
-                  </span>
-                </div>
+                <FieldError>{certificateNumberError}</FieldError>
               </Field>
 
               <Field>
@@ -333,7 +333,7 @@ export function DesignerApplicationDialog({
               </Field>
 
               <Field>
-                <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="mb-1 flex items-center justify-between gap-3">
                   <FieldLabel
                     htmlFor="designer-salon-address"
                     className="text-sm font-semibold text-text-dark"
@@ -364,9 +364,7 @@ export function DesignerApplicationDialog({
                   className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
                   disabled={mutation.isPending || isAddressScriptLoading}
                 />
-                <FieldError>
-                  {salonAddressError ?? addressSearchError}
-                </FieldError>
+                <FieldError>{salonAddressError ?? addressSearchError}</FieldError>
               </Field>
             </FieldGroup>
 

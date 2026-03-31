@@ -28,7 +28,7 @@ import Splash from '@/app/splash'
 import { BottomNav } from '@/components/bottom-nav'
 import { NotFoundPage } from '@/components/not-found-page'
 import { ReviewModal } from '@/components/review-modal'
-import { type AuthStore, auth, fetchMe } from '@/lib/auth'
+import { type AuthStore, auth, getCachedMe } from '@/lib/auth'
 
 type RouterContext = {
   auth: AuthStore
@@ -213,7 +213,7 @@ function RootLayout() {
   )
 
   const deferReviewModal = useCallback(async () => {
-    const me = await fetchMe().catch(() => null)
+    const me = await getCachedMe().catch(() => null)
     if (me) {
       writeReviewModalPreference(me.userID, {
         dismissedUntil: Date.now() + REVIEW_MODAL_DEFER_MS,
@@ -223,7 +223,7 @@ function RootLayout() {
   }, [writeReviewModalPreference])
 
   const submitReviewModal = useCallback(async () => {
-    const me = await fetchMe().catch(() => null)
+    const me = await getCachedMe().catch(() => null)
     if (me) {
       writeReviewModalPreference(me.userID, {
         completed: true,
@@ -249,7 +249,7 @@ function RootLayout() {
     }
 
     void (async () => {
-      const me = await fetchMe().catch(() => null)
+      const me = await getCachedMe().catch(() => null)
       if (!me) {
         return
       }
@@ -266,7 +266,7 @@ function RootLayout() {
       reviewTimerUserIdRef.current = me.userID
       reviewTimerRef.current = window.setTimeout(() => {
         void (async () => {
-          const currentMe = await fetchMe().catch(() => null)
+          const currentMe = await getCachedMe().catch(() => null)
           if (!currentMe || currentMe.userID !== reviewTimerUserIdRef.current) {
             return
           }

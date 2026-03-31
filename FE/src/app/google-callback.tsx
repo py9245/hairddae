@@ -1,7 +1,7 @@
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { buildApiUrl } from '@/lib/api'
-import { auth, fetchMe } from '@/lib/auth'
+import { auth, getCachedMe } from '@/lib/auth'
 
 const GOOGLE_OAUTH_STATE_STORAGE_KEY = 'google_oauth_state'
 
@@ -99,7 +99,7 @@ export default function GoogleCallback() {
           idToken: search.idToken,
         })
 
-        const me = await fetchMe()
+        const me = await getCachedMe()
         if (!me) {
           throw new Error('로그인 세션을 확인하지 못했습니다.')
         }

@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { useHairRtcDisplay } from '@/hooks/Camera/useHairRtcDisplay'
 import { useHairRtcSession } from '@/hooks/Camera/useHairRtcSession'
 import { useViewportCaptureStream } from '@/hooks/Camera/useViewportCaptureStream'
-import { fetchMe } from '@/lib/auth'
+import { getCachedMe } from '@/lib/auth'
 import { postAiUpgrade } from '@/lib/Camera/ai-upgrade'
 import {
   canvasToBlob,
@@ -208,7 +208,7 @@ export function HairCameraView({
 
   useEffect(() => {
     void (async () => {
-      const me = await fetchMe().catch(() => null)
+      const me = await getCachedMe().catch(() => null)
       if (!me) {
         return
       }
@@ -534,7 +534,7 @@ export function HairCameraView({
 
   const handleGuideModalDismiss = useCallback(() => {
     void (async () => {
-      const me = await fetchMe().catch(() => null)
+      const me = await getCachedMe().catch(() => null)
       if (me) {
         writeGuidePreference(me.userID, {
           dismissed: true,

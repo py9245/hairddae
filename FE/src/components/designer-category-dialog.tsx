@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 
@@ -24,6 +24,7 @@ export function DesignerCategoryDialog({
   open,
   onOpenChange,
 }: DesignerCategoryDialogProps) {
+  const queryClient = useQueryClient()
   const { data, isLoading, isError } = useCategoryList()
   const {
     data: specialtiesData,
@@ -128,6 +129,10 @@ export function DesignerCategoryDialog({
       },
       {
         onSuccess: () => {
+          void queryClient.invalidateQueries({ queryKey: ['me'] })
+          void queryClient.invalidateQueries({
+            queryKey: ['designerSpecialties'],
+          })
           onOpenChange(false)
         },
       },

@@ -1,4 +1,4 @@
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Search, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -106,6 +106,7 @@ export function DesignerApplicationDialog({
   open,
   onOpenChange,
 }: DesignerApplicationDialogProps) {
+  const queryClient = useQueryClient()
   const [form, setForm] = useState<DesignerApplicationForm>(INITIAL_FORM)
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [addressSearchError, setAddressSearchError] = useState<string | null>(
@@ -195,11 +196,18 @@ export function DesignerApplicationDialog({
       return
     }
 
-    mutation.mutate({
-      certificateNumber,
-      acquisitionDate,
-      salonAddress,
-    })
+    mutation.mutate(
+      {
+        certificateNumber,
+        acquisitionDate,
+        salonAddress,
+      },
+      {
+        onSuccess: () => {
+          void queryClient.invalidateQueries({ queryKey: ['me'] })
+        },
+      },
+    )
   }
 
   function handleSearchAddress() {

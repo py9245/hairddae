@@ -20,14 +20,6 @@ export default function DesignerList() {
               ? `주변 디자이너 ${designerCount}명을 불러왔어요`
               : '추천 디자이너를 준비하고 있어요'}
           </h1>
-          <p className="mt-2 text-sm leading-6 text-text-sub">
-            카메라 화면에서 요청한
-            <br />
-            <code className="font-semibold text-text-dark">
-              /api/camera/get-designer/
-            </code>{' '}
-            응답을 기준으로 목록을 보여줍니다.
-          </p>
         </section>
 
         <section className="mt-5 flex flex-col gap-4 pb-6">

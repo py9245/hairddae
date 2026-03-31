@@ -28,6 +28,7 @@ type RawDesigner = Partial<{
   id: number | string
   designer_id: number | string
   user_id: number | string
+  userId: number | string
   name: string
   designer_name: string
   username: string
@@ -35,7 +36,9 @@ type RawDesigner = Partial<{
   shop_name: string
   address: string
   salon_address: string
+  salonAddress: string
   distance: string | number
+  distanceKm: string | number
   description: string
   intro: string
   profile_image_url: string
@@ -59,6 +62,18 @@ type RawDesignerResponse = Partial<{
       }>
 }>
 
+function normalizeDistance(value: string | number | null | undefined) {
+  if (value == null) {
+    return null
+  }
+
+  if (typeof value === 'number') {
+    return `${value}km`
+  }
+
+  return value.endsWith('km') ? value : `${value}km`
+}
+
 function normalizeDesigner(
   designer: RawDesigner,
   index: number,
@@ -67,19 +82,25 @@ function normalizeDesigner(
     designer.id ??
     designer.designer_id ??
     designer.user_id ??
+    designer.userId ??
     `designer-${index + 1}`
 
   return {
     id,
     name:
       designer.name ??
+      (typeof designer.userId === 'string' ? designer.userId : undefined) ??
       designer.designer_name ??
       designer.username ??
       `디자이너 ${index + 1}`,
     salonName: designer.salon_name ?? designer.shop_name ?? null,
     profileImageUrl: designer.profile_image_url ?? designer.image_url ?? null,
-    address: designer.address ?? designer.salon_address ?? null,
-    distance: designer.distance != null ? String(designer.distance) : null,
+    address:
+      designer.address ??
+      designer.salonAddress ??
+      designer.salon_address ??
+      null,
+    distance: normalizeDistance(designer.distanceKm ?? designer.distance),
     description: designer.description ?? designer.intro ?? null,
   }
 }

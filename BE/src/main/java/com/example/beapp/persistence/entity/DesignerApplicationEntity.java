@@ -30,13 +30,30 @@ public class DesignerApplicationEntity extends BaseTimeEntity {
     @Column(name = "salon_address", nullable = false, length = 500)
     private String salonAddress;
 
+    @Column(name = "salon_latitude")
+    private Double salonLatitude;
+
+    @Column(name = "salon_longitude")
+    private Double salonLongitude;
+
     protected DesignerApplicationEntity() {
     }
 
     public DesignerApplicationEntity(String userId, String certificateNumber, String salonAddress) {
+        this(userId, certificateNumber, salonAddress, null, null);
+    }
+
+    public DesignerApplicationEntity(
+            String userId,
+            String certificateNumber,
+            String salonAddress,
+            Double salonLatitude,
+            Double salonLongitude) {
         this.userId = userId;
         this.certificateNumber = certificateNumber;
         this.salonAddress = salonAddress;
+        this.salonLatitude = salonLatitude;
+        this.salonLongitude = salonLongitude;
     }
 
     public String getUserId() {
@@ -49,5 +66,13 @@ public class DesignerApplicationEntity extends BaseTimeEntity {
 
     public String getSalonAddress() {
         return salonAddress;
+    }
+
+    public Double getSalonLatitude() {
+        return salonLatitude;
+    }
+
+    public Double getSalonLongitude() {
+        return salonLongitude;
     }
 }

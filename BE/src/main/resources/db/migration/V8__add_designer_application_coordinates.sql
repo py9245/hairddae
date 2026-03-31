@@ -1,0 +1,3 @@
+ALTER TABLE designer_applications
+    ADD COLUMN IF NOT EXISTS salon_latitude DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS salon_longitude DOUBLE PRECISION;

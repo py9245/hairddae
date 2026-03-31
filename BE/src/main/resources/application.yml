@@ -67,6 +67,11 @@ app:
     quality: ${APP_CAMERA_AI_QUALITY:low}
     output-format: ${APP_CAMERA_AI_OUTPUT_FORMAT:png}
     input-fidelity: ${APP_CAMERA_AI_INPUT_FIDELITY:}
+  kakao-local:
+    enabled: ${APP_KAKAO_LOCAL_ENABLED:true}
+    base-url: ${KAKAO_LOCAL_BASE_URL:https://dapi.kakao.com/v2/local}
+    rest-api-key: ${KAKAO_REST_API_KEY:}
+    request-timeout-ms: ${APP_KAKAO_LOCAL_REQUEST_TIMEOUT_MS:5000}
   inference:
     ws-base-url: ${APP_INFERENCE_WS_BASE_URL:/ws/inference/apply}
     rtc-offer-url: ${APP_INFERENCE_RTC_OFFER_URL:/rtc/inference/offer}

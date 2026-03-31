@@ -24,7 +24,7 @@
 - `users.grade`
   - 현재 사용자 상태 확인용
 - `designer_applications`
-  - 신청 시 입력한 자격증 번호와 미용실 주소 저장용
+  - 신청 시 입력한 자격증 번호, 미용실 주소, 미용실 좌표 저장용
 
 ## grade 정의
 
@@ -58,6 +58,8 @@
 - `user_id VARCHAR(50) NOT NULL`
 - `certificate_number VARCHAR(255) NOT NULL`
 - `salon_address VARCHAR(500) NOT NULL`
+- `salon_latitude DOUBLE PRECISION NULL`
+- `salon_longitude DOUBLE PRECISION NULL`
 - `created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`
 
 권장 제약:
@@ -71,11 +73,14 @@
   - 신청 모달에서 입력한 자격증 라이선스
 - `salon_address`
   - 신청 모달에서 입력한 미용실 주소
+- `salon_latitude`, `salon_longitude`
+  - 미용실 주소를 좌표로 변환한 값
 
 중요:
 
 - 프론트엔드 요청 필드는 `certificateNumber`, `salonAddress` 를 사용한다.
 - DB 컬럼명은 `certificate_number`, `salon_address` 로 저장한다.
+- 백엔드는 `salonAddress` 를 좌표로 변환해 `salon_latitude`, `salon_longitude` 도 함께 저장한다.
 
 ## 왜 별도 테이블을 두는가
 
@@ -91,7 +96,8 @@
 1. 로그인 사용자가 디자이너 신청 모달 오픈
 2. `certificateNumber`, `salonAddress` 입력
 3. `POST /api/mypage/designer/` 호출
-4. `designer_applications` 에 신청 정보 저장
+4. 백엔드가 `salonAddress` 를 위도/경도로 변환
+5. `designer_applications` 에 신청 정보와 좌표 저장
 5. `users.grade = 1` 로 변경
 6. 발표용 운영에서는 필요한 계정을 DB에서 직접 `grade = 2` 로 변경
 
@@ -221,6 +227,9 @@ DTO 요청 필드도 프론트와 동일하게 아래 이름으로 받는 것을
 - `certificateNumber`
 - `salonAddress`
 
+백엔드는 요청으로 받은 `salonAddress` 를 기준으로
+위도/경도를 구해서 함께 저장하는 방식으로 구현한다.
+
 ## 보안/권한 범위
 
 이번 단계에서는 보안을 과하게 확장하지 않는다.
@@ -247,6 +256,7 @@ DTO 요청 필드도 프론트와 동일하게 아래 이름으로 받는 것을
 - `users.grade` 추가
 - `designer_applications` 테이블 추가
 - 신청 시 `certificateNumber`, `salonAddress` 저장
+- 신청 시 미용실 좌표도 함께 저장
 - 신청 완료 시 `users.grade = 1`
 - 발표용 디자이너 계정은 DB에서 직접 `users.grade = 2` 로 변경
 - 중복 신청은 FE에서 막고, BE는 `UNIQUE(user_id)` 로 최소 방어

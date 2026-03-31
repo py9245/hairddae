@@ -37,7 +37,9 @@ public class JpaDesignerApplicationRepositoryAdapter implements DesignerApplicat
                 new DesignerApplicationEntity(
                         designerApplication.userId(),
                         designerApplication.certificateNumber(),
-                        designerApplication.salonAddress()));
+                        designerApplication.salonAddress(),
+                        designerApplication.salonLatitude(),
+                        designerApplication.salonLongitude()));
         return toModel(saved);
     }
 
@@ -50,6 +52,8 @@ public class JpaDesignerApplicationRepositoryAdapter implements DesignerApplicat
         return new DesignerApplication(
                 entity.getUserId(),
                 entity.getCertificateNumber(),
-                entity.getSalonAddress());
+                entity.getSalonAddress(),
+                entity.getSalonLatitude(),
+                entity.getSalonLongitude());
     }
 }

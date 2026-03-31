@@ -28,6 +28,10 @@ import com.example.beapp.security.AuthCookieManager;
 import com.example.beapp.security.GoogleIdTokenVerifier;
 import com.example.beapp.service.CategoryMetadataSyncService;
 import com.example.beapp.service.HairMetadataSyncService;
+import com.example.beapp.service.KakaoLocalGeocodingClient;
+
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -51,6 +55,9 @@ class DesignerApplicationApiIntegrationTest {
 
     @MockBean
     private GoogleIdTokenVerifier googleIdTokenVerifier;
+
+    @MockBean
+    private KakaoLocalGeocodingClient kakaoLocalGeocodingClient;
 
     @BeforeEach
     void setUp() {
@@ -83,6 +90,8 @@ class DesignerApplicationApiIntegrationTest {
     @Test
     void designerApplicationUpdatesGradeAndStoresRequest() throws Exception {
         MockCookie accessTokenCookie = login();
+        given(kakaoLocalGeocodingClient.geocodeAddress(anyString()))
+                .willReturn(new KakaoLocalGeocodingClient.GeocodingCoordinates(37.4981, 127.0276));
 
         mockMvc.perform(post("/api/mypage/designer")
                         .cookie(accessTokenCookie)
@@ -105,11 +114,15 @@ class DesignerApplicationApiIntegrationTest {
         var savedApplication = designerApplicationRepository.findByUserId("TestUser01").orElseThrow();
         assertEquals("CERT-001", savedApplication.certificateNumber());
         assertEquals("서울특별시 강남구 테헤란로 1", savedApplication.salonAddress());
+        assertEquals(37.4981, savedApplication.salonLatitude());
+        assertEquals(127.0276, savedApplication.salonLongitude());
     }
 
     @Test
     void designerApplicationRejectsDuplicateRequest() throws Exception {
         MockCookie accessTokenCookie = login();
+        given(kakaoLocalGeocodingClient.geocodeAddress(anyString()))
+                .willReturn(new KakaoLocalGeocodingClient.GeocodingCoordinates(37.4981, 127.0276));
 
         mockMvc.perform(post("/api/mypage/designer")
                         .cookie(accessTokenCookie)

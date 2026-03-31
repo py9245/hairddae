@@ -12,6 +12,7 @@ import { useAppliedList } from '@/hooks/MyPage/useAppliedList'
 import { useLikeList } from '@/hooks/MyPage/useLikeList'
 import { auth } from '@/lib/auth'
 import { applyMyPageHair, type MyPageHairItem } from '@/lib/mypage'
+import { cn } from '@/lib/utils'
 
 type HairSectionProps = {
   title: string
@@ -139,7 +140,12 @@ export default function MyPage() {
   }
 
   return (
-    <main className="app-frame-page relative h-full overflow-y-auto bg-bg-primary pb-[108px]">
+    <main
+      className={cn(
+        'app-frame-page relative h-full bg-bg-primary pb-[108px]',
+        isDesignerDialogOpen ? 'overflow-y-hidden' : 'overflow-y-auto',
+      )}
+    >
       <div className="mx-auto flex w-full max-w-[390px] flex-col px-4 pt-3">
         <Header label="내정보" className="px-0 pb-3 pt-2" />
         <div className="mt-8">

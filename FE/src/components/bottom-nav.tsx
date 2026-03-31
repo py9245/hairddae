@@ -1,9 +1,10 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import type { LucideIcon } from 'lucide-react'
-import { Camera, House, UserRound } from 'lucide-react'
+import { Camera, House, MessageCircle, UserRound } from 'lucide-react'
+
 import { cn } from '@/lib/utils'
 
-type BottomNavRoute = '/main' | '/camera' | '/mypage'
+type BottomNavRoute = '/main' | '/camera' | '/chat' | '/mypage'
 
 type BottomNavItem = {
   label: string
@@ -32,7 +33,13 @@ const items: BottomNavItem[] = [
     match: (pathname) => pathname.startsWith('/camera'),
   },
   {
-    label: '내 정보',
+    label: '채팅',
+    to: '/chat',
+    icon: MessageCircle,
+    match: (pathname) => pathname.startsWith('/chat'),
+  },
+  {
+    label: '내정보',
     to: '/mypage',
     icon: UserRound,
     match: (pathname) => pathname.startsWith('/mypage'),
@@ -40,7 +47,11 @@ const items: BottomNavItem[] = [
 ]
 
 function shouldHideBottomNav(pathname: string) {
-  return !pathname.startsWith('/main') && !pathname.startsWith('/mypage')
+  return (
+    !pathname.startsWith('/main') &&
+    !pathname.startsWith('/chat') &&
+    !pathname.startsWith('/mypage')
+  )
 }
 
 function BottomNavLink({
@@ -120,7 +131,7 @@ export function BottomNavBase({
   return (
     <nav
       aria-label="Primary"
-      className="absolute right-0 bottom-0 left-0 z-10 h-[62px] rounded-t-[16px] bg-white px-10 py-4 border border-nav-inactive"
+      className="absolute right-0 bottom-0 left-0 z-10 h-[62px] rounded-t-[16px] border border-nav-inactive bg-white px-10 py-4"
     >
       <ul className="flex h-full items-center justify-between">
         {items.map(({ label, to, icon: Icon, match }) => {

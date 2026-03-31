@@ -15,6 +15,7 @@ import {
 } from 'react'
 import { z } from 'zod'
 import Camera from '@/app/camera'
+import Chat from '@/app/chat'
 import GoogleCallback from '@/app/google-callback'
 import HairList from '@/app/hairlist'
 import Landing from '@/app/landing'
@@ -117,6 +118,7 @@ const mainRoute = createProtectedRoute('main', MainPage)
 const cameraRoute = createProtectedRoute('camera', Camera, (search) =>
   cameraSearchSchema.parse(search),
 )
+const chatRoute = createProtectedRoute('chat', Chat)
 const myPageRoute = createProtectedRoute('mypage', MyPage)
 const hairListRoute = createProtectedRoute('hairlist', HairList, (search) =>
   hairListSearchSchema.parse(search),
@@ -128,6 +130,7 @@ const routeTree = rootRoute.addChildren([
   authRoute.addChildren([loginRoute, signupRoute, googleCallbackRoute]),
   mainRoute,
   cameraRoute,
+  chatRoute,
   myPageRoute,
   hairListRoute,
 ])

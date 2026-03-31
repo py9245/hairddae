@@ -67,9 +67,12 @@ app:
     quality: ${APP_CAMERA_AI_QUALITY:low}
     output-format: ${APP_CAMERA_AI_OUTPUT_FORMAT:png}
     input-fidelity: ${APP_CAMERA_AI_INPUT_FIDELITY:}
+  chat:
+    max-upload-size-bytes: ${APP_CHAT_MAX_UPLOAD_SIZE_BYTES:5242880}
+    storage-dir: ${APP_CHAT_STORAGE_DIR:chat}
   naver-geocoding:
     enabled: ${APP_NAVER_GEOCODING_ENABLED:true}
-    base-url: ${NAVER_GEOCODING_BASE_URL:https://naveropenapi.apigw.ntruss.com}
+    base-url: ${NAVER_GEOCODING_BASE_URL:https://maps.apigw.ntruss.com}
     api-key-id: ${X_NCP_APIGW_API_KEY_ID:}
     api-key: ${X_NCP_APIGW_API_KEY:}
     request-timeout-ms: ${APP_NAVER_GEOCODING_REQUEST_TIMEOUT_MS:5000}

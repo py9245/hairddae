@@ -37,6 +37,7 @@ import jakarta.servlet.http.HttpServletResponse;
         AppCorsProperties.class,
         AppHairProperties.class,
         AppCameraAiProperties.class,
+        AppChatProperties.class,
         AppNaverGeocodingProperties.class,
         AppInferenceProperties.class,
         AppGoogleSecurityProperties.class
@@ -90,6 +91,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/home/customrank",
                                 "/api/home/customrank/",
+                                "/api/chat/**",
                                 "/api/mypage/**").authenticated()
                         .requestMatchers(HttpMethod.GET,
                                 "/api/home/normalrank",

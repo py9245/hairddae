@@ -25,7 +25,6 @@ type DesignerApplicationForm = {
 }
 
 type KakaoPostcodeData = {
-  address: string
   roadAddress: string
   jibunAddress: string
   zonecode: string
@@ -51,7 +50,7 @@ const INITIAL_FORM: DesignerApplicationForm = {
 }
 
 const KAKAO_POSTCODE_SCRIPT_URL =
-  '//t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js'
+  'https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js'
 
 function loadKakaoPostcodeScript() {
   if (typeof window === 'undefined') {
@@ -71,23 +70,23 @@ function loadKakaoPostcodeScript() {
       `script[src="${KAKAO_POSTCODE_SCRIPT_URL}"]`,
     )
 
+    const handleLoad = () => resolve()
+    const handleError = () => {
+      window.__kakaoPostcodeLoader__ = undefined
+      reject(new Error('카카오 주소 검색 스크립트를 불러오지 못했습니다.'))
+    }
+
     if (existingScript) {
-      existingScript.addEventListener('load', () => resolve(), { once: true })
-      existingScript.addEventListener(
-        'error',
-        () =>
-          reject(new Error('카카오 주소 검색 스크립트를 불러오지 못했습니다.')),
-        { once: true },
-      )
+      existingScript.addEventListener('load', handleLoad, { once: true })
+      existingScript.addEventListener('error', handleError, { once: true })
       return
     }
 
     const script = document.createElement('script')
     script.src = KAKAO_POSTCODE_SCRIPT_URL
     script.async = true
-    script.onload = () => resolve()
-    script.onerror = () =>
-      reject(new Error('카카오 주소 검색 스크립트를 불러오지 못했습니다.'))
+    script.onload = handleLoad
+    script.onerror = handleError
 
     document.head.appendChild(script)
   })
@@ -110,34 +109,36 @@ export function DesignerApplicationDialog({
     mutationFn: (payload: DesignerApplicationRequest) =>
       submitDesignerApplication(payload),
   })
+  const resetDesignerApplication = mutation.reset
 
   useEffect(() => {
-    if (!open) {
-      setForm(INITIAL_FORM)
-      setSubmitAttempted(false)
-      setAddressSearchError(null)
-      setIsAddressScriptLoading(false)
-      mutation.reset()
+    if (open) {
+      setIsAddressScriptLoading(true)
+
+      void loadKakaoPostcodeScript()
+        .then(() => {
+          setAddressSearchError(null)
+        })
+        .catch((caught) => {
+          setAddressSearchError(
+            caught instanceof Error
+              ? caught.message
+              : '카카오 주소 검색을 준비하지 못했습니다.',
+          )
+        })
+        .finally(() => {
+          setIsAddressScriptLoading(false)
+        })
+
       return
     }
 
-    setIsAddressScriptLoading(true)
-
-    void loadKakaoPostcodeScript()
-      .then(() => {
-        setAddressSearchError(null)
-      })
-      .catch((caught) => {
-        setAddressSearchError(
-          caught instanceof Error
-            ? caught.message
-            : '카카오 주소 검색을 준비하지 못했습니다.',
-        )
-      })
-      .finally(() => {
-        setIsAddressScriptLoading(false)
-      })
-  }, [open, mutation])
+    setForm(INITIAL_FORM)
+    setSubmitAttempted(false)
+    setAddressSearchError(null)
+    setIsAddressScriptLoading(false)
+    resetDesignerApplication()
+  }, [open, resetDesignerApplication])
 
   if (!open) {
     return null

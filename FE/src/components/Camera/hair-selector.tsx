@@ -1,4 +1,4 @@
-import { Download } from 'lucide-react'
+import { Download, LoaderCircle } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { HairSelectorItem } from '@/components/ui/hair-selector-item'
@@ -100,7 +100,14 @@ export function HairSelector(props: HairSelectorProps) {
                   onClick={onAiEnhance}
                   disabled={aiEnhancePending}
                 >
-                  {aiEnhancePending ? 'AI 보정중...' : 'AI 보정하기'}
+                  {aiEnhancePending ? (
+                    <>
+                      <LoaderCircle className="size-4 animate-spin" />
+                      AI 보정중...
+                    </>
+                  ) : (
+                    'AI 보정하기'
+                  )}
                 </Button>
               </div>
               <Button

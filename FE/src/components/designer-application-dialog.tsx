@@ -13,7 +13,6 @@ import {
   type DesignerApplicationRequest,
   submitDesignerApplication,
 } from '@/lib/mypage'
-import { cn } from '@/lib/utils'
 
 type DesignerApplicationDialogProps = {
   open: boolean
@@ -244,10 +243,7 @@ export function DesignerApplicationDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="designer-application-title"
-        className={cn(
-          'pointer-events-auto relative w-full rounded-[24px] bg-card shadow-[0_20px_40px_rgba(15,23,42,0.18)] transition-[max-width,height] duration-200',
-          isAddressFinderOpen ? 'max-w-[min(92vw,680px)]' : 'max-w-[360px] p-6',
-        )}
+        className="pointer-events-auto relative w-full max-w-[360px] rounded-[24px] bg-card p-6 shadow-[0_20px_40px_rgba(15,23,42,0.18)]"
       >
         {mutation.isSuccess ? (
           <div className="space-y-5">
@@ -405,10 +401,10 @@ export function DesignerApplicationDialog({
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="flex-1 p-4">
+            <div className="p-4">
               <div
                 ref={postcodeContainerRef}
-                className="h-[min(70dvh,620px)] w-full overflow-hidden rounded-2xl border border-neutral-200 bg-white"
+                className="h-[420px] overflow-hidden rounded-2xl border border-neutral-200 bg-white"
               />
             </div>
           </div>

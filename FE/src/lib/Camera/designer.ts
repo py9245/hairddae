@@ -16,7 +16,7 @@ export async function postGetDesigner({
   longitude,
   hairId,
 }: GetDesignerRequest): Promise<GetDesignerResponse> {
-  const response = await apiFetch('/camera/get-deginer/', {
+  const response = await apiFetch('/camera/get-designer/', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

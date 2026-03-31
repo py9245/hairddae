@@ -66,7 +66,7 @@ export function ProfileCard({
         <Button
           variant="login"
           size="full"
-          className="mt-3 bg-primary-200 text-text-dark hover:bg-primary-200"
+          className="mt-3"
           onClick={onDesignerCategoryRegister}
         >
           자신있는 헤어 등록

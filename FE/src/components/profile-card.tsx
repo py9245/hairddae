@@ -31,7 +31,9 @@ export function ProfileCard({
     : null
 
   const genderDisplay =
-    mappedGender == null || mappedGender === '' ? '?깅퀎 鍮꾧났媛?' : mappedGender
+    mappedGender == null || mappedGender === ''
+      ? '?깅퀎 鍮꾧났媛?'
+      : mappedGender
 
   return (
     <section className="rounded-3xl bg-card p-6">

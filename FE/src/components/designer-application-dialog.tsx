@@ -10,10 +10,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Field, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field'
 import {
-  submitDesignerApplication,
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from '@/components/ui/field'
+import {
   type DesignerApplicationRequest,
+  submitDesignerApplication,
 } from '@/lib/mypage'
 
 type DesignerApplicationDialogProps = {

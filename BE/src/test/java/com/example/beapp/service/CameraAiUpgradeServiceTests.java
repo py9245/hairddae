@@ -68,7 +68,7 @@ class CameraAiUpgradeServiceTests {
 
         ArgumentCaptor<String> promptCaptor = ArgumentCaptor.forClass(String.class);
         verify(gmsImageGenerationClient).generateEditedImage(eq(image), promptCaptor.capture(), eq("TestUser01"));
-        assertTrue(promptCaptor.getValue().contains("Do not change anything below the eyebrows"));
+        assertTrue(promptCaptor.getValue().contains("눈썹 아래론 건들지 말고"));
     }
 
     @Test

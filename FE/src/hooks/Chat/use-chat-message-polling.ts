@@ -56,6 +56,7 @@ export function useChatMessagePolling<TData>({
 
       setData(result.data ?? null)
       setMessage(result.message ?? null)
+      setError(null)
       setStatus(result.done ? 'success' : 'polling')
 
       if (result.done) {

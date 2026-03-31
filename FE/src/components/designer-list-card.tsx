@@ -59,11 +59,11 @@ export function DesignerListCard({
             </div>
           ) : null}
 
-          {/* {designer.distance ? (
+          {designer.distance ? (
             <p className="mt-2 text-sm font-semibold text-text-sub">
               {designer.distance}
             </p>
-          ) : null} */}
+          ) : null}
 
           <Button
             type="button"

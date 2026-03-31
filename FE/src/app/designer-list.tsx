@@ -12,6 +12,7 @@ import {
   clearChatRoomDraft,
   createChatRoom,
   readChatRoomDraft,
+  writeChatRoomContext,
 } from '@/lib/chat'
 
 export default function DesignerList() {
@@ -38,7 +39,13 @@ export default function DesignerList() {
     setRequestMessage(null)
 
     try {
+      const draft = readChatRoomDraft()
       const response = await chatRoomMutation.mutateAsync(designer)
+      writeChatRoomContext({
+        roomId: response.roomId,
+        designerUserId: designer.name,
+        appliedImage: draft?.appliedImage ?? null,
+      })
       clearChatRoomDraft()
 
       await navigate({
@@ -85,7 +92,7 @@ export default function DesignerList() {
                 불러온 디자이너 정보가 없습니다.
               </p>
               <p className="mt-2 text-sm leading-6 text-text-sub">
-                카메라 화면에서 다시 디자이너 찾기를 시도해주세요.
+                카메라 화면에서 다시 디자이너 찾기를 시도해 주세요.
               </p>
             </div>
           )}

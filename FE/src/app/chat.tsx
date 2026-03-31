@@ -306,7 +306,7 @@ function ChatRoomView({
             type="button"
             variant="outline"
             size="icon-sm"
-            aria-label="이전으로 이동"
+            aria-label="채팅 목록으로 이동"
             onClick={() => {
               void navigate({
                 to: '/chat',
@@ -329,7 +329,7 @@ function ChatRoomView({
       <div className="mx-auto flex h-full w-full max-w-[390px] flex-col pt-[76px]">
         <section
           ref={messageViewportRef}
-          className="min-h-0 flex-1 overflow-y-auto px-4 py-5 pb-[148px]"
+          className="min-h-0 flex-1 overflow-y-auto px-4 py-5 pb-[110px]"
         >
           {initialImageUrl || messages.length > 0 || messagesQuery.isPolling ? (
             <div className="space-y-4">
@@ -395,9 +395,9 @@ function ChatRoomView({
           )}
         </section>
 
-        <section className="absolute right-0 bottom-[62px] left-0 border-t border-black/5 bg-white/96 px-4 pb-4 pt-3 backdrop-blur">
+        <section className="absolute right-0 bottom-0 left-0 px-4 pb-4 pt-3">
           <div className="mx-auto w-full max-w-[390px]">
-            <div className="flex items-end gap-3 rounded-[28px] border border-black/6 bg-white px-3 py-3 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
+            <div className="flex items-center gap-3 rounded-[28px] border border-black/6 bg-white px-3 py-2 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
               <textarea
                 value={inputValue}
                 onChange={(event) => {
@@ -421,7 +421,7 @@ function ChatRoomView({
                 }}
                 placeholder="메시지를 입력하세요"
                 rows={1}
-                className="max-h-28 min-h-[28px] flex-1 resize-none bg-transparent px-2 py-1 text-sm leading-6 text-text-dark outline-none placeholder:text-text-sub"
+                className="max-h-28 min-h-[40px] flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-5 text-text-dark outline-none placeholder:text-text-sub"
                 disabled={!isRoomReady}
               />
 

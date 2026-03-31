@@ -15,6 +15,7 @@ type BottomNavItem = {
 
 type BottomNavBaseProps = {
   pathname?: string
+  search?: string
   interactive?: boolean
   onNavigate?: (to: BottomNavRoute) => void
 }
@@ -47,7 +48,11 @@ const items: BottomNavItem[] = [
   },
 ]
 
-function shouldHideBottomNav(pathname: string) {
+function shouldHideBottomNav(pathname: string, search: string) {
+  if (pathname.startsWith('/chat') && search.includes('roomId=')) {
+    return true
+  }
+
   return (
     !pathname.startsWith('/main') &&
     !pathname.startsWith('/chat') &&
@@ -121,12 +126,13 @@ function BottomNavLink({
 
 export function BottomNavBase({
   pathname,
+  search = '',
   interactive = true,
   onNavigate,
 }: BottomNavBaseProps) {
   const currentPathname = pathname ?? '/'
 
-  if (shouldHideBottomNav(currentPathname)) {
+  if (shouldHideBottomNav(currentPathname, search)) {
     return null
   }
 
@@ -161,6 +167,9 @@ export function BottomNav() {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
+  const search = useRouterState({
+    select: (state) => state.location.searchStr,
+  })
 
-  return <BottomNavBase pathname={pathname} />
+  return <BottomNavBase pathname={pathname} search={search} />
 }

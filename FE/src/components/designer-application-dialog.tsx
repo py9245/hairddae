@@ -152,6 +152,7 @@ export function DesignerApplicationDialog({
   }
 
   const certificateNumber = form.certificateNumber.trim()
+  const certificateNumberLength = form.certificateNumber.length
   const acquisitionDate = form.acquisitionDate
   const salonAddress = form.salonAddress.trim()
   const isFormValid =
@@ -294,7 +295,7 @@ export function DesignerApplicationDialog({
                 <input
                   id="designer-certificate-number"
                   type="text"
-                  maxLength={50}
+                  maxLength={12}
                   value={form.certificateNumber}
                   onChange={(event) =>
                     handleChange('certificateNumber', event.target.value)
@@ -303,7 +304,12 @@ export function DesignerApplicationDialog({
                   className="h-12 w-full rounded-2xl border border-gray-200 bg-input-surface px-4 text-base text-slate-700 placeholder:text-sm placeholder:text-gray-400 outline-none focus:border-primary-200"
                   disabled={mutation.isPending}
                 />
-                <FieldError>{certificateNumberError}</FieldError>
+                <div className="mt-1.5 flex items-center justify-between gap-3">
+                  <FieldError>{certificateNumberError}</FieldError>
+                  <span className="shrink-0 text-sm text-gray-400">
+                    {certificateNumberLength}/12자
+                  </span>
+                </div>
               </Field>
 
               <Field>

@@ -40,6 +40,15 @@ export type DesignerApplicationResponse = {
   message: string
 }
 
+export type DesignerCategoryRequest = {
+  choosecategory: string[]
+}
+
+export type DesignerCategoryResponse = {
+  code: number
+  message: string
+}
+
 export async function getLikeList(): Promise<LikeListResponse> {
   const res = await apiFetch('/mypage/likelist', {
     method: 'GET',
@@ -98,5 +107,34 @@ export async function submitDesignerApplication(
   return {
     code,
     message: data?.message ?? '디자이너 신청이 완료되었습니다.',
+  }
+}
+
+export async function submitDesignerCategoryList(
+  payload: DesignerCategoryRequest,
+): Promise<DesignerCategoryResponse> {
+  const res = await apiFetch('/mypage/categortlist/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  const data = (await res.json().catch(() => null)) as
+    | DesignerCategoryResponse
+    | { message?: string }
+    | null
+
+  if (!res.ok) {
+    throw new Error(data?.message ?? '자신있는 헤어 등록에 실패했습니다.')
+  }
+
+  const code =
+    data && 'code' in data && typeof data.code === 'number' ? data.code : 200
+
+  return {
+    code,
+    message: data?.message ?? '자신있는 헤어 등록이 완료되었습니다.',
   }
 }

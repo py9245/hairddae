@@ -6,12 +6,13 @@ type ProfileCardProps = {
   profile: MeResponse
   onLogout: () => void
   onDesignerApply: () => void
+  onDesignerCategoryRegister: () => void
 }
 
 function getAvatarVariant(userId: string): 1 | 2 | 3 | 4 | 5 {
   let sum = 0
-  for (let i = 0; i < userId.length; i++) {
-    sum += userId.charCodeAt(i)
+  for (let index = 0; index < userId.length; index++) {
+    sum += userId.charCodeAt(index)
   }
 
   return ((sum % 5) + 1) as 1 | 2 | 3 | 4 | 5
@@ -21,6 +22,7 @@ export function ProfileCard({
   profile,
   onLogout,
   onDesignerApply,
+  onDesignerCategoryRegister,
 }: ProfileCardProps) {
   const birthDateDisplay = profile.birthDate || '생년월일 비공개'
   const genderMap: Record<string, string> = { F: '여자', M: '남자' }
@@ -60,7 +62,16 @@ export function ProfileCard({
         로그아웃
       </Button>
 
-      {isDesigner ? null : (
+      {isDesigner ? (
+        <Button
+          variant="login"
+          size="full"
+          className="mt-3"
+          onClick={onDesignerCategoryRegister}
+        >
+          자신있는 헤어 등록
+        </Button>
+      ) : (
         <Button
           variant="login"
           size="full"
@@ -68,7 +79,7 @@ export function ProfileCard({
           onClick={onDesignerApply}
           disabled={isDesignerPending}
         >
-          {isDesignerPending ? '디자이너 승인 대기중' : '디자이너 신청'}
+          {isDesignerPending ? '디자이너 신청중' : '디자이너 신청'}
         </Button>
       )}
     </section>

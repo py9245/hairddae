@@ -35,6 +35,7 @@ export const Default: Story = {
     profile: mockProfile,
     onLogout: () => alert('로그아웃'),
     onDesignerApply: () => alert('디자이너 신청'),
+    onDesignerCategoryRegister: () => alert('자신있는 헤어 등록'),
   },
 }
 
@@ -43,6 +44,7 @@ export const Skeleton: Story = {
     profile: mockProfile,
     onLogout: () => {},
     onDesignerApply: () => {},
+    onDesignerCategoryRegister: () => {},
   },
   render: () => <ProfileCardSkeleton />,
 }

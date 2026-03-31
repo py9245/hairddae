@@ -3,6 +3,7 @@ import useEmblaCarousel from 'embla-carousel-react'
 import { useState } from 'react'
 
 import { DesignerApplicationDialog } from '@/components/designer-application-dialog'
+import { DesignerCategoryDialog } from '@/components/designer-category-dialog'
 import { Header } from '@/components/header'
 import { ProfileCard, ProfileCardSkeleton } from '@/components/profile-card'
 import { HairStyleCard } from '@/components/ui/hair-style-card'
@@ -82,12 +83,15 @@ export default function MyPage() {
   const { data: likeData, isLoading: isLikeLoading } = useLikeList()
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({})
   const [isDesignerDialogOpen, setIsDesignerDialogOpen] = useState(false)
+  const [isDesignerCategoryDialogOpen, setIsDesignerCategoryDialogOpen] =
+    useState(false)
   const { mutate: toggleLike } = useToggleLike()
   const appliedList = appliedData?.hairList ?? []
   const visibleLikeList =
     likeData?.likeList.filter(
       (item) => likedIds[item.hairID.toString()] ?? item.liked,
     ) ?? []
+  const isModalOpen = isDesignerDialogOpen || isDesignerCategoryDialogOpen
 
   async function handleLogout() {
     await auth.logout()
@@ -143,7 +147,7 @@ export default function MyPage() {
     <main
       className={cn(
         'app-frame-page relative h-full bg-bg-primary pb-[108px]',
-        isDesignerDialogOpen ? 'overflow-y-hidden' : 'overflow-y-auto',
+        isModalOpen ? 'overflow-y-hidden' : 'overflow-y-auto',
       )}
     >
       <div className="mx-auto flex w-full max-w-[390px] flex-col px-4 pt-3">
@@ -156,6 +160,9 @@ export default function MyPage() {
               profile={meData}
               onLogout={handleLogout}
               onDesignerApply={() => setIsDesignerDialogOpen(true)}
+              onDesignerCategoryRegister={() =>
+                setIsDesignerCategoryDialogOpen(true)
+              }
             />
           ) : (
             <div className="rounded-3xl bg-card p-6 text-center text-sm text-text-warm-300">
@@ -187,6 +194,10 @@ export default function MyPage() {
       <DesignerApplicationDialog
         open={isDesignerDialogOpen}
         onOpenChange={setIsDesignerDialogOpen}
+      />
+      <DesignerCategoryDialog
+        open={isDesignerCategoryDialogOpen}
+        onOpenChange={setIsDesignerCategoryDialogOpen}
       />
     </main>
   )

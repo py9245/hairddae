@@ -7,6 +7,8 @@ type CaptureCompleteModalProps = {
   onClose: () => void
   onFindDesigner: () => void
   onAiEnhance: () => void
+  aiEnhancePending?: boolean
+  aiEnhanceMessage?: string | null
   scale?: number
 }
 
@@ -15,6 +17,8 @@ export function CaptureCompleteModal({
   onClose,
   onFindDesigner,
   onAiEnhance,
+  aiEnhancePending = false,
+  aiEnhanceMessage = null,
   scale = 1,
 }: CaptureCompleteModalProps) {
   if (!open) {
@@ -37,6 +41,7 @@ export function CaptureCompleteModal({
           onClick={onClose}
           aria-label="캡처 완료 모달 닫기"
           className="absolute right-5 top-5 inline-flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-black"
+          disabled={aiEnhancePending}
         >
           <X className="h-5 w-5" />
         </button>
@@ -59,8 +64,19 @@ export function CaptureCompleteModal({
             다음 작업을 선택해 계속 진행해 보세요.
           </p>
 
+          {aiEnhanceMessage ? (
+            <p className="mt-4 text-sm leading-6 text-text-warm-400">
+              {aiEnhanceMessage}
+            </p>
+          ) : null}
+
           <div className="mt-6 flex w-full flex-col gap-3">
-            <Button variant="login" size="full" onClick={onFindDesigner}>
+            <Button
+              variant="login"
+              size="full"
+              onClick={onFindDesigner}
+              disabled={aiEnhancePending}
+            >
               디자이너 찾기
             </Button>
             <Button
@@ -68,8 +84,9 @@ export function CaptureCompleteModal({
               size="full"
               className="text-text-dark"
               onClick={onAiEnhance}
+              disabled={aiEnhancePending}
             >
-              AI 보정하기
+              {aiEnhancePending ? 'AI 보정 요청 중...' : 'AI 보정하기'}
             </Button>
           </div>
         </div>

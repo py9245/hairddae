@@ -138,6 +138,22 @@ export function downloadCanvasImage(
   }, 'image/png')
 }
 
+export function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  type = 'image/png',
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error('캡처 이미지를 생성하지 못했습니다.'))
+        return
+      }
+
+      resolve(blob)
+    }, type)
+  })
+}
+
 export function captureCompositedImage({
   videoRef,
   wrapRef,

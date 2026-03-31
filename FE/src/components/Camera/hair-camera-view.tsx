@@ -1,3 +1,4 @@
+import { useMutation } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -13,7 +14,9 @@ import { useHairRtcDisplay } from '@/hooks/Camera/useHairRtcDisplay'
 import { useHairRtcSession } from '@/hooks/Camera/useHairRtcSession'
 import { useViewportCaptureStream } from '@/hooks/Camera/useViewportCaptureStream'
 import { fetchMe } from '@/lib/auth'
+import { postAiUpgrade } from '@/lib/Camera/ai-upgrade'
 import {
+  canvasToBlob,
   captureCompositedImage,
   downloadCanvasImage,
   drawCompositedSourceToCanvas,
@@ -23,6 +26,7 @@ import {
   HAIR_ITEMS,
   type HairItem,
 } from '@/lib/Camera/HairItem'
+import { getOrCreateDeviceId } from '@/lib/Camera/inference'
 import {
   RTC_STAGE_FPS,
   RTC_STAGE_HEIGHT,
@@ -69,9 +73,13 @@ export function HairCameraView({
   } | null>(null)
   const [isCaptureCompleteModalOpen, setIsCaptureCompleteModalOpen] =
     useState(false)
+  const [aiEnhanceMessage, setAiEnhanceMessage] = useState<string | null>(null)
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false)
   const [isFrameFrozen, setIsFrameFrozen] = useState(false)
   const [uiScale, setUiScale] = useState(1)
+  const aiUpgradeMutation = useMutation({
+    mutationFn: postAiUpgrade,
+  })
 
   const readGuidePreferences = useCallback(() => {
     try {
@@ -308,7 +316,10 @@ export function HairCameraView({
     if (isFrameFrozen && frozenCanvas) {
       downloadCanvasImage(frozenCanvas, {
         hairItems,
-        onComplete: () => setIsCaptureCompleteModalOpen(true),
+        onComplete: () => {
+          setAiEnhanceMessage(null)
+          setIsCaptureCompleteModalOpen(true)
+        },
         selectedHairId: displayHairId,
       })
       return
@@ -319,7 +330,10 @@ export function HairCameraView({
       wrapRef,
       hairItems,
       mirror: hasRemoteVideo ? false : RTC_STAGE_MIRRORED,
-      onComplete: () => setIsCaptureCompleteModalOpen(true),
+      onComplete: () => {
+        setAiEnhanceMessage(null)
+        setIsCaptureCompleteModalOpen(true)
+      },
       selectedHairId: displayHairId,
     })
   }, [
@@ -330,6 +344,32 @@ export function HairCameraView({
     remoteVideoRef,
     videoRef,
   ])
+
+  const handleAiEnhance = useCallback(async () => {
+    const frozenCanvas = frozenFrameCanvasRef.current
+
+    if (!frozenCanvas || displayHairId <= 0) {
+      setAiEnhanceMessage('캡처 이미지를 먼저 준비해 주세요.')
+      return
+    }
+
+    try {
+      const image = await canvasToBlob(frozenCanvas)
+      const response = await aiUpgradeMutation.mutateAsync({
+        image,
+        hairId: displayHairId,
+        deviceId: getOrCreateDeviceId(),
+      })
+
+      setAiEnhanceMessage(
+        response.jobId
+          ? `${response.message} 작업 ID: ${response.jobId}`
+          : response.message,
+      )
+    } catch {
+      setAiEnhanceMessage('AI 보정 요청에 실패했습니다.')
+    }
+  }, [aiUpgradeMutation, displayHairId])
 
   const handleTopLeftAction = useCallback(() => {
     if (isFrameFrozen) {
@@ -480,7 +520,11 @@ export function HairCameraView({
                 open={isCaptureCompleteModalOpen}
                 onClose={() => setIsCaptureCompleteModalOpen(false)}
                 onFindDesigner={() => {}}
-                onAiEnhance={() => {}}
+                onAiEnhance={() => {
+                  void handleAiEnhance()
+                }}
+                aiEnhancePending={aiUpgradeMutation.isPending}
+                aiEnhanceMessage={aiEnhanceMessage}
                 scale={uiScale}
               />
             </div>

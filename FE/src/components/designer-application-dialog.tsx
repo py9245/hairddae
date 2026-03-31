@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { MapPin, Search, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -31,20 +31,14 @@ type KakaoPostcodeData = {
   buildingName?: string
 }
 
-type KakaoPostcodeOpenOptions = {
-  left?: number
-  top?: number
-  width?: number
-  height?: number
-}
-
 declare global {
   interface Window {
     kakao?: {
       Postcode: new (options: {
         oncomplete: (data: KakaoPostcodeData) => void
+        onclose?: () => void
       }) => {
-        open: (options?: KakaoPostcodeOpenOptions) => void
+        embed: (element: HTMLElement) => void
       }
     }
     __kakaoPostcodeLoader__?: Promise<void>
@@ -105,12 +99,15 @@ export function DesignerApplicationDialog({
   open,
   onOpenChange,
 }: DesignerApplicationDialogProps) {
+  const postcodeContainerRef = useRef<HTMLDivElement | null>(null)
+
   const [form, setForm] = useState<DesignerApplicationForm>(INITIAL_FORM)
   const [submitAttempted, setSubmitAttempted] = useState(false)
   const [addressSearchError, setAddressSearchError] = useState<string | null>(
     null,
   )
   const [isAddressScriptLoading, setIsAddressScriptLoading] = useState(false)
+  const [isAddressFinderOpen, setIsAddressFinderOpen] = useState(false)
 
   const mutation = useMutation({
     mutationFn: (payload: DesignerApplicationRequest) =>
@@ -144,8 +141,40 @@ export function DesignerApplicationDialog({
     setSubmitAttempted(false)
     setAddressSearchError(null)
     setIsAddressScriptLoading(false)
+    setIsAddressFinderOpen(false)
     resetDesignerApplication()
   }, [open, resetDesignerApplication])
+
+  useEffect(() => {
+    if (!open || !isAddressFinderOpen || isAddressScriptLoading) {
+      return
+    }
+
+    const container = postcodeContainerRef.current
+    if (!container || !window.kakao?.Postcode) {
+      return
+    }
+
+    container.innerHTML = ''
+
+    new window.kakao.Postcode({
+      oncomplete: (data) => {
+        const primaryAddress = data.roadAddress || data.jibunAddress
+        const zonecode = data.zonecode ? `(${data.zonecode}) ` : ''
+        const buildingName = data.buildingName ? ` ${data.buildingName}` : ''
+
+        setForm((prev) => ({
+          ...prev,
+          salonAddress: `${zonecode}${primaryAddress}${buildingName}`.trim(),
+        }))
+        setAddressSearchError(null)
+        setIsAddressFinderOpen(false)
+      },
+      onclose: () => {
+        setIsAddressFinderOpen(false)
+      },
+    }).embed(container)
+  }, [isAddressFinderOpen, isAddressScriptLoading, open])
 
   if (!open) {
     return null
@@ -205,24 +234,7 @@ export function DesignerApplicationDialog({
     }
 
     setAddressSearchError(null)
-
-    new window.kakao.Postcode({
-      oncomplete: (data) => {
-        const primaryAddress = data.roadAddress || data.jibunAddress
-        const zonecode = data.zonecode ? `(${data.zonecode}) ` : ''
-        const buildingName = data.buildingName ? ` ${data.buildingName}` : ''
-
-        handleChange(
-          'salonAddress',
-          `${zonecode}${primaryAddress}${buildingName}`.trim(),
-        )
-      },
-    }).open({
-      left: window.screenX + Math.max((window.outerWidth - 520) / 2, 0),
-      top: window.screenY + Math.max((window.outerHeight - 640) / 2, 0),
-      width: 520,
-      height: 640,
-    })
+    setIsAddressFinderOpen(true)
   }
 
   return (
@@ -231,7 +243,7 @@ export function DesignerApplicationDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="designer-application-title"
-        className="pointer-events-auto w-full max-w-[360px] rounded-[24px] bg-card p-6 shadow-[0_20px_40px_rgba(15,23,42,0.18)]"
+        className="pointer-events-auto relative w-full max-w-[360px] rounded-[24px] bg-card p-6 shadow-[0_20px_40px_rgba(15,23,42,0.18)]"
       >
         {mutation.isSuccess ? (
           <div className="space-y-5">
@@ -336,9 +348,7 @@ export function DesignerApplicationDialog({
                     주소 검색
                   </Button>
                 </div>
-                <FieldError>
-                  {salonAddressError ?? addressSearchError}
-                </FieldError>
+                <FieldError>{salonAddressError ?? addressSearchError}</FieldError>
               </Field>
             </FieldGroup>
 
@@ -368,6 +378,35 @@ export function DesignerApplicationDialog({
             </div>
           </div>
         )}
+
+        {isAddressFinderOpen ? (
+          <div className="absolute inset-0 z-10 flex flex-col rounded-[24px] bg-card">
+            <div className="flex items-center justify-between border-b border-neutral-200 px-5 py-4">
+              <div>
+                <h3 className="text-base font-semibold text-text-dark">
+                  주소 검색
+                </h3>
+                <p className="mt-1 text-xs text-text-warm-400">
+                  미용실 주소를 검색한 뒤 선택해 주세요.
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="주소 검색 닫기"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full text-text-warm-400 transition hover:bg-neutral-100 hover:text-text-dark"
+                onClick={() => setIsAddressFinderOpen(false)}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="p-4">
+              <div
+                ref={postcodeContainerRef}
+                className="h-[420px] overflow-hidden rounded-2xl border border-neutral-200 bg-white"
+              />
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   )

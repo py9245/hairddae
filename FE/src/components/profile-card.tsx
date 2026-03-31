@@ -65,7 +65,7 @@ export function ProfileCard({
           onClick={onDesignerApply}
           disabled={isDesignerPending}
         >
-          {isDesignerPending ? '디자이너 신청중' : '디자이너 신청'}
+          {isDesignerPending ? '디자이너 승인 대기중' : '디자이너 신청'}
         </Button>
       )}
     </section>

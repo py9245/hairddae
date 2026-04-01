@@ -637,7 +637,7 @@ export function HairCameraView({
 
           {designerLocationMessage ? (
             <div className="pointer-events-none absolute left-1/2 top-56 z-40 -translate-x-1/2">
-              <div className="rounded-full bg-white px-6 py-3 text-base font-bold text-primary-300 shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
+              <div className="whitespace-nowrap rounded-full bg-white px-6 py-3 text-base font-bold text-primary-300 shadow-[0_8px_24px_rgba(15,23,42,0.16)]">
                 {designerLocationMessage}
               </div>
             </div>

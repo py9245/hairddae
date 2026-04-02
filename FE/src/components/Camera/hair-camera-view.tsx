@@ -461,6 +461,7 @@ export function HairCameraView({
               const appliedImage = await canvasToBlob(draftCanvas)
               writeChatRoomDraft({
                 hairId: displayHairId,
+                hairName: selectedHairItem?.label ?? '헤어',
                 appliedImage,
               })
             }
@@ -494,7 +495,7 @@ export function HairCameraView({
         maximumAge: 0,
       },
     )
-  }, [designerMutation, displayHairId, router])
+  }, [designerMutation, displayHairId, router, selectedHairItem])
 
   const handleTopLeftAction = useCallback(() => {
     if (isFrameFrozen) {

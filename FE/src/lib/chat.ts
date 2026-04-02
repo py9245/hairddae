@@ -2,6 +2,7 @@ import { apiFetch } from '@/lib/api'
 
 export type ChatRoomDraft = {
   hairId: number
+  hairName: string
   appliedImage: Blob
 }
 

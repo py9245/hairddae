@@ -66,7 +66,7 @@ export function DesignerListCard({
             onClick={() => onRequest?.(designer)}
             disabled={requestPending}
           >
-            {requestPending ? '요청 중...' : '디자인 요청하기'}
+            {requestPending ? '전송 중...' : '시술 문의하기'}
           </Button>
         </div>
       </div>

@@ -1,8 +1,9 @@
 import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { DesignerListCard } from '@/components/designer-list-card'
+import { DesignerRequestDialog } from '@/components/designer-request-dialog'
 import { Header } from '@/components/header'
 import {
   type DesignerListItem,
@@ -15,13 +16,29 @@ import {
   writeChatRoomContext,
 } from '@/lib/chat'
 
+function createDefaultRequestMessage(hairName: string) {
+  const normalizedHairName = hairName.trim() || '헤어'
+  return `안녕하세요. ${normalizedHairName} 문의드려도 될까`
+}
+
 export default function DesignerList() {
   const navigate = useNavigate()
   const designers = readDesignerListCache()
   const [requestMessage, setRequestMessage] = useState<string | null>(null)
+  const [selectedDesigner, setSelectedDesigner] =
+    useState<DesignerListItem | null>(null)
+  const [isRequestDialogOpen, setIsRequestDialogOpen] = useState(false)
+  const [draftMessage, setDraftMessage] = useState('')
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null)
 
   const chatRoomMutation = useMutation({
-    mutationFn: async (designer: DesignerListItem) => {
+    mutationFn: async ({
+      designer,
+      initialMessage,
+    }: {
+      designer: DesignerListItem
+      initialMessage: string
+    }) => {
       const draft = readChatRoomDraft()
       if (!draft) {
         throw new Error('전송할 적용 이미지가 없습니다.')
@@ -31,28 +48,81 @@ export default function DesignerList() {
         designerUserId: designer.name,
         hairId: draft.hairId,
         appliedImage: draft.appliedImage,
+        initialMessage,
       })
     },
   })
 
-  async function handleRequestDesigner(designer: DesignerListItem) {
+  useEffect(() => {
+    if (!isRequestDialogOpen) {
+      setPreviewImageUrl(null)
+      return
+    }
+
+    const draft = readChatRoomDraft()
+    if (!draft) {
+      setPreviewImageUrl(null)
+      return
+    }
+
+    const nextUrl = URL.createObjectURL(draft.appliedImage)
+    setPreviewImageUrl(nextUrl)
+
+    return () => {
+      URL.revokeObjectURL(nextUrl)
+    }
+  }, [isRequestDialogOpen])
+
+  function handleOpenRequestDialog(designer: DesignerListItem) {
+    const draft = readChatRoomDraft()
+    if (!draft) {
+      setRequestMessage('전송할 적용 이미지가 없습니다.')
+      return
+    }
+
+    setRequestMessage(null)
+    setSelectedDesigner(designer)
+    setDraftMessage(createDefaultRequestMessage(draft.hairName))
+    setIsRequestDialogOpen(true)
+  }
+
+  function handleCloseRequestDialog() {
+    if (chatRoomMutation.isPending) {
+      return
+    }
+
+    setIsRequestDialogOpen(false)
+    setSelectedDesigner(null)
+  }
+
+  async function handleRequestDesigner() {
+    if (!selectedDesigner) {
+      return
+    }
+
     setRequestMessage(null)
 
     try {
       const draft = readChatRoomDraft()
-      const response = await chatRoomMutation.mutateAsync(designer)
+      const response = await chatRoomMutation.mutateAsync({
+        designer: selectedDesigner,
+        initialMessage: draftMessage,
+      })
+
       writeChatRoomContext({
         roomId: response.roomId,
-        designerUserId: designer.name,
+        designerUserId: selectedDesigner.name,
         appliedImage: draft?.appliedImage ?? null,
       })
       clearChatRoomDraft()
+      setIsRequestDialogOpen(false)
+      setSelectedDesigner(null)
 
       await navigate({
         to: '/chat',
         search: {
           roomId: String(response.roomId),
-          designerUserId: designer.name,
+          designerUserId: selectedDesigner.name,
         },
       })
     } catch (caught) {
@@ -83,7 +153,7 @@ export default function DesignerList() {
                 designer={designer}
                 rank={index + 1}
                 requestPending={chatRoomMutation.isPending}
-                onRequest={handleRequestDesigner}
+                onRequest={handleOpenRequestDialog}
               />
             ))
           ) : (
@@ -98,6 +168,16 @@ export default function DesignerList() {
           )}
         </section>
       </div>
+
+      <DesignerRequestDialog
+        open={isRequestDialogOpen}
+        imageUrl={previewImageUrl}
+        message={draftMessage}
+        isSubmitting={chatRoomMutation.isPending}
+        onClose={handleCloseRequestDialog}
+        onConfirm={handleRequestDesigner}
+        onMessageChange={setDraftMessage}
+      />
     </main>
   )
 }

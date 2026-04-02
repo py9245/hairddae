@@ -230,21 +230,6 @@ export function ChatRoomView({ roomId, designerUserId }: ChatRoomViewProps) {
         >
           {initialImageUrl || messages.length > 0 || messagesQuery.isPolling ? (
             <div className="space-y-4">
-              {initialImageUrl ? (
-                <div className="flex justify-end">
-                  <div className="max-w-[82%]">
-                    <div className="mb-2 inline-flex rounded-full bg-primary-300/12 px-3 py-1 text-xs font-semibold text-primary-300">
-                      적용 이미지 전달됨
-                    </div>
-                    <ChatMessageBubble
-                      align="right"
-                      imageUrl={initialImageUrl}
-                      caption="상담 요청 이미지"
-                    />
-                  </div>
-                </div>
-              ) : null}
-
               {messagesQuery.isPolling && !messages.length ? (
                 <div className="flex items-center justify-center gap-2 py-10 text-sm text-text-sub">
                   <LoaderCircle className="size-4 animate-spin" />

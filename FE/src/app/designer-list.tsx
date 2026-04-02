@@ -18,7 +18,7 @@ import {
 
 function createDefaultRequestMessage(hairName: string) {
   const normalizedHairName = hairName.trim() || '헤어'
-  return `안녕하세요. ${normalizedHairName} 문의드려도 될까`
+  return `안녕하세요. ${normalizedHairName} 시술 문의 드려도 될까요??`
 }
 
 export default function DesignerList() {
@@ -65,12 +65,19 @@ export default function DesignerList() {
       return
     }
 
-    const nextUrl = URL.createObjectURL(draft.appliedImage)
-    setPreviewImageUrl(nextUrl)
+    const reader = new FileReader()
 
-    return () => {
-      URL.revokeObjectURL(nextUrl)
+    reader.onload = () => {
+      setPreviewImageUrl(
+        typeof reader.result === 'string' ? reader.result : null,
+      )
     }
+
+    reader.onerror = () => {
+      setPreviewImageUrl(null)
+    }
+
+    reader.readAsDataURL(draft.appliedImage)
   }, [isRequestDialogOpen])
 
   function handleOpenRequestDialog(designer: DesignerListItem) {

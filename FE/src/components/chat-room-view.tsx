@@ -47,20 +47,17 @@ export function ChatRoomView({ roomId, designerUserId }: ChatRoomViewProps) {
   const lastMessageIdRef = useRef<number | string | null>(null)
   const hasEnteredRoomRef = useRef(false)
   const messageViewportRef = useRef<HTMLDivElement | null>(null)
-  const bottomAnchorRef = useRef<HTMLDivElement | null>(null)
 
-  const scrollToBottom = useCallback(() => {
-    const anchor = bottomAnchorRef.current
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const viewport = messageViewportRef.current
-
-    if (anchor) {
-      anchor.scrollIntoView({ block: 'end' })
+    if (!viewport) {
       return
     }
 
-    if (viewport) {
-      viewport.scrollTop = viewport.scrollHeight
-    }
+    viewport.scrollTo({
+      top: viewport.scrollHeight,
+      behavior,
+    })
   }, [])
 
   const fetchChatMessages = useCallback(async (nextRoomId: number | string) => {
@@ -192,12 +189,18 @@ export function ChatRoomView({ roomId, designerUserId }: ChatRoomViewProps) {
       return
     }
 
-    const animationFrameId = window.requestAnimationFrame(() => {
+    scrollToBottom()
+
+    const frame1 = window.requestAnimationFrame(() => {
+      scrollToBottom()
+    })
+    const frame2 = window.requestAnimationFrame(() => {
       scrollToBottom()
     })
 
     return () => {
-      window.cancelAnimationFrame(animationFrameId)
+      window.cancelAnimationFrame(frame1)
+      window.cancelAnimationFrame(frame2)
     }
   }, [initialImageUrl, messageCount, messagesQuery.isPolling, scrollToBottom])
 
@@ -241,7 +244,7 @@ export function ChatRoomView({ roomId, designerUserId }: ChatRoomViewProps) {
           className="min-h-0 flex-1 overflow-y-auto px-4 py-5 pb-[110px]"
         >
           {initialImageUrl || messages.length > 0 || messagesQuery.isPolling ? (
-            <div className="space-y-4">
+            <div className="flex min-h-full flex-col justify-end gap-4">
               {messagesQuery.isPolling && !messages.length ? (
                 <div className="flex items-center justify-center gap-2 py-10 text-sm text-text-sub">
                   <LoaderCircle className="size-4 animate-spin" />
@@ -273,11 +276,9 @@ export function ChatRoomView({ roomId, designerUserId }: ChatRoomViewProps) {
                   </p>
                 </div>
               ) : null}
-
-              <div ref={bottomAnchorRef} aria-hidden="true" className="h-px" />
             </div>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+            <div className="flex h-full flex-col items-center justify-end px-8 pb-8 text-center">
               <div className="rounded-full bg-white px-4 py-2 text-xs font-semibold tracking-[0.16em] text-primary-300 uppercase shadow-[0_10px_20px_rgba(15,23,42,0.06)]">
                 New Conversation
               </div>

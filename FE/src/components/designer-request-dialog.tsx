@@ -67,7 +67,7 @@ export function DesignerRequestDialog({
                 <img
                   src={imageUrl}
                   alt="전송할 시술 이미지"
-                  className="h-[180px] w-full object-cover"
+                  className="h-[500px] w-full object-cover"
                 />
               ) : (
                 <div className="flex h-[180px] items-center justify-center px-6 text-sm text-text-sub">
@@ -77,7 +77,7 @@ export function DesignerRequestDialog({
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div>
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-semibold text-text-dark">
                 문의 메시지
@@ -94,9 +94,7 @@ export function DesignerRequestDialog({
             />
           </div>
 
-          <div className="rounded-[20px] bg-[#f7f4ee] px-4 py-3 text-sm leading-6 text-text-sub">
-            이 내용으로 전송할까요?
-          </div>
+          <p className="px-4 text-sm text-text-sub">이 내용으로 전송할까요?</p>
 
           <div className="flex items-center gap-3">
             <Button

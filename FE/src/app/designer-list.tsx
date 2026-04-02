@@ -18,7 +18,7 @@ import {
 
 function createDefaultRequestMessage(hairName: string) {
   const normalizedHairName = hairName.trim() || '헤어'
-  return `안녕하세요. ${normalizedHairName} 시술 문의 드려도 될까?`
+  return `안녕하세요. ${normalizedHairName} 시술 문의 드려도 될까요?`
 }
 
 export default function DesignerList() {

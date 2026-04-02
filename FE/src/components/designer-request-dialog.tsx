@@ -50,12 +50,8 @@ export function DesignerRequestDialog({
               className="text-2xl font-bold leading-snug text-black"
             >
               시술 문의를
-              <br />
               전송할까요?
             </h2>
-            <p className="text-sm leading-6 text-gray-500">
-              전송할 이미지와 메시지를 확인한 뒤 문의를 보내세요.
-            </p>
           </div>
 
           <div className="space-y-3">
@@ -87,14 +83,14 @@ export function DesignerRequestDialog({
             <textarea
               value={message}
               onChange={(event) => onMessageChange(event.target.value)}
-              rows={4}
+              rows={2}
               className="min-h-[60px] w-full resize-none rounded-[20px] border border-black/8 bg-primary-100 px-4 py-3 text-sm leading-6 text-text-dark outline-none transition placeholder:text-text-sub focus:border-primary-200"
               placeholder="문의 메시지를 입력해 주세요."
               disabled={isSubmitting}
             />
           </div>
 
-          <p className="px-4 text-sm text-text-sub">이 내용으로 전송할까요?</p>
+          <p className="px-4 text-sm text-text-sub">위 내용으로 전송할까요?</p>
 
           <div className="flex items-center gap-3">
             <Button

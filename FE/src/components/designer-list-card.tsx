@@ -10,6 +10,16 @@ type DesignerListCardProps = {
   onRequest?: (designer: DesignerListItem) => void
 }
 
+const DEFAULT_DESIGNER_IMAGES = [
+  '/designer/designer1.png',
+  '/designer/designer2.png',
+  '/designer/designer3.png',
+  '/designer/designer4.png',
+  '/designer/designer5.png',
+  '/designer/designer6.png',
+  '/designer/designer7.png',
+]
+
 function getAvatarProfileSrc(id: DesignerListItem['id']) {
   const source = String(id)
   let sum = 0
@@ -18,8 +28,8 @@ function getAvatarProfileSrc(id: DesignerListItem['id']) {
     sum += source.charCodeAt(index)
   }
 
-  const variant = ((sum % 5) + 1).toString().padStart(2, '0')
-  return `/icon/avatar-profile-${variant}.svg`
+  const imageIndex = sum % DEFAULT_DESIGNER_IMAGES.length
+  return DEFAULT_DESIGNER_IMAGES[imageIndex] ?? DEFAULT_DESIGNER_IMAGES[0]
 }
 
 export function DesignerListCard({

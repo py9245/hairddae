@@ -47,6 +47,21 @@ export function ChatRoomView({ roomId, designerUserId }: ChatRoomViewProps) {
   const lastMessageIdRef = useRef<number | string | null>(null)
   const hasEnteredRoomRef = useRef(false)
   const messageViewportRef = useRef<HTMLDivElement | null>(null)
+  const bottomAnchorRef = useRef<HTMLDivElement | null>(null)
+
+  const scrollToBottom = useCallback(() => {
+    const anchor = bottomAnchorRef.current
+    const viewport = messageViewportRef.current
+
+    if (anchor) {
+      anchor.scrollIntoView({ block: 'end' })
+      return
+    }
+
+    if (viewport) {
+      viewport.scrollTop = viewport.scrollHeight
+    }
+  }, [])
 
   const fetchChatMessages = useCallback(async (nextRoomId: number | string) => {
     const response = await getChatMessages(nextRoomId, {
@@ -171,23 +186,20 @@ export function ChatRoomView({ roomId, designerUserId }: ChatRoomViewProps) {
   }, [messagesQuery.data])
 
   const messageCount = messages.length
-  const latestMessageId =
-    messageCount > 0 ? String(messages[messageCount - 1]?.id ?? '') : ''
 
   useLayoutEffect(() => {
-    if (!initialImageUrl && messageCount === 0) {
+    if (!initialImageUrl && messageCount === 0 && !messagesQuery.isPolling) {
       return
     }
 
-    void latestMessageId
+    const animationFrameId = window.requestAnimationFrame(() => {
+      scrollToBottom()
+    })
 
-    const viewport = messageViewportRef.current
-    if (!viewport) {
-      return
+    return () => {
+      window.cancelAnimationFrame(animationFrameId)
     }
-
-    viewport.scrollTop = viewport.scrollHeight
-  }, [initialImageUrl, messageCount, latestMessageId])
+  }, [initialImageUrl, messageCount, messagesQuery.isPolling, scrollToBottom])
 
   const isSendDisabled =
     !isRoomReady || inputValue.trim() === '' || sendMessageMutation.isPending
@@ -261,6 +273,8 @@ export function ChatRoomView({ roomId, designerUserId }: ChatRoomViewProps) {
                   </p>
                 </div>
               ) : null}
+
+              <div ref={bottomAnchorRef} aria-hidden="true" className="h-px" />
             </div>
           ) : (
             <div className="flex h-full flex-col items-center justify-center px-8 text-center">

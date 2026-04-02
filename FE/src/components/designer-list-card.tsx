@@ -16,19 +16,10 @@ const DEFAULT_DESIGNER_IMAGES = [
   '/designer/designer3.png',
   '/designer/designer4.png',
   '/designer/designer5.png',
-  '/designer/designer6.png',
-  '/designer/designer7.png',
 ]
 
-function getAvatarProfileSrc(id: DesignerListItem['id']) {
-  const source = String(id)
-  let sum = 0
-
-  for (let index = 0; index < source.length; index++) {
-    sum += source.charCodeAt(index)
-  }
-
-  const imageIndex = sum % DEFAULT_DESIGNER_IMAGES.length
+function getAvatarProfileSrc(rank: number) {
+  const imageIndex = (Math.max(rank, 1) - 1) % DEFAULT_DESIGNER_IMAGES.length
   return DEFAULT_DESIGNER_IMAGES[imageIndex] ?? DEFAULT_DESIGNER_IMAGES[0]
 }
 
@@ -43,7 +34,7 @@ export function DesignerListCard({
       <div className="flex items-start gap-4">
         <div className="flex h-32 w-[44%] shrink-0 items-center justify-center overflow-hidden rounded-[24px] bg-primary-100/40">
           <img
-            src={designer.profileImageUrl ?? getAvatarProfileSrc(designer.id)}
+            src={designer.profileImageUrl ?? getAvatarProfileSrc(rank)}
             alt={designer.name}
             className="h-full w-full object-cover"
             draggable={false}

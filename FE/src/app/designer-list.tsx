@@ -65,19 +65,12 @@ export default function DesignerList() {
       return
     }
 
-    const reader = new FileReader()
+    const nextUrl = URL.createObjectURL(draft.appliedImage)
+    setPreviewImageUrl(nextUrl)
 
-    reader.onload = () => {
-      setPreviewImageUrl(
-        typeof reader.result === 'string' ? reader.result : null,
-      )
+    return () => {
+      URL.revokeObjectURL(nextUrl)
     }
-
-    reader.onerror = () => {
-      setPreviewImageUrl(null)
-    }
-
-    reader.readAsDataURL(draft.appliedImage)
   }, [isRequestDialogOpen])
 
   function handleOpenRequestDialog(designer: DesignerListItem) {

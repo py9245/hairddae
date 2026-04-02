@@ -91,6 +91,7 @@ class Settings:
     static_root: Path
     face_landmarker_model_path: Path
     hair_segmenter_model_path: Path
+    body_segmenter_model_path: Path
     static_base_url: str
     hysteresis_margin: float
     min_hold_ms: int
@@ -116,7 +117,10 @@ class Settings:
     rtc_latency_renderer_name: str
     rtc_hair_attenuation_enabled: bool
     rtc_hair_segmentation_enabled: bool
+    rtc_body_segmentation_enabled: bool
     rtc_hair_segmentation_confidence_threshold: float
+    rtc_body_segmentation_threshold: float
+    rtc_body_segmentation_precision: str
     rtc_hair_attenuation_strength: float
     rtc_hair_attenuation_desaturation: float
     rtc_hair_attenuation_brightness_lift: float
@@ -205,6 +209,11 @@ class Settings:
                 "/opt/inference-models/hair_segmenter.tflite",
                 local_models_dir / "mediapipe" / "hair_segmenter.tflite",
             ),
+            body_segmenter_model_path=_resolve_model_path(
+                "INFERENCE_BODY_SEGMENTER_MODEL_PATH",
+                "/opt/inference-models/lraspp_mobilenet_v3_large-coco_with_voc_labels_v1.pth",
+                local_models_dir / "torchvision" / "lraspp_mobilenet_v3_large-coco_with_voc_labels_v1.pth",
+            ),
             static_base_url=_env_str("INFERENCE_STATIC_BASE_URL", "/static").rstrip("/"),
             hysteresis_margin=float(_env_str("INFERENCE_HYSTERESIS_MARGIN", "4.0")),
             min_hold_ms=_env_int("INFERENCE_MIN_HOLD_MS", 400),
@@ -246,9 +255,17 @@ class Settings:
             rtc_latency_renderer_name=_env_str("INFERENCE_RTC_LATENCY_RENDERER_NAME", "legacy"),
             rtc_hair_attenuation_enabled=_env_bool("INFERENCE_RTC_HAIR_ATTENUATION_ENABLED", True),
             rtc_hair_segmentation_enabled=_env_bool("INFERENCE_RTC_HAIR_SEGMENTATION_ENABLED", True),
+            rtc_body_segmentation_enabled=_env_bool("INFERENCE_RTC_BODY_SEGMENTATION_ENABLED", False),
             rtc_hair_segmentation_confidence_threshold=float(
                 _env_str("INFERENCE_RTC_HAIR_SEGMENTATION_CONFIDENCE_THRESHOLD", "0.32")
             ),
+            rtc_body_segmentation_threshold=float(
+                _env_str("INFERENCE_RTC_BODY_SEGMENTATION_THRESHOLD", "0.35")
+            ),
+            rtc_body_segmentation_precision=_env_str(
+                "INFERENCE_RTC_BODY_SEGMENTATION_PRECISION",
+                "fp16",
+            ).strip().lower(),
             rtc_hair_attenuation_strength=float(
                 _env_str("INFERENCE_RTC_HAIR_ATTENUATION_STRENGTH", "0.78")
             ),

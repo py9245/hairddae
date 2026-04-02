@@ -64,7 +64,9 @@ RUN uv sync --frozen --no-dev \
     && rm -rf /tmp/uv-cache /root/.cache
 
 COPY scripts ./scripts
-ARG OPENCV_CUDA_ARCH_BIN=7.5
+# Default to A10G (SM 8.6) for the current g5.2xlarge deployment.
+# Override at build time for other GPU families.
+ARG OPENCV_CUDA_ARCH_BIN=8.6
 RUN bash ./scripts/install_opencv_cuda.sh \
       --python /app/.venv/bin/python \
       --cuda-arch-bin "${OPENCV_CUDA_ARCH_BIN}"

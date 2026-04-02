@@ -10,8 +10,6 @@ import pytest
 
 pytest.importorskip("cv2")
 pytest.importorskip("mediapipe")
-pytest.importorskip("torch")
-pytest.importorskip("torchvision")
 
 import app.overlay_postprocess_pipeline as overlay_postprocess_pipeline
 from app.hairddae_runtime import HairOverlayRuntime, RuntimeBundleRenderEntry
@@ -52,6 +50,7 @@ def build_runtime_stub() -> HairOverlayRuntime:
     runtime.switch_cooldown_frames = 3
     runtime.switch_hold_margin_bias = 0.8
     runtime.switch_significant_improvement_bias = 0.8
+    runtime.force_switch_angle_deg = 10
     runtime.angle_priority_enabled = False
     runtime.pose_smoothing_enabled = True
     runtime.bundle_render_enabled = True
@@ -155,6 +154,42 @@ def test_select_asset_holds_during_switch_cooldown(monkeypatch: pytest.MonkeyPat
     assert selected_asset["asset_id"] == "asset-current"
     assert selection_mode == "hold"
     assert blend_assets == [(current_asset, 1.0)]
+
+
+def test_select_asset_force_switches_when_angle_gap_reaches_threshold(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime = build_runtime_stub()
+    current_asset = {"asset_id": "asset-current", "pose_key": "pose-current", "yaw_1deg": 0, "pitch_1deg": 0, "roll_1deg": 0}
+    best_asset = {"asset_id": "asset-best", "pose_key": "pose-best", "yaw_1deg": 10, "pitch_1deg": 0, "roll_1deg": 0}
+    session = runtime._get_or_create_session("force-switch-angle")
+    runtime._current_session = session
+    runtime._selected_asset = current_asset
+    runtime._blend_assets = [(current_asset, 1.0)]
+    runtime._frames_since_switch = 1
+
+    user_row = {
+        "pose": {"yaw_1deg": 10, "pitch_1deg": 0, "roll_1deg": 0},
+        "_motion": {"fast": False, "moderate": False},
+    }
+
+    monkeypatch.setattr(runtime, "_candidate_assets_for_user_row", lambda user_row: ([current_asset, best_asset], {"source": "test", "candidate_pool_size": 2}))
+    monkeypatch.setattr("app.hairddae_runtime.select_best_assets", lambda user_row, candidate_assets, limit=10, candidate_limit=96: [(best_asset, 1.0), (current_asset, 4.0)])
+    monkeypatch.setattr("app.hairddae_runtime.asset_rank_score", lambda user_row, asset_row: 4.0 if asset_row["asset_id"] == "asset-current" else 1.0)
+    monkeypatch.setattr(runtime, "_prefer_side_band_candidate", lambda *args, **kwargs: (args[3], args[4], False))
+    monkeypatch.setattr(runtime, "_prefer_pitch_band_candidate", lambda *args, **kwargs: (args[3], args[4], False))
+    monkeypatch.setattr(runtime, "_prefer_frontal_safe_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_prefer_render_cost_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_prefer_render_safe_candidate", lambda *args, **kwargs: (args[2], args[3], False))
+    monkeypatch.setattr(runtime, "_build_blend_assets", lambda user_row, ranked_assets, primary_asset, selection_mode: [(primary_asset, 1.0)])
+    monkeypatch.setattr(runtime, "_build_selection_trace", lambda **kwargs: {"decision": kwargs["selection_mode"]})
+
+    try:
+        selected_asset, _, selection_mode, blend_assets = runtime._select_asset(user_row)
+    finally:
+        runtime._current_session = None
+
+    assert selected_asset["asset_id"] == "asset-best"
+    assert selection_mode == "switch"
+    assert blend_assets == [(best_asset, 1.0)]
 
 
 def test_select_asset_angle_priority_prepares_geom_before_scoring(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1226,6 +1261,190 @@ def test_apply_overlay_postprocess_preserves_face_protect_region() -> None:
     assert not np.array_equal(postprocessed[4:7, 5:7], output[4:7, 5:7])
 
 
+def test_apply_overlay_postprocess_uses_clothing_color_below_shoulder() -> None:
+    runtime = build_runtime_stub()
+    output = np.full((24, 24, 3), 50, dtype=np.uint8)
+    base = np.full((24, 24, 3), np.array([220, 210, 200], dtype=np.uint8), dtype=np.uint8)
+    base[16:24, :12] = np.array([30, 40, 230], dtype=np.uint8)
+    base[16:24, 12:] = np.array([20, 170, 80], dtype=np.uint8)
+    hair_mask = np.zeros((24, 24), dtype=np.uint8)
+    hair_mask[2:8, 5:19] = 255
+    hair_mask[7:23, 4:9] = 255
+    hair_mask[7:23, 15:20] = 255
+    coverage = np.zeros((24, 24), dtype=np.uint8)
+    coverage[2:10, 8:16] = 255
+    user_row = {
+        "_hair_binary_mask": hair_mask,
+        "_hair_background_color": np.array([220.0, 210.0, 200.0], dtype=np.float32),
+        "face_bbox": {"x": 7, "y": 4, "w": 10, "h": 10},
+        "anchors": {
+            "left_temple": {"x": 8.0, "y": 6.0},
+            "right_temple": {"x": 16.0, "y": 6.0},
+            "left_ear_root": {"x": 7.0, "y": 14.0},
+            "right_ear_root": {"x": 17.0, "y": 14.0},
+            "forehead_center": {"x": 12.0, "y": 5.0},
+            "crown": {"x": 12.0, "y": 3.0},
+            "lower_left": {"x": 9.0, "y": 13.0},
+            "lower_right": {"x": 15.0, "y": 13.0},
+            "neck_left": {"x": 9.0, "y": 15.0},
+            "neck_right": {"x": 15.0, "y": 15.0},
+        },
+    }
+
+    postprocessed = runtime._apply_overlay_postprocess(
+        output,
+        base,
+        user_row,
+        renderer_name="bundle_render",
+        coverage_mask=coverage,
+    )
+
+    lower_left_region = postprocessed[19:23, 4:9].astype(np.float32).mean(axis=(0, 1))
+    lower_right_region = postprocessed[19:23, 15:20].astype(np.float32).mean(axis=(0, 1))
+    left_shirt_region = base[19:23, 4:9].astype(np.float32).mean(axis=(0, 1))
+    right_shirt_region = base[19:23, 15:20].astype(np.float32).mean(axis=(0, 1))
+    background_region = base[2:6, 0:4].astype(np.float32).mean(axis=(0, 1))
+    upper_region = postprocessed[4:8, 4:9].astype(np.float32).mean(axis=(0, 1))
+
+    assert float(np.abs(lower_left_region - left_shirt_region).mean()) < float(np.abs(lower_left_region - background_region).mean())
+    assert float(np.abs(lower_right_region - right_shirt_region).mean()) < float(np.abs(lower_right_region - background_region).mean())
+    assert float(np.abs(lower_left_region - left_shirt_region).mean()) < float(np.abs(lower_left_region - right_shirt_region).mean())
+    assert float(np.abs(lower_right_region - right_shirt_region).mean()) < float(np.abs(lower_right_region - left_shirt_region).mean())
+    mixed_shirt_region = ((left_shirt_region + right_shirt_region) * 0.5).astype(np.float32)
+    assert float(np.abs(upper_region - background_region).mean()) <= float(np.abs(upper_region - mixed_shirt_region).mean())
+
+
+def test_prepare_clothing_cleanup_context_builds_geometry_envelope_without_body_mask() -> None:
+    frame = np.full((32, 32, 3), 180, dtype=np.uint8)
+    hair_mask = np.zeros((32, 32), dtype=np.uint8)
+    hair_mask[18:30, 10:22] = 255
+    user_row = {
+        "face_bbox": {"x": 8, "y": 4, "w": 14, "h": 14},
+        "anchors": {
+            "lower_left": {"x": 11.0, "y": 17.0},
+            "lower_right": {"x": 19.0, "y": 17.0},
+            "neck_left": {"x": 11.0, "y": 19.0},
+            "neck_right": {"x": 19.0, "y": 19.0},
+        },
+    }
+
+    payload = overlay_postprocess_pipeline.prepare_clothing_cleanup_context(
+        frame,
+        user_row,
+        hair_mask=hair_mask,
+        body_mask=None,
+    )
+
+    clothing_mask = payload.get("_body_clothing_mask")
+    assert isinstance(clothing_mask, np.ndarray)
+    assert int(np.count_nonzero(clothing_mask)) > 0
+
+    center_top = int(np.flatnonzero(clothing_mask[:, 16] > 0)[0])
+    left_top = int(np.flatnonzero(clothing_mask[:, 8] > 0)[0])
+    right_top = int(np.flatnonzero(clothing_mask[:, 24] > 0)[0])
+    assert center_top >= left_top
+    assert center_top >= right_top
+
+
+def test_prepare_clothing_cleanup_context_skips_when_hair_does_not_reach_clothing_region() -> None:
+    frame = np.full((32, 32, 3), 180, dtype=np.uint8)
+    hair_mask = np.zeros((32, 32), dtype=np.uint8)
+    hair_mask[2:10, 10:22] = 255
+    user_row = {
+        "face_bbox": {"x": 8, "y": 4, "w": 14, "h": 14},
+        "anchors": {
+            "lower_left": {"x": 11.0, "y": 17.0},
+            "lower_right": {"x": 19.0, "y": 17.0},
+            "neck_left": {"x": 11.0, "y": 19.0},
+            "neck_right": {"x": 19.0, "y": 19.0},
+        },
+    }
+
+    payload = overlay_postprocess_pipeline.prepare_clothing_cleanup_context(
+        frame,
+        user_row,
+        hair_mask=hair_mask,
+        body_mask=None,
+    )
+
+    assert payload == {}
+
+
+def test_apply_overlay_postprocess_prefers_precomputed_body_clothing_field() -> None:
+    runtime = build_runtime_stub()
+    output = np.full((24, 24, 3), 50, dtype=np.uint8)
+    base = np.full((24, 24, 3), np.array([220, 210, 200], dtype=np.uint8), dtype=np.uint8)
+    hair_mask = np.zeros((24, 24), dtype=np.uint8)
+    hair_mask[2:8, 5:19] = 255
+    hair_mask[7:23, 4:9] = 255
+    hair_mask[7:23, 15:20] = 255
+    coverage = np.zeros((24, 24), dtype=np.uint8)
+    coverage[2:10, 8:16] = 255
+    body_clothing_mask = np.zeros((24, 24), dtype=np.uint8)
+    body_clothing_mask[12:24, 1:23] = 255
+    field_cols = np.arange(0, 24, dtype=np.int32)
+    field_colors = np.empty((24, 3), dtype=np.float32)
+    field_colors[:12] = np.array([30.0, 40.0, 230.0], dtype=np.float32)
+    field_colors[12:] = np.array([20.0, 170.0, 80.0], dtype=np.float32)
+
+    user_row = {
+        "_hair_binary_mask": hair_mask,
+        "_hair_background_color": np.array([220.0, 210.0, 200.0], dtype=np.float32),
+        "_body_clothing_mask": body_clothing_mask,
+        "_hair_clothing_color": np.array([40.0, 100.0, 150.0], dtype=np.float32),
+        "_hair_clothing_field_cols": field_cols,
+        "_hair_clothing_field_colors": field_colors,
+    }
+
+    postprocessed = runtime._apply_overlay_postprocess(
+        output,
+        base,
+        user_row,
+        renderer_name="bundle_render",
+        coverage_mask=coverage,
+    )
+
+    lower_left_region = postprocessed[19:23, 4:9].astype(np.float32).mean(axis=(0, 1))
+    lower_right_region = postprocessed[19:23, 15:20].astype(np.float32).mean(axis=(0, 1))
+    assert float(np.abs(lower_left_region - field_colors[4]).mean()) < 40.0
+    assert float(np.abs(lower_right_region - field_colors[15]).mean()) < 40.0
+
+
+def test_apply_overlay_postprocess_routes_cleanup_overlapping_person_body_to_clothing() -> None:
+    runtime = build_runtime_stub()
+    output = np.full((24, 24, 3), 50, dtype=np.uint8)
+    base = np.full((24, 24, 3), np.array([220, 210, 200], dtype=np.uint8), dtype=np.uint8)
+    hair_mask = np.zeros((24, 24), dtype=np.uint8)
+    hair_mask[2:8, 6:18] = 255
+    hair_mask[7:23, 4:8] = 255
+    coverage = np.zeros((24, 24), dtype=np.uint8)
+    coverage[2:10, 8:16] = 255
+    person_body_mask = np.zeros((24, 24), dtype=np.uint8)
+    person_body_mask[14:24, 0:12] = 255
+    body_clothing_mask = np.zeros((24, 24), dtype=np.uint8)
+    body_clothing_mask[16:24, 0:12] = 255
+    user_row = {
+        "_hair_binary_mask": hair_mask,
+        "_hair_background_color": np.array([220.0, 210.0, 200.0], dtype=np.float32),
+        "_person_body_mask": person_body_mask,
+        "_body_clothing_mask": body_clothing_mask,
+        "_hair_clothing_color": np.array([30.0, 40.0, 230.0], dtype=np.float32),
+    }
+
+    postprocessed = runtime._apply_overlay_postprocess(
+        output,
+        base,
+        user_row,
+        renderer_name="bundle_render",
+        coverage_mask=coverage,
+    )
+
+    lower_left_region = postprocessed[18:23, 4:8].astype(np.float32).mean(axis=(0, 1))
+    background_region = np.array([220.0, 210.0, 200.0], dtype=np.float32)
+    clothing_region = np.array([30.0, 40.0, 230.0], dtype=np.float32)
+    assert float(np.abs(lower_left_region - clothing_region).mean()) < float(np.abs(lower_left_region - background_region).mean())
+
+
 def test_apply_overlay_postprocess_backgroundizes_outer_side_fringe_residual() -> None:
     runtime = build_runtime_stub()
     output = np.full((24, 24, 3), 50, dtype=np.uint8)
@@ -1421,8 +1640,20 @@ def test_apply_overlay_postprocess_merges_residual_and_outer_ring_into_single_cl
         background_color: np.ndarray,
         alpha_scale: float = 1.0,
         external_background_mask: np.ndarray | None = None,
+        use_local_background_field: bool = True,
+        local_color_field: tuple[np.ndarray, np.ndarray] | None = None,
+        feather_edges: bool = True,
     ) -> np.ndarray:
-        _ = (base_frame_bgr, hair_binary_mask, background_color, alpha_scale, external_background_mask)
+        _ = (
+            base_frame_bgr,
+            hair_binary_mask,
+            background_color,
+            alpha_scale,
+            external_background_mask,
+            use_local_background_field,
+            local_color_field,
+            feather_edges,
+        )
         captured_masks.append(np.array(cleanup_mask, copy=True))
         return output_frame_bgr
 
@@ -1455,5 +1686,8 @@ def test_apply_overlay_postprocess_merges_residual_and_outer_ring_into_single_cl
     )
     expected_cleanup_mask = cv2.bitwise_or(expected_residual_mask, expected_outer_ring_mask)
 
-    assert len(captured_masks) == 1
-    assert np.array_equal(captured_masks[0], expected_cleanup_mask)
+    assert len(captured_masks) >= 1
+    merged_cleanup_mask = np.zeros_like(expected_cleanup_mask, dtype=np.uint8)
+    for captured_mask in captured_masks:
+        merged_cleanup_mask = cv2.bitwise_or(merged_cleanup_mask, captured_mask)
+    assert np.array_equal(merged_cleanup_mask, expected_cleanup_mask)

@@ -7,7 +7,7 @@ from typing import Any
 
 
 def repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+    return Path(__file__).resolve().parents[2]
 
 
 def inference_root() -> Path:
@@ -70,7 +70,6 @@ def default_face_landmarker_model_path() -> Path:
     candidates.extend(
         [
             inference_root() / "models" / "face_landmarker.task",
-            inference_root() / "third_party" / "models" / "face_landmarker.task",
             static_root() / "third_party" / "models" / "face_landmarker.task",
             Path("/home/yusin/AI_PlanB/m101_poc/public/models/face_landmarker.task"),
         ]

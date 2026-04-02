@@ -13,17 +13,14 @@ public record HairApplyV2Response(
         @JsonProperty("feature_schema_version") int featureSchemaVersion,
         @JsonProperty("transform_version") String transformVersion,
         InferenceConnection inference,
-        RtcConnection rtc,
-        @JsonProperty("static")
-        StaticBootstrap staticInfo
+        RtcConnection rtc
 ) {
     public static HairApplyV2Response ok(
             String applySessionId,
             int featureSchemaVersion,
             String transformVersion,
             InferenceConnection inference,
-            RtcConnection rtc,
-            StaticBootstrap staticInfo) {
+            RtcConnection rtc) {
         return new HairApplyV2Response(
                 200,
                 "시작 성공",
@@ -32,8 +29,7 @@ public record HairApplyV2Response(
                 featureSchemaVersion,
                 transformVersion,
                 inference,
-                rtc,
-                staticInfo);
+                rtc);
     }
 
     public record InferenceConnection(
@@ -61,15 +57,6 @@ public record HairApplyV2Response(
             List<String> urls,
             String username,
             String credential
-    ) {
-    }
-
-    public record StaticBootstrap(
-            @JsonProperty("base_url") String baseUrl,
-            @JsonProperty("dataset_code") String datasetCode,
-            @JsonProperty("asset_bundle_schema_version") int assetBundleSchemaVersion,
-            @JsonProperty("asset_index_url") String assetIndexUrl,
-            @JsonProperty("preload_asset_ids") List<String> preloadAssetIds
     ) {
     }
 }

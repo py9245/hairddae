@@ -67,7 +67,7 @@ public class HairEntity extends BaseTimeEntity {
         this.description = description;
     }
 
-    public void applySeed(
+    public void applyCatalogMetadata(
             String name,
             String slug,
             String category,
@@ -76,7 +76,8 @@ public class HairEntity extends BaseTimeEntity {
             String assetIndexUrl,
             String representativeAssetId,
             String previewImageUrl,
-            String description
+            String description,
+            boolean active
     ) {
         this.name = name;
         this.slug = slug;
@@ -87,7 +88,7 @@ public class HairEntity extends BaseTimeEntity {
         this.representativeAssetId = representativeAssetId;
         this.previewImageUrl = previewImageUrl;
         this.description = description;
-        this.active = Boolean.TRUE;
+        this.active = active;
     }
 
     public Long getId() {

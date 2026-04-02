@@ -4,21 +4,20 @@ import { getVideoCoverLayout } from '@/lib/Camera/layout'
 
 type CaptureCompositedImageArgs = {
   videoRef: RefObject<HTMLVideoElement | null>
-  overlayCanvasRef: RefObject<HTMLCanvasElement | null>
   wrapRef: RefObject<HTMLDivElement | null>
   hairItems: HairItem[]
+  mirror: boolean
   selectedHairId: number
 }
 
 export function captureCompositedImage({
   videoRef,
-  overlayCanvasRef,
   wrapRef,
   hairItems,
+  mirror,
   selectedHairId,
 }: CaptureCompositedImageArgs) {
   const video = videoRef.current
-  const overlay = overlayCanvasRef.current
   const wrap = wrapRef.current
 
   if (!wrap || !video || video.videoWidth === 0 || video.videoHeight === 0) {
@@ -35,9 +34,11 @@ export function captureCompositedImage({
   const ctx = out.getContext('2d')
   if (!ctx) return
 
-  ctx.save()
-  ctx.translate(width, 0)
-  ctx.scale(-1, 1)
+  if (mirror) {
+    ctx.save()
+    ctx.translate(width, 0)
+    ctx.scale(-1, 1)
+  }
 
   const { offsetX, offsetY, scale } = getVideoCoverLayout(
     width,
@@ -60,13 +61,7 @@ export function captureCompositedImage({
     drawWidth,
     drawHeight,
   )
-  ctx.restore()
-
-  if (overlay?.width && overlay?.height) {
-    ctx.save()
-    ctx.translate(width, 0)
-    ctx.scale(-1, 1)
-    ctx.drawImage(overlay, 0, 0, width, height)
+  if (mirror) {
     ctx.restore()
   }
 

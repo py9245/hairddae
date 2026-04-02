@@ -1,0 +1,14 @@
+.git
+.venv
+.pytest_cache
+__pycache__
+*.pyc
+debug
+result
+inference-server.log
+tests
+ARCHITECTURE.md
+GPU_SERVER_AGENT_GUIDE.md
+README.md
+rtc-optimization-log.md
+스크린샷*

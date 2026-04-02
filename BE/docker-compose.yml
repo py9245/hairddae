@@ -7,18 +7,18 @@ services:
     environment:
       APP_HAIR_STATIC_ROOT_PATH: /opt/be-static
       APP_HAIR_STATIC_BASE_URL: /static
-      APP_INFERENCE_WS_BASE_URL: ${APP_INFERENCE_WS_BASE_URL:-wss://j14m101.p.ssafy.io/ws/inference/apply}
-      APP_INFERENCE_RTC_OFFER_URL: ${APP_INFERENCE_RTC_OFFER_URL:-https://j14m101.p.ssafy.io/rtc/inference/offer}
+      APP_INFERENCE_WS_BASE_URL: ${APP_INFERENCE_WS_BASE_URL:-/ws/inference/apply}
+      APP_INFERENCE_RTC_OFFER_URL: ${APP_INFERENCE_RTC_OFFER_URL:-/rtc/inference/offer}
       APP_INFERENCE_RTC_ICE_SERVERS_JSON: ${APP_INFERENCE_RTC_ICE_SERVERS_JSON:-[]}
       APP_INFERENCE_WS_AUTH_TRANSPORT: ${APP_INFERENCE_WS_AUTH_TRANSPORT:-sec-websocket-protocol.v1}
-      APP_INFERENCE_NODE_ID: ${APP_INFERENCE_NODE_ID:-infer-a-01}
+      APP_INFERENCE_NODE_ID: ${APP_INFERENCE_NODE_ID:-infer-gpu-01}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      - ../static:/opt/be-static:ro
+      - ../static:/opt/be-static
     expose:
       - "8080"
     networks:
@@ -30,8 +30,11 @@ services:
     env_file:
       - .env
     environment:
-      INFERENCE_UPSTREAM_HOST: ${INFERENCE_UPSTREAM_HOST:-43.202.157.94}
+      INFERENCE_UPSTREAM_HOST: ${INFERENCE_UPSTREAM_HOST:-13.209.49.195}
       INFERENCE_UPSTREAM_PORT: ${INFERENCE_UPSTREAM_PORT:-8090}
+      APP_PUBLIC_PRIMARY_HOST: ${APP_PUBLIC_PRIMARY_HOST:-j14m101.p.ssafy.io}
+      APP_PUBLIC_SECONDARY_HOST: ${APP_PUBLIC_SECONDARY_HOST:-hairddae.store}
+      APP_PUBLIC_CERT_NAME: ${APP_PUBLIC_CERT_NAME:-j14m101.p.ssafy.io}
     depends_on:
       - app
     ports:
@@ -63,6 +66,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    ports:
+      - "127.0.0.1:5432:5432"
     networks:
       - app-net
 

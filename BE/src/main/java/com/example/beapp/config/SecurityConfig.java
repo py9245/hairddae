@@ -32,7 +32,13 @@ import jakarta.servlet.http.HttpServletResponse;
 
 @Configuration
 @EnableWebSecurity
-@EnableConfigurationProperties({AppSecurityProperties.class, AppCorsProperties.class, AppHairProperties.class, AppInferenceProperties.class})
+@EnableConfigurationProperties({
+        AppSecurityProperties.class,
+        AppCorsProperties.class,
+        AppHairProperties.class,
+        AppInferenceProperties.class,
+        AppGoogleSecurityProperties.class
+})
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
@@ -60,41 +66,55 @@ public class SecurityConfig {
                         .requestMatchers("/api/swagger-ui.html", "/api/swagger-ui/**", "/api/v3/api-docs/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(HttpMethod.POST,
+                                "/api/internal/hairs/sync",
+                                "/api/internal/hairs/sync/",
+                                "/api/accounts/google-login",
+                                "/api/accounts/google-login/",
+                                "/api/accounts/signup",
+                                "/api/accounts/signup/",
                                 "/api/accounts/login",
                                 "/api/accounts/login/",
-                                "/api/accounts/signin",
-                                "/api/accounts/signin/",
                                 "/api/accounts/logout",
                                 "/api/accounts/logout/",
                                 "/api/accounts/signout",
                                 "/api/accounts/signout/",
                                 "/api/accounts/refreshToken",
                                 "/api/accounts/refreshToken/").permitAll()
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/hairs",
+                                "/api/hairs/",
+                                "/api/hairs/*",
+                                "/api/hairs/*/*").permitAll()
                         .requestMatchers(
-                                "/api/me",
-                                "/api/me/",
-                                "/api/home/hairapplystatus/**",
                                 "/api/home/customrank",
                                 "/api/home/customrank/",
-                                "/api/home/nomalrank",
-                                "/api/home/nomalrank/",
                                 "/api/mypage/**").authenticated()
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/home/normalrank",
+                                "/api/home/normalrank/",
+                                "/api/home/categorylist",
+                                "/api/home/categorylist/",
+                                "/api/home/categorycardlist",
+                                "/api/home/categorycardlist/").permitAll()
                         .requestMatchers(HttpMethod.POST,
-                                "/api/home/hairapplystart",
-                                "/api/home/hairapplystart/",
+                                "/api/home/hairclick",
+                                "/api/home/hairclick/").authenticated()
+                        .requestMatchers(HttpMethod.POST,
                                 "/api/home/hairapplybootstrap",
                                 "/api/home/hairapplybootstrap/",
-                                "/api/home/hairapplystart-v2",
-                                "/api/home/hairapplystart-v2/",
                                 "/api/home/hairapplyresume",
                                 "/api/home/hairapplyresume/",
-                                "/api/home/hairapplyresume-v2",
-                                "/api/home/hairapplyresume-v2/",
                                 "/api/home/recodehair",
-                                "/api/home/recodehair/").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/hairs/*/likes", "/api/hairs/*/likes/").authenticated()
-                        .requestMatchers(HttpMethod.DELETE, "/api/hairs/*/likes", "/api/hairs/*/likes/").authenticated()
-                        .anyRequest().permitAll())
+                                "/api/home/recodehair/").permitAll()
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/hairs/*/like",
+                                "/api/hairs/*/like/").authenticated()
+                        .requestMatchers(
+                                HttpMethod.DELETE,
+                                "/api/hairs/*/like",
+                                "/api/hairs/*/like/").authenticated()
+                        .anyRequest().denyAll())
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(authenticationEntryPoint())
                         .accessDeniedHandler(accessDeniedHandler()))

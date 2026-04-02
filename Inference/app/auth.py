@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import logging
 from typing import Any
 
 import jwt
@@ -9,6 +10,8 @@ from jwt import InvalidTokenError
 from redis.asyncio import Redis
 
 from app.config import Settings
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class TicketValidationError(Exception):
@@ -74,6 +77,58 @@ def _parse_expiration(value: Any) -> datetime:
     raise TicketValidationError("ticket expiration is missing")
 
 
+def _ticket_summary(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    summary: dict[str, Any] = {}
+    for key in (
+        "iss",
+        "aud",
+        "sub",
+        "jti",
+        "node",
+        "sid",
+        "did",
+        "hid",
+        "ver",
+        "dataset_code",
+        "tokenType",
+        "single_use",
+        "exp",
+    ):
+        if key in payload:
+            summary[key] = payload[key]
+    return summary
+
+
+def _unverified_ticket_summary(raw_ticket: str) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    try:
+        header = jwt.get_unverified_header(raw_ticket)
+        if isinstance(header, dict):
+            for key in ("alg", "typ", "kid"):
+                if key in header:
+                    summary[f"header_{key}"] = header[key]
+    except Exception:
+        header = None
+        del header
+
+    try:
+        payload = jwt.decode(
+            raw_ticket,
+            options={
+                "verify_signature": False,
+                "verify_exp": False,
+                "verify_aud": False,
+                "verify_iss": False,
+            },
+        )
+    except Exception:
+        return summary
+    summary.update(_ticket_summary(payload))
+    return summary
+
+
 async def validate_connect_ticket(
     raw_ticket: str,
     settings: Settings,
@@ -83,7 +138,7 @@ async def validate_connect_ticket(
         payload = jwt.decode(
             raw_ticket,
             settings.jwt_secret,
-            algorithms=["HS256"],
+            algorithms=list(settings.ticket_algorithms),
             issuer=settings.jwt_issuer,
             audience=settings.ticket_audience,
             options={
@@ -91,15 +146,28 @@ async def validate_connect_ticket(
             },
         )
     except InvalidTokenError as exc:
+        logger.warning(
+            "ticket decode failed: reason=%s claims=%s",
+            exc,
+            _unverified_ticket_summary(raw_ticket),
+        )
         raise TicketValidationError("invalid connect ticket") from exc
 
     if payload.get("tokenType") != "INFERENCE_CONNECT":
+        logger.warning("ticket rejected: invalid token type claims=%s", _ticket_summary(payload))
         raise TicketValidationError("invalid token type")
     if payload.get("single_use") is not True:
+        logger.warning("ticket rejected: single_use claim missing claims=%s", _ticket_summary(payload))
         raise TicketValidationError("single_use claim is required")
 
     node_id = str(payload.get("node", ""))
     if node_id != settings.node_id:
+        logger.warning(
+            "ticket rejected: node mismatch expected=%s actual=%s claims=%s",
+            settings.node_id,
+            node_id,
+            _ticket_summary(payload),
+        )
         raise TicketValidationError("ticket node mismatch")
 
     try:
@@ -120,18 +188,27 @@ async def validate_connect_ticket(
             expires_at=_parse_expiration(payload["exp"]),
         )
     except (KeyError, TypeError, ValueError) as exc:
+        logger.warning("ticket rejected: incomplete claims reason=%s claims=%s", exc, _ticket_summary(payload))
         raise TicketValidationError("ticket claims are incomplete") from exc
 
     if claims.schema_version != settings.feature_schema_version:
+        logger.warning(
+            "ticket rejected: schema mismatch expected=%s actual=%s claims=%s",
+            settings.feature_schema_version,
+            claims.schema_version,
+            _ticket_summary(payload),
+        )
         raise TicketValidationError("schema version mismatch")
 
     now = datetime.now(tz=timezone.utc)
     ttl_seconds = int((claims.expires_at - now).total_seconds())
     if ttl_seconds <= 0:
+        logger.warning("ticket rejected: expired claims=%s", _ticket_summary(payload))
         raise TicketValidationError("ticket expired")
 
     consumed = await replay_store.consume(claims.token_id, ttl_seconds)
     if not consumed:
+        logger.warning("ticket rejected: replay detected claims=%s", _ticket_summary(payload))
         raise TicketValidationError("ticket replay detected")
 
     return claims

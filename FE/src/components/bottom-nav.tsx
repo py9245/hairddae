@@ -20,16 +20,16 @@ type BottomNavBaseProps = {
 
 const items: BottomNavItem[] = [
   {
-    label: '카메라',
-    to: '/camera',
-    icon: Camera,
-    match: (pathname) => pathname.startsWith('/camera'),
-  },
-  {
     label: '홈',
     to: '/main',
     icon: House,
     match: (pathname) => pathname.startsWith('/main'),
+  },
+  {
+    label: '카메라',
+    to: '/camera',
+    icon: Camera,
+    match: (pathname) => pathname.startsWith('/camera'),
   },
   {
     label: '내 정보',
@@ -40,9 +40,7 @@ const items: BottomNavItem[] = [
 ]
 
 function shouldHideBottomNav(pathname: string) {
-  return (
-    pathname === '/' || pathname === '/camera' || pathname.startsWith('/auth')
-  )
+  return !pathname.startsWith('/main') && !pathname.startsWith('/mypage')
 }
 
 function BottomNavLink({
@@ -62,7 +60,7 @@ function BottomNavLink({
 }) {
   const className = cn(
     'flex cursor-pointer flex-col items-center justify-center gap-[3px] text-center leading-[normal] not-italic transition-colors duration-200',
-    isActive ? 'text-[#FFA7A6]' : 'text-[#D7D7D7] hover:text-[#FFA7A6]',
+    isActive ? 'text-primary-250' : 'text-nav-inactive hover:text-primary-250',
   )
 
   const content = (
@@ -122,7 +120,7 @@ export function BottomNavBase({
   return (
     <nav
       aria-label="Primary"
-      className="absolute right-0 bottom-0 left-0 z-10 h-[82px] rounded-t-[16px] bg-white px-10 py-4 border border-[#D7D7D7]"
+      className="absolute right-0 bottom-0 left-0 z-10 h-[62px] rounded-t-[16px] bg-white px-10 py-4 border border-nav-inactive"
     >
       <ul className="flex h-full items-center justify-between">
         {items.map(({ label, to, icon: Icon, match }) => {

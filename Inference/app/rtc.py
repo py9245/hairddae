@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+import fractions
 import json
 import logging
 import cv2
@@ -16,14 +18,16 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from app.auth import TicketValidationError, validate_connect_ticket
-from app.bald import BaldPreprocessor
 from app.catalog import AssetBundle, AssetCatalog
-from app.config import Settings
+from app.config import DEFAULT_RTC_FPS, Settings
 from app.face_tracking import ServerFaceTracker
+from app.fallback_render_pipeline import render_bundle_fallback_frame
+from app.frame_prepare_pipeline import TrackingCacheSnapshot, prepare_runtime_frame
+from app.hair_attenuation import HairAttenuator
 from app.hairddae_runtime_manager import HairddaeRuntimeManager
 from app.models import FeatureMessageModel
-from app.rtc_metrics import RtcTransportStats
 from app.server_render import compose_bundle_frame
+from cv2_cuda_utils import opencv_flip, opencv_resize
 
 try:
     from aiortc import (
@@ -34,7 +38,7 @@ try:
         RTCSessionDescription,
         VideoStreamTrack,
     )
-    from aiortc.mediastreams import MediaStreamError
+    from aiortc.mediastreams import MediaStreamError, VIDEO_CLOCK_RATE, VIDEO_TIME_BASE
     from av import VideoFrame
 except ImportError:  # pragma: no cover - runtime guarded
     RTCConfiguration = None
@@ -44,11 +48,13 @@ except ImportError:  # pragma: no cover - runtime guarded
     RTCSessionDescription = None
     VideoStreamTrack = object
     MediaStreamError = RuntimeError
+    VIDEO_CLOCK_RATE = 90000
+    VIDEO_TIME_BASE = fractions.Fraction(1, 90000)
     VideoFrame = None
 
 
 logger = logging.getLogger("uvicorn.error")
-RENDER_FRAME_DELAY_MS = 60.0
+RENDER_FRAME_DELAY_MS = 1000.0 / float(DEFAULT_RTC_FPS)
 MAX_BUFFERED_VIDEO_FRAMES = 8
 SERVER_TRACK_MAX_BUFFERED_VIDEO_FRAMES = 2
 SERVER_RENDER_READY_MIN_PROCESSED = 1
@@ -114,6 +120,20 @@ class RtcOfferRequest(BaseModel):
     connect_ticket: str
 
 
+@dataclass(frozen=True)
+class HairControlTarget:
+    hair_id: int
+    dataset_code: str
+    representative_asset_id: str | None = None
+
+
+class ControlMessageError(Exception):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
 @dataclass
 class RtcSessionState:
     latest_feature: FeatureMessageModel | None = None
@@ -129,16 +149,38 @@ class RtcSessionState:
     pose_window: deque[tuple[float, float, float]] = field(default_factory=deque)
     data_channel: Any | None = None
     server_processed_seq: int = 0
-    bald_cache_frame_bgr: np.ndarray | None = None
-    bald_cache_user_row: dict[str, Any] | None = None
-    bald_cache_reuse_count: int = 0
     current_process_max_dimension: int | None = None
     slow_frame_streak: int = 0
     fast_frame_streak: int = 0
     last_perf_log_at_ms: float = 0.0
     recent_pipeline_latency_ms: float = 0.0
-    transport_stats: RtcTransportStats = field(default_factory=RtcTransportStats)
-    transport_summary_logged: bool = False
+    active_hair_id: int | None = None
+    active_dataset_code: str | None = None
+    active_representative_asset_id: str | None = None
+    hello_received: bool = False
+    stage_width: int | None = None
+    stage_height: int | None = None
+    stage_fps: float | None = None
+    mirrored: bool = False
+    stage_mismatch_reported: bool = False
+    last_stats_sent_at_ms: float = 0.0
+    last_tracking_user_row: dict[str, Any] | None = None
+    last_tracking_landmarks_px: np.ndarray | None = None
+    last_tracking_feature: FeatureMessageModel | None = None
+    control_message_count: int = 0
+    control_error_count: int = 0
+    control_message_total_bytes: int = 0
+    last_control_message_type: str | None = None
+    last_control_message_bytes: int = 0
+    last_control_message_client_ts_ms: int | None = None
+    last_control_message_server_ts_ms: int | None = None
+    last_control_message_latency_ms: float = 0.0
+    last_control_error_code: str | None = None
+    last_control_response_count: int = 0
+    data_channel_send_count: int = 0
+    last_channel_payload_type: str | None = None
+    last_channel_send_latency_ms: float = 0.0
+    last_channel_buffered_amount: int = 0
 
 
 @dataclass
@@ -193,21 +235,384 @@ def _build_selection_feature(
     )
 
 
-def _record_rtc_transport_sample(state: RtcSessionState, received_at_ms: float) -> float:
-    sample_ms = max(0.0, (time.monotonic() * 1000.0) - float(received_at_ms))
-    state.transport_stats.record(sample_ms)
-    return sample_ms
-
-
-def _rtc_transport_summary(state: RtcSessionState) -> dict[str, float | int | bool]:
-    stats = state.transport_stats
+def _control_error_payload(code: str, message: str) -> dict[str, object]:
     return {
-        "sample_count": stats.sample_count,
-        "average_ms": stats.average_ms,
-        "max_ms": stats.max_ms,
-        "last_ms": stats.last_ms,
-        "first_remote_excluded": stats.first_remote_excluded,
+        "type": "error",
+        "code": code,
+        "message": message,
     }
+
+
+def _raw_message_size_bytes(raw_message: str | bytes) -> int:
+    if isinstance(raw_message, bytes):
+        return len(raw_message)
+    return len(raw_message.encode("utf-8", errors="ignore"))
+
+
+def _extract_control_message_debug(raw_message: str | bytes) -> tuple[str | None, int | None]:
+    try:
+        decoded = raw_message.decode("utf-8") if isinstance(raw_message, bytes) else raw_message
+        parsed = json.loads(decoded)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None, None
+    if not isinstance(parsed, dict):
+        return None, None
+    message_type = _optional_str(parsed.get("type"))
+    client_ts_ms = None
+    ts_value = parsed.get("ts_ms")
+    if ts_value is not None:
+        try:
+            client_ts_ms = int(ts_value)
+        except (TypeError, ValueError):
+            client_ts_ms = None
+    return message_type, client_ts_ms
+
+
+def _channel_observability_payload(channel: Any | None) -> dict[str, object]:
+    if channel is None:
+        return {
+            "data_channel_ready_state": "missing",
+            "data_channel_buffered_amount": 0,
+            "data_channel_label": "",
+        }
+    payload: dict[str, object] = {
+        "data_channel_ready_state": str(getattr(channel, "readyState", "") or ""),
+        "data_channel_buffered_amount": int(getattr(channel, "bufferedAmount", 0) or 0),
+        "data_channel_label": str(getattr(channel, "label", "") or ""),
+    }
+    low_threshold = getattr(channel, "bufferedAmountLowThreshold", None)
+    if low_threshold is not None:
+        payload["data_channel_buffered_amount_low_threshold"] = int(low_threshold)
+    return payload
+
+
+def _augment_control_payload(
+    payload: dict[str, object],
+    *,
+    message_type: str | None,
+    message_bytes: int,
+    server_received_ts_ms: int,
+    processing_ms: float,
+    response_index: int,
+    response_count: int,
+    channel: Any | None,
+    client_ts_ms: int | None = None,
+) -> dict[str, object]:
+    enriched = dict(payload)
+    enriched["control_message_type"] = message_type or ""
+    enriched["control_message_bytes"] = int(message_bytes)
+    enriched["control_processing_ms"] = round(float(processing_ms), 3)
+    enriched["control_response_index"] = int(response_index)
+    enriched["control_response_count"] = int(response_count)
+    enriched["server_received_ts_ms"] = int(server_received_ts_ms)
+    enriched["server_sent_ts_ms"] = _now_ms()
+    if client_ts_ms is not None and enriched.get("client_ts_ms") is None:
+        enriched["client_ts_ms"] = int(client_ts_ms)
+    enriched.update(_channel_observability_payload(channel))
+    return enriched
+
+
+def _send_channel_json(
+    channel: Any | None,
+    state: RtcSessionState | None,
+    payload: dict[str, object],
+) -> bool:
+    if channel is None or getattr(channel, "readyState", None) != "open":
+        return False
+    send_started_at = time.perf_counter()
+    serialized = json.dumps(payload)
+    channel.send(serialized)
+    if state is not None:
+        state.data_channel_send_count += 1
+        state.last_channel_payload_type = str(payload.get("type") or "")
+        state.last_channel_send_latency_ms = round((time.perf_counter() - send_started_at) * 1000.0, 3)
+        state.last_channel_buffered_amount = int(getattr(channel, "bufferedAmount", 0) or 0)
+    return True
+
+
+def _optional_str(value: object) -> str | None:
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _positive_int(value: object, field_name: str) -> int:
+    try:
+        resolved = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ControlMessageError("INVALID_CONTROL_MESSAGE", f"{field_name} must be an integer") from exc
+    if resolved <= 0:
+        raise ControlMessageError("INVALID_CONTROL_MESSAGE", f"{field_name} must be positive")
+    return resolved
+
+
+def _positive_float(value: object, field_name: str) -> float:
+    try:
+        resolved = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ControlMessageError("INVALID_CONTROL_MESSAGE", f"{field_name} must be numeric") from exc
+    if resolved <= 0:
+        raise ControlMessageError("INVALID_CONTROL_MESSAGE", f"{field_name} must be positive")
+    return resolved
+
+
+def _bool_value(value: object, field_name: str) -> bool:
+    if isinstance(value, bool):
+        return value
+    raise ControlMessageError("INVALID_CONTROL_MESSAGE", f"{field_name} must be a boolean")
+
+
+def _non_negative_int(value: object, field_name: str) -> int:
+    try:
+        resolved = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ControlMessageError("INVALID_CONTROL_MESSAGE", f"{field_name} must be an integer") from exc
+    if resolved < 0:
+        raise ControlMessageError("INVALID_CONTROL_MESSAGE", f"{field_name} must be non-negative")
+    return resolved
+
+
+def _active_hair_target(state: RtcSessionState, claims: Any) -> HairControlTarget:
+    return HairControlTarget(
+        hair_id=int(claims.hair_id if state.active_hair_id is None else state.active_hair_id),
+        dataset_code=str(claims.dataset_code if state.active_dataset_code is None else state.active_dataset_code),
+        representative_asset_id=(
+            claims.representative_asset_id
+            if state.active_representative_asset_id is None
+            else state.active_representative_asset_id
+        ),
+    )
+
+
+def _mapped_hair_target(settings: Settings, hair_id: int) -> HairControlTarget | None:
+    for payload in settings.rtc_hair_control_map:
+        try:
+            mapped_hair_id = int(payload.get("hair_id"))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        if mapped_hair_id != hair_id:
+            continue
+
+        dataset_code = _optional_str(payload.get("dataset_code"))
+        if dataset_code is None:
+            continue
+        return HairControlTarget(
+            hair_id=mapped_hair_id,
+            dataset_code=dataset_code,
+            representative_asset_id=_optional_str(payload.get("representative_asset_id")),
+        )
+    return None
+
+
+def _resolve_hair_target(
+    payload: dict[str, object],
+    *,
+    state: RtcSessionState,
+    settings: Settings,
+    claims: Any,
+    catalog: AssetCatalog,
+) -> HairControlTarget:
+    hair_id = _positive_int(payload.get("hair_id"), "hair_id")
+    dataset_code = _optional_str(payload.get("dataset_code"))
+    representative_asset_id = _optional_str(payload.get("representative_asset_id"))
+    current_target = _active_hair_target(state, claims)
+
+    if dataset_code is None:
+        if current_target.hair_id == hair_id:
+            dataset_code = current_target.dataset_code
+            if representative_asset_id is None:
+                representative_asset_id = current_target.representative_asset_id
+        else:
+            mapped_target = _mapped_hair_target(settings, hair_id)
+            if mapped_target is not None:
+                dataset_code = mapped_target.dataset_code
+                if representative_asset_id is None:
+                    representative_asset_id = mapped_target.representative_asset_id
+
+    if dataset_code is None:
+        raise ControlMessageError(
+            "HAIR_MAPPING_NOT_FOUND",
+            f"unable to resolve dataset_code for hair_id {hair_id}",
+        )
+
+    try:
+        catalog.ensure_control_target(dataset_code, representative_asset_id)
+    except ValueError as exc:
+        message = str(exc)
+        if "dataset_code" in message:
+            raise ControlMessageError("DATASET_NOT_FOUND", message) from exc
+        if "representative_asset_id" in message:
+            raise ControlMessageError("ASSET_NOT_FOUND", message) from exc
+        raise ControlMessageError("INVALID_CONTROL_MESSAGE", message) from exc
+
+    return HairControlTarget(
+        hair_id=hair_id,
+        dataset_code=dataset_code,
+        representative_asset_id=representative_asset_id,
+    )
+
+
+def _reset_runtime_control_state(state: RtcSessionState) -> None:
+    state.latest_feature = None
+    state.last_selected_bundle = None
+    state.last_switch_at_ms = 0
+    state.last_processed_seq = 0
+    state.processed_count = 0
+    state.stable_asset_count = 0
+    state.last_asset_id = None
+    state.render_ready = False
+    state.processed_bundle_history.clear()
+    state.pose_window.clear()
+
+
+def _apply_hair_target(
+    state: RtcSessionState,
+    target: HairControlTarget,
+    *,
+    hair_runtime_manager: HairddaeRuntimeManager,
+    session_id: str,
+) -> bool:
+    previous_dataset_code = state.active_dataset_code
+    changed = (
+        state.active_hair_id != target.hair_id
+        or state.active_dataset_code != target.dataset_code
+        or state.active_representative_asset_id != target.representative_asset_id
+    )
+    state.active_hair_id = target.hair_id
+    state.active_dataset_code = target.dataset_code
+    state.active_representative_asset_id = target.representative_asset_id
+    if changed:
+        _reset_runtime_control_state(state)
+        if previous_dataset_code not in (None, "", target.dataset_code):
+            hair_runtime_manager.reset_session(previous_dataset_code, session_id)
+        hair_runtime_manager.reset_session(target.dataset_code, session_id)
+    return changed
+
+
+def _hair_applied_payload(
+    *,
+    target: HairControlTarget,
+    source: str,
+    changed: bool,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "type": "hair_applied",
+        "hair_id": target.hair_id,
+        "dataset_code": target.dataset_code,
+        "changed": changed,
+        "source": source,
+        "server_ts_ms": _now_ms(),
+    }
+    if target.representative_asset_id:
+        payload["representative_asset_id"] = target.representative_asset_id
+    return payload
+
+
+def _process_control_message(
+    raw_message: str | bytes,
+    *,
+    state: RtcSessionState,
+    settings: Settings,
+    claims: Any,
+    catalog: AssetCatalog,
+    hair_runtime_manager: HairddaeRuntimeManager,
+) -> list[dict[str, object]]:
+    try:
+        decoded = raw_message.decode("utf-8") if isinstance(raw_message, bytes) else raw_message
+        parsed = json.loads(decoded)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ControlMessageError("INVALID_CONTROL_MESSAGE", "message must be valid JSON") from exc
+
+    if not isinstance(parsed, dict):
+        raise ControlMessageError("INVALID_CONTROL_MESSAGE", "message must be a JSON object")
+
+    message_type = _optional_str(parsed.get("type"))
+    if message_type is None:
+        raise ControlMessageError("INVALID_CONTROL_MESSAGE", "message.type is required")
+
+    if message_type == "heartbeat":
+        ts_ms = (
+            _non_negative_int(parsed.get("ts_ms"), "ts_ms")
+            if parsed.get("ts_ms") is not None
+            else _now_ms()
+        )
+        return [
+            {
+                "type": "heartbeat_ack",
+                "apply_session_id": claims.apply_session_id,
+                "ts_ms": ts_ms,
+                "server_ts_ms": _now_ms(),
+            }
+        ]
+
+    if message_type == "hello":
+        session_version = _positive_int(parsed.get("session_version", 1), "session_version")
+        if session_version != 1:
+            raise ControlMessageError("UNSUPPORTED_SESSION_VERSION", f"unsupported session_version {session_version}")
+
+        state.stage_width = _positive_int(parsed.get("stage_width"), "stage_width")
+        state.stage_height = _positive_int(parsed.get("stage_height"), "stage_height")
+        state.stage_fps = _positive_float(parsed.get("fps"), "fps")
+        state.mirrored = (
+            settings.rtc_mirrored_input
+            if parsed.get("mirrored") is None
+            else _bool_value(parsed.get("mirrored"), "mirrored")
+        )
+        state.hello_received = True
+
+        if parsed.get("hair_id") is None:
+            return []
+
+        target = _resolve_hair_target(
+            parsed,
+            state=state,
+            settings=settings,
+            claims=claims,
+            catalog=catalog,
+        )
+        changed = _apply_hair_target(
+            state,
+            target,
+            hair_runtime_manager=hair_runtime_manager,
+            session_id=claims.apply_session_id,
+        )
+        return [
+            _hair_applied_payload(
+                target=target,
+                source="hello",
+                changed=changed,
+            )
+        ]
+
+    if message_type == "select_hair":
+        if settings.rtc_require_hello and not state.hello_received:
+            raise ControlMessageError("HELLO_REQUIRED", "hello must be received before select_hair")
+        target = _resolve_hair_target(
+            parsed,
+            state=state,
+            settings=settings,
+            claims=claims,
+            catalog=catalog,
+        )
+        changed = _apply_hair_target(
+            state,
+            target,
+            hair_runtime_manager=hair_runtime_manager,
+            session_id=claims.apply_session_id,
+        )
+        return [
+            _hair_applied_payload(
+                target=target,
+                source="select_hair",
+                changed=changed,
+            )
+        ]
+
+    raise ControlMessageError(
+        "UNSUPPORTED_CONTROL_MESSAGE",
+        f"unsupported control message type {message_type}",
+    )
 
 
 class RtcRenderTrack(VideoStreamTrack):  # type: ignore[misc]
@@ -325,7 +730,6 @@ class RtcRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             frame_height,
         )
         if match is None:
-            _record_rtc_transport_sample(self._state, buffered_frame.received_at_ms)
             return frame
 
         image = frame.to_image()
@@ -338,7 +742,6 @@ class RtcRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         next_frame = VideoFrame.from_image(rendered.convert("RGB"))
         next_frame.pts = frame.pts
         next_frame.time_base = frame.time_base
-        _record_rtc_transport_sample(self._state, buffered_frame.received_at_ms)
         return next_frame
 
 
@@ -355,7 +758,9 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         catalog: AssetCatalog,
         hair_runtime_manager: HairddaeRuntimeManager,
         face_tracker: ServerFaceTracker,
-        bald_processor: BaldPreprocessor | None,
+        hair_segmenter: Any | None,
+        body_segmenter: Any | None,
+        hair_attenuator: HairAttenuator | None,
     ) -> None:
         super().__init__()
         self._source_track = source_track
@@ -365,70 +770,193 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         self._catalog = catalog
         self._hair_runtime_manager = hair_runtime_manager
         self._face_tracker = face_tracker
-        self._bald_processor = bald_processor
+        self._hair_segmenter = hair_segmenter
+        self._body_segmenter = body_segmenter
+        self._hair_attenuator = hair_attenuator
         self._buffer: deque[BufferedVideoFrame] = deque()
         self._frame_available = asyncio.Event()
         self._source_ended = False
+        self._last_output_sent_at_ms = 0.0
+        self._output_timestamp: int | None = None
+        self._last_input_pts: int | None = None
+        self._last_output_pts_sent: int | None = None
+        self._input_pts_duplicate_count = 0
+        self._input_pts_rewind_count = 0
+        self._output_pts_duplicate_count = 0
+        self._output_pts_rewind_count = 0
+        self._tracking_snapshot = TrackingCacheSnapshot(
+            user_row=None,
+            landmarks_px=None,
+            feature=None,
+        )
+        prepare_workers = 3 if bool(getattr(settings, "rtc_body_segmentation_enabled", False)) else 2
+        self._prepare_executor = ThreadPoolExecutor(max_workers=prepare_workers, thread_name_prefix="rtc-prepare")
         self._reader_task = asyncio.create_task(self._reader_loop())
 
-    @staticmethod
-    def _bbox_iou(lhs_bbox: dict[str, Any] | None, rhs_bbox: dict[str, Any] | None) -> float:
-        if not lhs_bbox or not rhs_bbox:
-            return 0.0
-        lhs_x0 = float(lhs_bbox.get("x", 0.0))
-        lhs_y0 = float(lhs_bbox.get("y", 0.0))
-        lhs_x1 = lhs_x0 + float(lhs_bbox.get("w", 0.0))
-        lhs_y1 = lhs_y0 + float(lhs_bbox.get("h", 0.0))
-        rhs_x0 = float(rhs_bbox.get("x", 0.0))
-        rhs_y0 = float(rhs_bbox.get("y", 0.0))
-        rhs_x1 = rhs_x0 + float(rhs_bbox.get("w", 0.0))
-        rhs_y1 = rhs_y0 + float(rhs_bbox.get("h", 0.0))
-        inter_x0 = max(lhs_x0, rhs_x0)
-        inter_y0 = max(lhs_y0, rhs_y0)
-        inter_x1 = min(lhs_x1, rhs_x1)
-        inter_y1 = min(lhs_y1, rhs_y1)
-        inter_w = max(0.0, inter_x1 - inter_x0)
-        inter_h = max(0.0, inter_y1 - inter_y0)
-        inter_area = inter_w * inter_h
-        lhs_area = max(0.0, lhs_x1 - lhs_x0) * max(0.0, lhs_y1 - lhs_y0)
-        rhs_area = max(0.0, rhs_x1 - rhs_x0) * max(0.0, rhs_y1 - rhs_y0)
-        denominator = lhs_area + rhs_area - inter_area
-        if denominator <= 0.0:
-            return 0.0
-        return inter_area / denominator
+    def _active_target(self) -> HairControlTarget:
+        return _active_hair_target(self._state, self._claims)
+
+    def _active_dataset_code(self) -> str:
+        return self._active_target().dataset_code
+
+    def _active_hair_id(self) -> int:
+        return self._active_target().hair_id
+
+    def _active_representative_asset_id(self) -> str | None:
+        return self._active_target().representative_asset_id
+
+    def _mirrored_input(self) -> bool:
+        if self._state.hello_received:
+            return bool(self._state.mirrored)
+        return bool(self._settings.rtc_mirrored_input)
+
+    def _mirrored_output(self) -> bool:
+        return bool(self._settings.rtc_output_mirrored)
+
+    def _output_interval_ms(self) -> float:
+        configured_fps = max(1, int(getattr(self._settings, "rtc_output_fps", DEFAULT_RTC_FPS) or DEFAULT_RTC_FPS))
+        return 1000.0 / float(configured_fps)
+
+    def _target_output_size(self, original_size: tuple[int, int]) -> tuple[int, int]:
+        configured_width = max(0, int(getattr(self._settings, "rtc_output_width", 0) or 0))
+        configured_height = max(0, int(getattr(self._settings, "rtc_output_height", 0) or 0))
+        if configured_width <= 0 or configured_height <= 0:
+            return original_size
+        return configured_width, configured_height
+
+    def _next_output_timestamp(self) -> tuple[int, fractions.Fraction]:
+        configured_fps = max(1, int(getattr(self._settings, "rtc_output_fps", DEFAULT_RTC_FPS) or DEFAULT_RTC_FPS))
+        increment = max(1, int(round(VIDEO_CLOCK_RATE / float(configured_fps))))
+        if self._output_timestamp is None:
+            self._output_timestamp = 0
+        else:
+            self._output_timestamp += increment
+        return self._output_timestamp, VIDEO_TIME_BASE
 
     @staticmethod
-    def _pose_delta(lhs_row: dict[str, Any] | None, rhs_row: dict[str, Any] | None) -> float:
-        if not lhs_row or not rhs_row:
-            return 999.0
-        lhs_pose = lhs_row.get("pose", {})
-        rhs_pose = rhs_row.get("pose", {})
-        return max(
-            abs(float(lhs_pose.get("yaw_float", lhs_pose.get("yaw_1deg", 0.0))) - float(rhs_pose.get("yaw_float", rhs_pose.get("yaw_1deg", 0.0)))),
-            abs(float(lhs_pose.get("pitch_float", lhs_pose.get("pitch_1deg", 0.0))) - float(rhs_pose.get("pitch_float", rhs_pose.get("pitch_1deg", 0.0)))),
-            abs(float(lhs_pose.get("roll_float", lhs_pose.get("roll_1deg", 0.0))) - float(rhs_pose.get("roll_float", rhs_pose.get("roll_1deg", 0.0)))),
+    def _time_base_to_str(time_base: Any) -> str | None:
+        if time_base is None:
+            return None
+        try:
+            numerator = getattr(time_base, "numerator", None)
+            denominator = getattr(time_base, "denominator", None)
+            if numerator is not None and denominator is not None:
+                return f"{numerator}/{denominator}"
+            return str(time_base)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _pts_to_ms(pts: int | None, time_base: Any) -> float | None:
+        if pts is None or time_base is None:
+            return None
+        try:
+            return round(float(pts) * float(time_base) * 1000.0, 3)
+        except Exception:
+            return None
+
+    def _record_input_pts(self, pts: int | None) -> None:
+        if pts is None:
+            return
+        if self._last_input_pts is not None:
+            if pts == self._last_input_pts:
+                self._input_pts_duplicate_count += 1
+            elif pts < self._last_input_pts:
+                self._input_pts_rewind_count += 1
+        self._last_input_pts = pts
+
+    def _record_output_pts(self, pts: int | None) -> None:
+        if pts is None:
+            return
+        if self._last_output_pts_sent is not None:
+            if pts == self._last_output_pts_sent:
+                self._output_pts_duplicate_count += 1
+            elif pts < self._last_output_pts_sent:
+                self._output_pts_rewind_count += 1
+        self._last_output_pts_sent = pts
+
+    async def _wait_for_next_output_slot(self) -> None:
+        interval_ms = self._output_interval_ms()
+        if self._last_output_sent_at_ms <= 0.0 or interval_ms <= 0.0:
+            return
+        now_ms = time.monotonic() * 1000.0
+        wait_ms = self._last_output_sent_at_ms + interval_ms - now_ms
+        if wait_ms > 0.0:
+            await asyncio.sleep(wait_ms / 1000.0)
+
+    def _maybe_emit_stage_mismatch_error(self, frame_width: int, frame_height: int) -> None:
+        if self._state.stage_mismatch_reported or not self._state.hello_received:
+            return
+        if self._state.stage_width is None or self._state.stage_height is None:
+            return
+        if self._state.stage_width == frame_width and self._state.stage_height == frame_height:
+            return
+        self._state.stage_mismatch_reported = True
+        self._emit_channel_payload(
+            _control_error_payload(
+                "STAGE_MISMATCH",
+                (
+                    f"hello stage {self._state.stage_width}x{self._state.stage_height} "
+                    f"does not match incoming track {frame_width}x{frame_height}"
+                ),
+            )
         )
 
-    def _can_reuse_bald_cache(
+    def _maybe_emit_stats(
         self,
-        user_row: dict[str, Any] | None,
-        frame_shape: tuple[int, ...],
-    ) -> bool:
-        cached_frame = self._state.bald_cache_frame_bgr
-        cached_user_row = self._state.bald_cache_user_row
-        if cached_frame is None or cached_user_row is None or user_row is None:
-            return False
-        if max(int(user_row.get("candidate_face_count") or 1), int(cached_user_row.get("candidate_face_count") or 1)) > 1:
-            return False
-        if cached_frame.shape != frame_shape:
-            return False
-        if self._state.bald_cache_reuse_count >= self._settings.rtc_bald_cache_max_reuse_frames:
-            return False
-        if self._bbox_iou(cached_user_row.get("face_bbox"), user_row.get("face_bbox")) < self._settings.rtc_bald_cache_bbox_iou_threshold:
-            return False
-        if self._pose_delta(cached_user_row, user_row) > self._settings.rtc_bald_cache_pose_delta_threshold_deg:
-            return False
-        return True
+        *,
+        queue_depth: int,
+        decode_latency_ms: float,
+        tracking_latency_ms: float,
+        hair_segmentation_latency_ms: float,
+        body_segmentation_latency_ms: float,
+        hair_attenuation_latency_ms: float,
+        clothing_prep_latency_ms: float,
+        infer_latency_ms: float,
+        render_latency_ms: float,
+        encode_latency_ms: float,
+        user_parsing_latency_ms: float,
+        total_pipeline_latency_ms: float,
+        selected_asset_id: str | None,
+    ) -> None:
+        interval_ms = int(getattr(self._settings, "rtc_stats_interval_ms", 0) or 0)
+        if interval_ms <= 0:
+            return
+
+        now_ms = time.monotonic() * 1000.0
+        if now_ms - self._state.last_stats_sent_at_ms < interval_ms:
+            return
+        self._state.last_stats_sent_at_ms = now_ms
+
+        payload: dict[str, object] = {
+            "type": "stats",
+            "queue_depth": max(0, int(queue_depth)),
+            "dropped_pending_count": int(self._state.dropped_pending_count),
+            "decode_ms": round(float(decode_latency_ms), 3),
+            "tracking_ms": round(float(tracking_latency_ms), 3),
+            "hair_segmentation_ms": round(float(hair_segmentation_latency_ms), 3),
+            "body_segmentation_ms": round(float(body_segmentation_latency_ms), 3),
+            "hair_attenuation_ms": round(float(hair_attenuation_latency_ms), 3),
+            "clothing_prep_ms": round(float(clothing_prep_latency_ms), 3),
+            "infer_ms": round(float(infer_latency_ms), 3),
+            "render_ms": round(float(render_latency_ms), 3),
+            "user_parsing_ms": round(float(user_parsing_latency_ms), 3),
+            "encode_ms": round(float(encode_latency_ms), 3),
+            "e2e_estimate_ms": round(float(total_pipeline_latency_ms), 3),
+            "hair_id": self._active_hair_id(),
+            "dataset_code": self._active_dataset_code(),
+            "mirrored": self._mirrored_input(),
+            "output_mirrored": self._mirrored_output(),
+            "selected_asset_id": selected_asset_id or "",
+            "server_ts_ms": _now_ms(),
+        }
+        if self._state.stage_width is not None and self._state.stage_height is not None:
+            payload["stage_width"] = int(self._state.stage_width)
+            payload["stage_height"] = int(self._state.stage_height)
+        if self._state.stage_fps is not None:
+            payload["stage_fps"] = round(float(self._state.stage_fps), 3)
+
+        self._emit_channel_payload(payload)
 
     def _prefer_latency_runtime(self) -> bool:
         configured_max_dimension = max(0, int(getattr(self._settings, "rtc_process_max_dimension", 0) or 0))
@@ -456,8 +984,16 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             return
 
         current_dimension = self._state.current_process_max_dimension or max_dimension
-        slow_threshold = target_latency_ms * 1.45
-        fast_threshold = target_latency_ms * 0.78
+        slow_ratio = max(
+            1.0,
+            float(getattr(self._settings, "rtc_adaptive_slow_threshold_ratio", 1.45) or 1.45),
+        )
+        fast_ratio = min(
+            0.99,
+            max(0.1, float(getattr(self._settings, "rtc_adaptive_fast_threshold_ratio", 0.78) or 0.78)),
+        )
+        slow_threshold = target_latency_ms * slow_ratio
+        fast_threshold = target_latency_ms * fast_ratio
 
         if pipeline_latency_ms > slow_threshold and current_dimension > min_dimension:
             self._state.slow_frame_streak += 1
@@ -496,115 +1032,40 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         self,
         frame_bgr: np.ndarray,
         seq: int,
-    ) -> tuple[np.ndarray, dict[str, Any] | None, str, dict[str, float]]:
-        tracking_started_at = time.perf_counter()
-        frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        reference_face_bbox = self._hair_runtime_manager.reference_face_bbox(
-            self._claims.dataset_code,
-            self._claims.apply_session_id,
-        )
-        tracking_result = self._face_tracker.extract_tracking_result_from_rgb(
-            frame_rgb,
+    ) -> tuple[np.ndarray, dict[str, Any] | None, str, dict[str, float], FeatureMessageModel | None]:
+        prepared = prepare_runtime_frame(
+            frame_bgr,
+            seq=seq,
+            face_tracker=self._face_tracker,
+            hair_segmenter=self._hair_segmenter,
+            body_segmenter=self._body_segmenter,
+            hair_attenuator=self._hair_attenuator,
+            hair_runtime_manager=self._hair_runtime_manager,
             claims=self._claims,
             settings=self._settings,
-            seq=seq,
-            ts_ms=_now_ms(),
-            reference_face_bbox=reference_face_bbox,
+            active_dataset_code=self._active_dataset_code(),
+            active_hair_id=self._active_hair_id(),
+            prepare_executor=self._prepare_executor,
+            previous_tracking_snapshot=self._tracking_snapshot,
         )
-        tracking_latency_ms = round((time.perf_counter() - tracking_started_at) * 1000.0, 3)
-        if tracking_result is None:
-            return (
-                frame_bgr,
-                {"ok": False, "reason": "no_face_or_pose"},
-                "no_face",
-                {
-                    "tracking_latency_ms": tracking_latency_ms,
-                    "bald_latency_ms": 0.0,
-                },
-            )
-        if self._bald_processor is None:
-            return (
-                frame_bgr,
-                tracking_result.user_row,
-                "disabled",
-                {
-                    "tracking_latency_ms": tracking_latency_ms,
-                    "bald_latency_ms": 0.0,
-                },
-            )
-
-        if self._can_reuse_bald_cache(tracking_result.user_row, frame_bgr.shape):
-            self._state.bald_cache_reuse_count += 1
-            cached_frame = self._state.bald_cache_frame_bgr
-            if cached_frame is not None:
-                return (
-                    cached_frame.copy(),
-                    tracking_result.user_row,
-                    "cached",
-                    {
-                        "tracking_latency_ms": tracking_latency_ms,
-                        "bald_latency_ms": 0.0,
-                    },
-                )
-
-        try:
-            bald_started_at = time.perf_counter()
-            bald_rgb = self._bald_processor.apply(frame_rgb, tracking_result.landmarks_px)
-            bald_latency_ms = round((time.perf_counter() - bald_started_at) * 1000.0, 3)
-        except Exception as exc:
-            logger.warning("rtc bald preprocessing failed: %s", exc)
-            return (
-                frame_bgr,
-                tracking_result.user_row,
-                "error",
-                {
-                    "tracking_latency_ms": tracking_latency_ms,
-                    "bald_latency_ms": 0.0,
-                },
-            )
-
-        if not isinstance(bald_rgb, np.ndarray) or bald_rgb.shape != frame_rgb.shape:
-            return (
-                frame_bgr,
-                tracking_result.user_row,
-                "invalid_output",
-                {
-                    "tracking_latency_ms": tracking_latency_ms,
-                    "bald_latency_ms": bald_latency_ms,
-                },
-            )
-
-        prepared_frame_bgr = cv2.cvtColor(bald_rgb, cv2.COLOR_RGB2BGR)
-        cached_pose = tracking_result.user_row.get("pose", {})
-        cached_face_bbox = tracking_result.user_row.get("face_bbox", {})
-        self._state.bald_cache_frame_bgr = prepared_frame_bgr.copy()
-        self._state.bald_cache_user_row = {
-            "pose": {
-                "yaw_float": float(cached_pose.get("yaw_float", cached_pose.get("yaw_1deg", 0.0))),
-                "pitch_float": float(cached_pose.get("pitch_float", cached_pose.get("pitch_1deg", 0.0))),
-                "roll_float": float(cached_pose.get("roll_float", cached_pose.get("roll_1deg", 0.0))),
-                "yaw_1deg": int(cached_pose.get("yaw_1deg", round(float(cached_pose.get("yaw_float", 0.0))))),
-                "pitch_1deg": int(cached_pose.get("pitch_1deg", round(float(cached_pose.get("pitch_float", 0.0))))),
-                "roll_1deg": int(cached_pose.get("roll_1deg", round(float(cached_pose.get("roll_float", 0.0))))),
-            },
-            "face_bbox": {
-                "x": float(cached_face_bbox.get("x", 0.0)),
-                "y": float(cached_face_bbox.get("y", 0.0)),
-                "w": float(cached_face_bbox.get("w", 0.0)),
-                "h": float(cached_face_bbox.get("h", 0.0)),
-            },
-            "candidate_face_count": int(tracking_result.user_row.get("candidate_face_count") or 1),
-        }
-        self._state.bald_cache_reuse_count = 0
-
+        self._tracking_snapshot = prepared.tracking_snapshot
+        self._state.last_tracking_user_row = (
+            None
+            if prepared.tracking_snapshot.user_row is None
+            else dict(prepared.tracking_snapshot.user_row)
+        )
+        self._state.last_tracking_landmarks_px = (
+            None
+            if prepared.tracking_snapshot.landmarks_px is None
+            else np.array(prepared.tracking_snapshot.landmarks_px, copy=True)
+        )
+        self._state.last_tracking_feature = prepared.tracking_snapshot.feature
         return (
-            prepared_frame_bgr,
-            tracking_result.user_row,
-            "applied",
-            {
-                "tracking_latency_ms": tracking_latency_ms,
-                "bald_latency_ms": bald_latency_ms,
-            },
+            prepared.prepared_frame_bgr,
+            prepared.tracked_user_row,
+            prepared.attenuation_status,
+            prepared.metrics.as_dict(),
+            prepared.tracking_feature,
         )
 
     def _resize_frame_for_processing(
@@ -619,7 +1080,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         scale = float(max_dimension) / float(max(frame_width, frame_height))
         resized_width = max(1, int(round(frame_width * scale)))
         resized_height = max(1, int(round(frame_height * scale)))
-        resized = cv2.resize(frame_bgr, (resized_width, resized_height), interpolation=cv2.INTER_AREA)
+        resized = opencv_resize(frame_bgr, (resized_width, resized_height), interpolation=cv2.INTER_AREA)
         return resized, (frame_width, frame_height)
 
     def _process_runtime_frame(
@@ -627,17 +1088,60 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         frame_bgr: np.ndarray,
         seq: int,
         prefer_latency: bool,
-    ) -> tuple[dict[str, Any], str, dict[str, float]]:
-        prepared_frame_bgr, tracked_user_row, bald_status, prepare_metrics = self._prepare_frame_for_hair_runtime(frame_bgr, seq)
+    ) -> tuple[dict[str, Any], str, dict[str, float], FeatureMessageModel | None]:
+        prepared_frame_bgr, tracked_user_row, attenuation_status, prepare_metrics, tracking_feature = self._prepare_frame_for_hair_runtime(frame_bgr, seq)
+        if bool(getattr(self._settings, "rtc_disable_hair_overlay", False)):
+            prepared_only_result: dict[str, Any] = {
+                "output_frame_bgr": prepared_frame_bgr,
+                "selected_asset_id": "",
+                "selected_pose_key": "",
+                "score": None,
+                "status": "ok",
+                "selection_mode": "prepared_only",
+                "renderer_name": "disabled",
+                "feature_latency_ms": 0.0,
+                "primary_overlay_latency_ms": 0.0,
+                "overlay_latency_ms": 0.0,
+                "fallback_latency_ms": 0.0,
+                "user_parsing_latency_ms": 0.0,
+                "user_parsing_status": "skipped",
+                "overlay_detail_ms": {"overlay_disabled": True},
+                "compose_detail_ms": {"compose_mode": "prepared_only"},
+                "bundle_detail_ms": {},
+                "selection_trace": {"overlay_detail_ms": {"overlay_disabled": True}},
+                "fallback_allowed": False,
+                "user_row": tracked_user_row or {},
+                "raw_user_row": tracked_user_row or {},
+            }
+            return prepared_only_result, attenuation_status, prepare_metrics, tracking_feature
         runtime_result = self._hair_runtime_manager.process_frame(
-            dataset_code=self._claims.dataset_code,
+            dataset_code=self._active_dataset_code(),
             frame_bgr=frame_bgr,
             render_frame_bgr=prepared_frame_bgr,
+            source_frame_bgr=prepared_frame_bgr,
             tracked_user_row=tracked_user_row,
             prefer_latency=prefer_latency,
             session_id=self._claims.apply_session_id,
+            representative_asset_id=self._active_representative_asset_id(),
+            encode_output=False,
         )
-        return runtime_result, bald_status, prepare_metrics
+        return runtime_result, attenuation_status, prepare_metrics, tracking_feature
+
+    def _render_bundle_fallback_frame(
+        self,
+        frame_bgr: np.ndarray,
+        original_frame_bgr: np.ndarray | None,
+        feature: FeatureMessageModel,
+    ) -> tuple[np.ndarray | None, AssetBundle | None, float]:
+        result = render_bundle_fallback_frame(
+            frame_bgr,
+            original_frame_bgr,
+            feature,
+            catalog=self._catalog,
+            dataset_code=self._active_dataset_code(),
+            representative_asset_id=self._active_representative_asset_id(),
+        )
+        return result.rendered_bgr, result.bundle, result.latency_ms
 
     async def _reader_loop(self) -> None:
         try:
@@ -646,8 +1150,9 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 self._buffer.append(
                     BufferedVideoFrame(frame=frame, received_at_ms=time.monotonic() * 1000)
                 )
-                while len(self._buffer) > SERVER_TRACK_MAX_BUFFERED_VIDEO_FRAMES:
+                while len(self._buffer) > max(1, int(self._settings.rtc_max_pending_frames)):
                     self._buffer.popleft()
+                    self._state.dropped_pending_count += 1
                 self._frame_available.set()
         except Exception:
             self._source_ended = True
@@ -657,6 +1162,9 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         while True:
             if self._buffer:
                 latest = self._buffer.pop()
+                dropped_pending = len(self._buffer)
+                if dropped_pending > 0:
+                    self._state.dropped_pending_count += dropped_pending
                 self._buffer.clear()
                 return latest
 
@@ -669,35 +1177,48 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
     def stop(self) -> None:
         if not self._reader_task.done():
             self._reader_task.cancel()
+        self._prepare_executor.shutdown(wait=False, cancel_futures=True)
         super().stop()
 
     def _emit_channel_payload(self, payload: dict[str, object]) -> None:
-        channel = self._state.data_channel
-        if channel is None or getattr(channel, "readyState", None) != "open":
-            return
-        channel.send(json.dumps(payload))
+        _send_channel_json(self._state.data_channel, self._state, payload)
 
     async def recv(self) -> Any:
+        await self._wait_for_next_output_slot()
         frame_started_at = time.perf_counter()
         buffered_frame = await self._next_latest_frame()
         frame = buffered_frame.frame
+        input_pts = getattr(frame, "pts", None)
+        input_time_base = getattr(frame, "time_base", None)
+        self._record_input_pts(input_pts)
+        input_time_base_str = self._time_base_to_str(input_time_base)
+        input_pts_ms = self._pts_to_ms(input_pts, input_time_base)
         next_seq = self._state.server_processed_seq + 1
+        frame_age_ms = round(max(0.0, time.monotonic() * 1000.0 - buffered_frame.received_at_ms), 3)
+        decode_started_at = time.perf_counter()
         frame_bgr = frame.to_ndarray(format="bgr24")
+        processing_source_bgr = opencv_flip(frame_bgr, 1) if self._mirrored_input() else frame_bgr
+        decode_latency_ms = round((time.perf_counter() - decode_started_at) * 1000.0, 3)
+        self._maybe_emit_stage_mismatch_error(frame_bgr.shape[1], frame_bgr.shape[0])
         self._state.server_processed_seq = next_seq
         resize_in_started_at = time.perf_counter()
-        processing_frame_bgr, original_size = self._resize_frame_for_processing(frame_bgr)
+        processing_frame_bgr, original_size = self._resize_frame_for_processing(processing_source_bgr)
         resize_in_latency_ms = round((time.perf_counter() - resize_in_started_at) * 1000.0, 3)
         prepare_metrics = {
             "tracking_latency_ms": 0.0,
-            "bald_latency_ms": 0.0,
+            "hair_segmentation_latency_ms": 0.0,
+            "body_segmentation_latency_ms": 0.0,
+            "hair_attenuation_latency_ms": 0.0,
+            "clothing_prep_latency_ms": 0.0,
         }
+        queue_depth = len(self._buffer)
 
         selected: AssetBundle | None = None
         changed = False
         try:
             runtime_started_at = time.perf_counter()
             prefer_latency = self._prefer_latency_runtime()
-            runtime_result, bald_status, prepare_metrics = await asyncio.to_thread(
+            runtime_result, attenuation_status, prepare_metrics, tracking_feature = await asyncio.to_thread(
                 self._process_runtime_frame,
                 processing_frame_bgr,
                 next_seq,
@@ -706,13 +1227,80 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             runtime_latency_ms = round((time.perf_counter() - runtime_started_at) * 1000.0, 3)
         except Exception as exc:
             logger.warning("rtc hairddae runtime failed: %s", exc)
+            pts, time_base = self._next_output_timestamp()
+            self._record_output_pts(pts)
+            frame.pts = pts
+            frame.time_base = time_base
+            self._last_output_sent_at_ms = time.monotonic() * 1000.0
             return frame
 
+        fallback_allowed = bool(runtime_result.get("fallback_allowed", True))
+        if (
+            fallback_allowed
+            and
+            tracking_feature is not None
+            and (
+                str(runtime_result.get("status") or "") == "overlay_error"
+                or not str(runtime_result.get("selected_asset_id") or "")
+            )
+        ):
+            fallback_source_bgr = runtime_result.get("output_frame_bgr")
+            if not isinstance(fallback_source_bgr, np.ndarray):
+                fallback_source_bgr = processing_frame_bgr
+            fallback_rendered_bgr, fallback_bundle, fallback_latency_ms = await asyncio.to_thread(
+                self._render_bundle_fallback_frame,
+                fallback_source_bgr,
+                processing_frame_bgr,
+                tracking_feature,
+            )
+            if fallback_rendered_bgr is not None and fallback_bundle is not None:
+                runtime_result["output_frame_bgr"] = fallback_rendered_bgr
+                runtime_result["selected_asset_id"] = fallback_bundle.asset_id
+                runtime_result["selected_pose_key"] = fallback_bundle.pose_key
+                runtime_result["score"] = fallback_bundle.score
+                runtime_result["status"] = "degraded_ok"
+                runtime_result["selection_mode"] = "bundle_render_fallback"
+                primary_overlay_latency_ms = round(
+                    float(
+                        runtime_result.get(
+                            "primary_overlay_latency_ms",
+                            runtime_result.get("overlay_latency_ms", 0.0),
+                        )
+                        or 0.0
+                    ),
+                    3,
+                )
+                runtime_result["primary_overlay_latency_ms"] = primary_overlay_latency_ms
+                runtime_result["fallback_latency_ms"] = round(float(fallback_latency_ms), 3)
+                runtime_result["overlay_latency_ms"] = round(
+                    primary_overlay_latency_ms + fallback_latency_ms,
+                    3,
+                )
+                overlay_detail_ms = runtime_result.get("overlay_detail_ms")
+                if isinstance(overlay_detail_ms, dict):
+                    merged_overlay_detail_ms = dict(overlay_detail_ms)
+                    merged_overlay_detail_ms["fallback_ms"] = round(float(fallback_latency_ms), 3)
+                    merged_overlay_detail_ms["overlay_total_after_fallback_ms"] = float(
+                        runtime_result["overlay_latency_ms"]
+                    )
+                    runtime_result["overlay_detail_ms"] = merged_overlay_detail_ms
+                    selection_trace = runtime_result.get("selection_trace")
+                    if isinstance(selection_trace, dict):
+                        merged_selection_trace = dict(selection_trace)
+                        merged_selection_trace["overlay_detail_ms"] = merged_overlay_detail_ms
+                        runtime_result["selection_trace"] = merged_selection_trace
+                logger.info(
+                    "rtc bundle render fallback applied: asset=%s latency_ms=%.1f",
+                    fallback_bundle.asset_id,
+                    fallback_latency_ms,
+                )
+                selected = fallback_bundle
+
         selected_asset_id = str(runtime_result.get("selected_asset_id") or "")
-        if selected_asset_id:
+        if selected is None and selected_asset_id:
             try:
                 selected = self._catalog.bundle_for_runtime_selection(
-                    dataset_code=self._claims.dataset_code,
+                    dataset_code=self._active_dataset_code(),
                     asset_id=selected_asset_id,
                     score=(
                         None
@@ -746,7 +1334,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             logger.info(
                 (
                     "rtc hairddae feature: seq=%s changed=%s asset=%s "
-                    "raw_pose=(%s,%s,%s) smooth_pose=(%s,%s,%s) mode=%s parsing=%s bald=%s profile=%s"
+                    "raw_pose=(%s,%s,%s) smooth_pose=(%s,%s,%s) mode=%s renderer=%s parsing=%s attenuation=%s profile=%s"
                 ),
                 next_seq,
                 changed,
@@ -758,119 +1346,284 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 user_pose.get("pitch_1deg"),
                 user_pose.get("roll_1deg"),
                 runtime_result.get("selection_mode"),
+                runtime_result.get("renderer_name"),
                 runtime_result.get("user_parsing_status"),
-                bald_status,
+                attenuation_status,
                 "latency" if prefer_latency else "balanced",
             )
-            self._emit_channel_payload(
-                {
-                    "type": "processed",
-                    "apply_session_id": self._claims.apply_session_id,
-                    "accepted_seq": next_seq,
-                    "processed_seq": next_seq,
-                    "changed": changed,
-                    "queue_depth": 0,
-                    "dropped_pending_count": 0,
-                    "overloaded": False,
-                    "asset": selected.to_message(),
-                }
-            )
+            if self._settings.rtc_send_processed_events:
+                self._emit_channel_payload(
+                    {
+                        "type": "processed",
+                        "apply_session_id": self._claims.apply_session_id,
+                        "accepted_seq": next_seq,
+                        "processed_seq": next_seq,
+                        "changed": changed,
+                        "queue_depth": queue_depth,
+                        "dropped_pending_count": self._state.dropped_pending_count,
+                        "overloaded": False,
+                        "hair_id": self._active_hair_id(),
+                        "dataset_code": self._active_dataset_code(),
+                        "asset": selected.to_message(),
+                    }
+                )
 
         rendered_bgr = runtime_result.get("output_frame_bgr")
         resize_out_started_at = time.perf_counter()
         if not isinstance(rendered_bgr, np.ndarray):
-            transport_sample_ms = _record_rtc_transport_sample(
-                self._state,
-                buffered_frame.received_at_ms,
-            )
             total_pipeline_latency_ms = round((time.perf_counter() - frame_started_at) * 1000.0, 3)
             self._state.recent_pipeline_latency_ms = total_pipeline_latency_ms
             self._update_adaptive_resolution(total_pipeline_latency_ms)
+            fallback_pts, fallback_time_base = self._next_output_timestamp()
+            self._record_output_pts(fallback_pts)
             now_ms = time.monotonic() * 1000.0
             if now_ms - self._state.last_perf_log_at_ms >= PERF_LOG_INTERVAL_MS:
-                transport_summary = _rtc_transport_summary(self._state)
                 self._state.last_perf_log_at_ms = now_ms
                 logger.info(
                     (
                         "rtc perf: seq=%s total=%.1f resize_in=%.1f tracking=%.1f "
-                        "bald=%.1f hair_total=%.1f hair_feature=%.1f hair_overlay=%.1f "
-                        "hair_parse=%.1f resize_out=%.1f process_size=%sx%s original_size=%sx%s "
-                        "process_max_dimension=%s bald=%s asset=%s profile=%s "
-                        "transport=%.1f transport_avg=%.1f transport_max=%.1f transport_count=%s "
-                        "output=passthrough"
+                        "segmentation=%.1f body=%.1f attenuation=%.1f clothing=%.1f hair_total=%.1f hair_feature=%.1f hair_overlay=%.1f "
+                        "hair_parse=%.1f resize_out=%.1f frame_age=%.1f queue_depth=%s process_size=%sx%s original_size=%sx%s "
+                        "process_max_dimension=%s attenuation=%s asset=%s renderer=%s selection_mode=%s status=%s profile=%s output=passthrough"
                     ),
                     next_seq,
                     total_pipeline_latency_ms,
                     resize_in_latency_ms,
                     float(prepare_metrics.get("tracking_latency_ms", 0.0)),
-                    float(prepare_metrics.get("bald_latency_ms", 0.0)),
+                    float(prepare_metrics.get("hair_segmentation_latency_ms", 0.0)),
+                    float(prepare_metrics.get("body_segmentation_latency_ms", 0.0)),
+                    float(prepare_metrics.get("hair_attenuation_latency_ms", 0.0)),
+                    float(prepare_metrics.get("clothing_prep_latency_ms", 0.0)),
                     runtime_latency_ms,
                     float(runtime_result.get("feature_latency_ms", 0.0) or 0.0),
                     float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
                     float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
                     0.0,
+                    frame_age_ms,
+                    queue_depth,
                     processing_frame_bgr.shape[1],
                     processing_frame_bgr.shape[0],
                     original_size[0],
                     original_size[1],
                     self._effective_process_max_dimension(),
-                    bald_status,
+                    attenuation_status,
                     runtime_result.get("selected_asset_id"),
+                    runtime_result.get("renderer_name"),
+                    runtime_result.get("selection_mode"),
+                    runtime_result.get("status"),
                     "latency" if prefer_latency else "balanced",
-                    transport_sample_ms,
-                    float(transport_summary["average_ms"]),
-                    float(transport_summary["max_ms"]),
-                    int(transport_summary["sample_count"]),
                 )
+                logger.info(
+                    (
+                        "rtc perf detail: seq=%s frame_age=%.1f queue_depth=%s dropped_total=%s "
+                        "control_last=%s control_ms=%.2f control_err=%s control_count=%s "
+                        "channel_state=%s buffered_amount=%s send_count=%s last_send=%.3f "
+                        "feature_ms=%.1f primary_overlay_ms=%.1f fallback_ms=%.1f overlay_ms=%.1f user_parse_ms=%.1f "
+                        "input_pts=%s input_tb=%s input_ms=%s input_dup=%s input_rewind=%s "
+                        "output_pts=%s output_tb=%s output_ms=%s output_dup=%s output_rewind=%s"
+                    ),
+                    next_seq,
+                    frame_age_ms,
+                    queue_depth,
+                    self._state.dropped_pending_count,
+                    self._state.last_control_message_type,
+                    self._state.last_control_message_latency_ms,
+                    self._state.last_control_error_code,
+                    self._state.control_message_count,
+                    getattr(self._state.data_channel, "readyState", None),
+                    getattr(self._state.data_channel, "bufferedAmount", 0) if self._state.data_channel is not None else 0,
+                    self._state.data_channel_send_count,
+                    self._state.last_channel_send_latency_ms,
+                    float(runtime_result.get("feature_latency_ms", 0.0) or 0.0),
+                    float(runtime_result.get("primary_overlay_latency_ms", 0.0) or 0.0),
+                    float(runtime_result.get("fallback_latency_ms", 0.0) or 0.0),
+                    float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
+                    float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
+                    input_pts,
+                    input_time_base_str,
+                    input_pts_ms,
+                    self._input_pts_duplicate_count,
+                    self._input_pts_rewind_count,
+                    fallback_pts,
+                    self._time_base_to_str(fallback_time_base),
+                    self._pts_to_ms(fallback_pts, fallback_time_base),
+                    self._output_pts_duplicate_count,
+                    self._output_pts_rewind_count,
+                )
+                attenuation_detail_ms = prepare_metrics.get("hair_attenuation_detail_ms")
+                if attenuation_detail_ms:
+                    logger.info(
+                        "rtc attenuation detail: seq=%s status=%s detail=%s",
+                        next_seq,
+                        attenuation_status,
+                        attenuation_detail_ms,
+                    )
+            if (
+                float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0) >= 80.0
+                or str(runtime_result.get("status") or "ok") != "ok"
+            ):
+                logger.info(
+                    "rtc overlay detail: seq=%s asset=%s status=%s selection_mode=%s overlay_detail=%s compose_detail=%s bundle_detail=%s",
+                    next_seq,
+                    runtime_result.get("selected_asset_id"),
+                    runtime_result.get("status"),
+                    runtime_result.get("selection_mode"),
+                    runtime_result.get("overlay_detail_ms") or {},
+                    runtime_result.get("compose_detail_ms") or {},
+                    runtime_result.get("bundle_detail_ms") or {},
+                )
+            self._maybe_emit_stats(
+                queue_depth=queue_depth,
+                decode_latency_ms=decode_latency_ms,
+                tracking_latency_ms=float(prepare_metrics.get("tracking_latency_ms", 0.0)),
+                hair_segmentation_latency_ms=float(prepare_metrics.get("hair_segmentation_latency_ms", 0.0)),
+                body_segmentation_latency_ms=float(prepare_metrics.get("body_segmentation_latency_ms", 0.0)),
+                hair_attenuation_latency_ms=float(prepare_metrics.get("hair_attenuation_latency_ms", 0.0)),
+                clothing_prep_latency_ms=float(prepare_metrics.get("clothing_prep_latency_ms", 0.0)),
+                infer_latency_ms=runtime_latency_ms,
+                render_latency_ms=float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
+                encode_latency_ms=0.0,
+                user_parsing_latency_ms=float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
+                total_pipeline_latency_ms=total_pipeline_latency_ms,
+                selected_asset_id=selected_asset_id or None,
+            )
+            frame.pts = fallback_pts
+            frame.time_base = fallback_time_base
+            self._last_output_sent_at_ms = time.monotonic() * 1000.0
             return frame
+        target_output_size = self._target_output_size(original_size)
+        if rendered_bgr.shape[1] != target_output_size[0] or rendered_bgr.shape[0] != target_output_size[1]:
+            rendered_bgr = opencv_resize(
+                rendered_bgr,
+                (target_output_size[0], target_output_size[1]),
+                interpolation=cv2.INTER_LINEAR,
+            )
         resize_out_latency_ms = round((time.perf_counter() - resize_out_started_at) * 1000.0, 3)
-        transport_sample_ms = _record_rtc_transport_sample(
-            self._state,
-            buffered_frame.received_at_ms,
-        )
+        if self._mirrored_output():
+            rendered_bgr = opencv_flip(rendered_bgr, 1)
         total_pipeline_latency_ms = round((time.perf_counter() - frame_started_at) * 1000.0, 3)
         self._state.recent_pipeline_latency_ms = total_pipeline_latency_ms
         self._update_adaptive_resolution(total_pipeline_latency_ms)
+        output_pts, output_time_base = self._next_output_timestamp()
+        self._record_output_pts(output_pts)
 
         now_ms = time.monotonic() * 1000.0
         if now_ms - self._state.last_perf_log_at_ms >= PERF_LOG_INTERVAL_MS:
-            transport_summary = _rtc_transport_summary(self._state)
             self._state.last_perf_log_at_ms = now_ms
             logger.info(
                 (
                     "rtc perf: seq=%s total=%.1f resize_in=%.1f tracking=%.1f "
-                    "bald=%.1f hair_total=%.1f hair_feature=%.1f hair_overlay=%.1f "
-                    "hair_parse=%.1f resize_out=%.1f process_size=%sx%s original_size=%sx%s "
-                    "process_max_dimension=%s bald=%s asset=%s profile=%s "
-                    "transport=%.1f transport_avg=%.1f transport_max=%.1f transport_count=%s"
+                    "segmentation=%.1f body=%.1f attenuation=%.1f clothing=%.1f hair_total=%.1f hair_feature=%.1f hair_overlay=%.1f "
+                    "hair_parse=%.1f resize_out=%.1f frame_age=%.1f queue_depth=%s process_size=%sx%s original_size=%sx%s "
+                    "process_max_dimension=%s attenuation=%s asset=%s renderer=%s selection_mode=%s status=%s profile=%s"
                 ),
                 next_seq,
                 total_pipeline_latency_ms,
                 resize_in_latency_ms,
                 float(prepare_metrics.get("tracking_latency_ms", 0.0)),
-                float(prepare_metrics.get("bald_latency_ms", 0.0)),
+                float(prepare_metrics.get("hair_segmentation_latency_ms", 0.0)),
+                float(prepare_metrics.get("body_segmentation_latency_ms", 0.0)),
+                float(prepare_metrics.get("hair_attenuation_latency_ms", 0.0)),
+                float(prepare_metrics.get("clothing_prep_latency_ms", 0.0)),
                 runtime_latency_ms,
                 float(runtime_result.get("feature_latency_ms", 0.0) or 0.0),
                 float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
                 float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
                 resize_out_latency_ms,
+                frame_age_ms,
+                queue_depth,
                 processing_frame_bgr.shape[1],
                 processing_frame_bgr.shape[0],
                 original_size[0],
                 original_size[1],
                 self._effective_process_max_dimension(),
-                bald_status,
+                attenuation_status,
                 runtime_result.get("selected_asset_id"),
+                runtime_result.get("renderer_name"),
+                runtime_result.get("selection_mode"),
+                runtime_result.get("status"),
                 "latency" if prefer_latency else "balanced",
-                transport_sample_ms,
-                float(transport_summary["average_ms"]),
-                float(transport_summary["max_ms"]),
-                int(transport_summary["sample_count"]),
             )
+            logger.info(
+                (
+                    "rtc perf detail: seq=%s frame_age=%.1f queue_depth=%s dropped_total=%s "
+                    "control_last=%s control_ms=%.2f control_err=%s control_count=%s "
+                    "channel_state=%s buffered_amount=%s send_count=%s last_send=%.3f "
+                    "feature_ms=%.1f primary_overlay_ms=%.1f fallback_ms=%.1f overlay_ms=%.1f user_parse_ms=%.1f "
+                    "input_pts=%s input_tb=%s input_ms=%s input_dup=%s input_rewind=%s "
+                    "output_pts=%s output_tb=%s output_ms=%s output_dup=%s output_rewind=%s"
+                ),
+                next_seq,
+                frame_age_ms,
+                queue_depth,
+                self._state.dropped_pending_count,
+                self._state.last_control_message_type,
+                self._state.last_control_message_latency_ms,
+                self._state.last_control_error_code,
+                self._state.control_message_count,
+                getattr(self._state.data_channel, "readyState", None),
+                getattr(self._state.data_channel, "bufferedAmount", 0) if self._state.data_channel is not None else 0,
+                self._state.data_channel_send_count,
+                self._state.last_channel_send_latency_ms,
+                float(runtime_result.get("feature_latency_ms", 0.0) or 0.0),
+                float(runtime_result.get("primary_overlay_latency_ms", 0.0) or 0.0),
+                float(runtime_result.get("fallback_latency_ms", 0.0) or 0.0),
+                float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
+                float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
+                input_pts,
+                input_time_base_str,
+                input_pts_ms,
+                self._input_pts_duplicate_count,
+                self._input_pts_rewind_count,
+                output_pts,
+                self._time_base_to_str(output_time_base),
+                self._pts_to_ms(output_pts, output_time_base),
+                self._output_pts_duplicate_count,
+                self._output_pts_rewind_count,
+            )
+            attenuation_detail_ms = prepare_metrics.get("hair_attenuation_detail_ms")
+            if attenuation_detail_ms:
+                logger.info(
+                    "rtc attenuation detail: seq=%s status=%s detail=%s",
+                    next_seq,
+                    attenuation_status,
+                    attenuation_detail_ms,
+                )
+            if (
+                float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0) >= 80.0
+                or str(runtime_result.get("status") or "ok") != "ok"
+            ):
+                logger.info(
+                    "rtc overlay detail: seq=%s asset=%s status=%s selection_mode=%s overlay_detail=%s compose_detail=%s bundle_detail=%s",
+                    next_seq,
+                    runtime_result.get("selected_asset_id"),
+                    runtime_result.get("status"),
+                    runtime_result.get("selection_mode"),
+                    runtime_result.get("overlay_detail_ms") or {},
+                    runtime_result.get("compose_detail_ms") or {},
+                    runtime_result.get("bundle_detail_ms") or {},
+                )
+
+        self._maybe_emit_stats(
+            queue_depth=queue_depth,
+            decode_latency_ms=decode_latency_ms,
+            tracking_latency_ms=float(prepare_metrics.get("tracking_latency_ms", 0.0)),
+            hair_segmentation_latency_ms=float(prepare_metrics.get("hair_segmentation_latency_ms", 0.0)),
+            body_segmentation_latency_ms=float(prepare_metrics.get("body_segmentation_latency_ms", 0.0)),
+            hair_attenuation_latency_ms=float(prepare_metrics.get("hair_attenuation_latency_ms", 0.0)),
+            clothing_prep_latency_ms=float(prepare_metrics.get("clothing_prep_latency_ms", 0.0)),
+            infer_latency_ms=runtime_latency_ms,
+            render_latency_ms=float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
+            encode_latency_ms=0.0,
+            user_parsing_latency_ms=float(runtime_result.get("user_parsing_latency_ms", 0.0) or 0.0),
+            total_pipeline_latency_ms=total_pipeline_latency_ms,
+            selected_asset_id=selected_asset_id or None,
+        )
 
         next_frame = VideoFrame.from_ndarray(rendered_bgr, format="bgr24")
-        next_frame.pts = frame.pts
-        next_frame.time_base = frame.time_base
+        next_frame.pts = output_pts
+        next_frame.time_base = output_time_base
+        self._last_output_sent_at_ms = time.monotonic() * 1000.0
         return next_frame
 
 
@@ -891,6 +1644,53 @@ def _sdp_candidate_lines(description: Any) -> list[str]:
     if not isinstance(sdp, str):
         return []
     return [line for line in sdp.splitlines() if line.startswith("a=candidate:")]
+
+
+def _sdp_video_codec_summary(description: Any) -> list[str]:
+    sdp = getattr(description, "sdp", None)
+    if not isinstance(sdp, str) or not sdp:
+        return []
+
+    lines = [line.strip() for line in sdp.splitlines() if line.strip()]
+    video_payload_types: list[str] = []
+    rtpmap_by_pt: dict[str, str] = {}
+    fmtp_by_pt: dict[str, str] = {}
+
+    in_video_section = False
+    for line in lines:
+        if line.startswith("m="):
+            in_video_section = line.startswith("m=video ")
+            if in_video_section:
+                parts = line.split()
+                if len(parts) >= 4:
+                    video_payload_types = parts[3:]
+            continue
+        if not in_video_section:
+            continue
+        if line.startswith("a=rtpmap:"):
+            payload = line[len("a=rtpmap:") :]
+            pt, _, codec = payload.partition(" ")
+            if pt and codec:
+                rtpmap_by_pt[pt] = codec
+        elif line.startswith("a=fmtp:"):
+            payload = line[len("a=fmtp:") :]
+            pt, _, fmtp = payload.partition(" ")
+            if pt and fmtp:
+                fmtp_by_pt[pt] = fmtp
+
+    summary: list[str] = []
+    for pt in video_payload_types:
+        codec = rtpmap_by_pt.get(pt)
+        if codec is None:
+            summary.append(f"pt={pt}")
+            continue
+        entry = f"{codec}(pt={pt}"
+        fmtp = fmtp_by_pt.get(pt)
+        if fmtp:
+            entry += f",fmtp={fmtp}"
+        entry += ")"
+        summary.append(entry)
+    return summary
 
 
 def _create_peer_connection(settings: Settings) -> Any:
@@ -1001,27 +1801,18 @@ def attach_rtc_routes(app: FastAPI) -> None:
         if peer_connection is None:
             raise HTTPException(status_code=503, detail="RTC runtime is unavailable")
         app.state.rtc_peer_connections.add(peer_connection)
-        session_state = RtcSessionState()
+        session_state = RtcSessionState(
+            active_hair_id=claims.hair_id,
+            active_dataset_code=claims.dataset_code,
+            active_representative_asset_id=claims.representative_asset_id,
+            mirrored=settings.rtc_mirrored_input,
+        )
 
         @peer_connection.on("connectionstatechange")
         async def _on_connectionstatechange() -> None:
             logger.info("rtc connection state changed: %s", peer_connection.connectionState)
             if peer_connection.connectionState not in {"failed", "disconnected", "closed"}:
                 return
-            if not session_state.transport_summary_logged:
-                session_state.transport_summary_logged = True
-                transport_summary = _rtc_transport_summary(session_state)
-                logger.info(
-                    (
-                        "rtc transport summary: samples=%s avg_ms=%.1f max_ms=%.1f "
-                        "last_ms=%.1f first_remote_excluded=%s"
-                    ),
-                    int(transport_summary["sample_count"]),
-                    float(transport_summary["average_ms"]),
-                    float(transport_summary["max_ms"]),
-                    float(transport_summary["last_ms"]),
-                    bool(transport_summary["first_remote_excluded"]),
-                )
             await peer_connection.close()
             app.state.rtc_peer_connections.discard(peer_connection)
 
@@ -1035,47 +1826,167 @@ def attach_rtc_routes(app: FastAPI) -> None:
 
         @peer_connection.on("datachannel")
         def _on_datachannel(channel: Any) -> None:
-            logger.info("rtc data channel opened: label=%s", getattr(channel, "label", "unknown"))
-            session_state.data_channel = channel
-            channel.send(
-                json.dumps(
-                    {
-                        "type": "connected",
-                        "apply_session_id": claims.apply_session_id,
-                        "node_id": settings.node_id,
-                        "feature_schema_version": settings.feature_schema_version,
-                        "transform_version": settings.transform_version,
-                    }
+            channel_label = str(getattr(channel, "label", "") or "")
+            logger.info("rtc data channel opened: label=%s", channel_label)
+            if channel_label != settings.rtc_control_channel_name:
+                logger.warning(
+                    "rtc unexpected data channel label: expected=%s actual=%s",
+                    settings.rtc_control_channel_name,
+                    channel_label,
                 )
-            )
+                try:
+                    _send_channel_json(
+                        channel,
+                        session_state,
+                        _control_error_payload(
+                            "UNEXPECTED_CHANNEL_LABEL",
+                            (
+                                f"expected control channel label "
+                                f"{settings.rtc_control_channel_name}, got {channel_label}"
+                            ),
+                        )
+                    )
+                except Exception:  # pragma: no cover - browser interoperability
+                    logger.warning("rtc failed to report unexpected data channel label")
+                return
+
+            session_state.data_channel = channel
 
             @channel.on("message")
             def _on_message(message: str | bytes) -> None:
+                control_started_at = time.perf_counter()
+                server_received_ts_ms = _now_ms()
+                message_type, client_ts_ms = _extract_control_message_debug(message)
+                message_bytes = _raw_message_size_bytes(message)
+                session_state.control_message_count += 1
+                session_state.control_message_total_bytes += message_bytes
+                session_state.last_control_message_type = message_type
+                session_state.last_control_message_bytes = message_bytes
+                session_state.last_control_message_client_ts_ms = client_ts_ms
+                session_state.last_control_message_server_ts_ms = server_received_ts_ms
                 try:
-                    raw_message = message.decode("utf-8") if isinstance(message, bytes) else message
-                    parsed_message = json.loads(raw_message)
-                    if parsed_message.get("type") != "heartbeat":
-                        return
-                    channel.send(
-                        json.dumps(
-                            {
-                                "type": "heartbeat_ack",
-                                "apply_session_id": claims.apply_session_id,
-                                "ts_ms": _now_ms(),
-                            }
+                    payloads = _process_control_message(
+                        message,
+                        state=session_state,
+                        settings=settings,
+                        claims=claims,
+                        catalog=app.state.catalog,
+                        hair_runtime_manager=app.state.hair_runtime_manager,
+                    )
+                    processing_ms = round((time.perf_counter() - control_started_at) * 1000.0, 3)
+                    session_state.last_control_message_latency_ms = processing_ms
+                    session_state.last_control_error_code = None
+                    session_state.last_control_response_count = len(payloads)
+                    logger.info(
+                        "rtc control message handled: type=%s latency_ms=%.2f bytes=%s responses=%s buffered_amount=%s",
+                        message_type,
+                        processing_ms,
+                        message_bytes,
+                        len(payloads),
+                        getattr(channel, "bufferedAmount", 0),
+                    )
+                    for index, response_payload in enumerate(payloads, start=1):
+                        _send_channel_json(
+                            channel,
+                            session_state,
+                            _augment_control_payload(
+                                response_payload,
+                                message_type=message_type,
+                                message_bytes=message_bytes,
+                                server_received_ts_ms=server_received_ts_ms,
+                                processing_ms=processing_ms,
+                                response_index=index,
+                                response_count=len(payloads),
+                                channel=channel,
+                                client_ts_ms=client_ts_ms,
+                            ),
                         )
+                except ControlMessageError as exc:
+                    processing_ms = round((time.perf_counter() - control_started_at) * 1000.0, 3)
+                    session_state.control_error_count += 1
+                    session_state.last_control_message_latency_ms = processing_ms
+                    session_state.last_control_error_code = exc.code
+                    session_state.last_control_response_count = 1
+                    logger.warning(
+                        "rtc control message rejected: code=%s message=%s type=%s latency_ms=%.2f bytes=%s",
+                        exc.code,
+                        exc.message,
+                        message_type,
+                        processing_ms,
+                        message_bytes,
+                    )
+                    _send_channel_json(
+                        channel,
+                        session_state,
+                        _augment_control_payload(
+                            _control_error_payload(exc.code, exc.message),
+                            message_type=message_type,
+                            message_bytes=message_bytes,
+                            server_received_ts_ms=server_received_ts_ms,
+                            processing_ms=processing_ms,
+                            response_index=1,
+                            response_count=1,
+                            channel=channel,
+                            client_ts_ms=client_ts_ms,
+                        ),
                     )
                 except Exception as exc:  # pragma: no cover - browser interoperability
-                    logger.warning("rtc feature processing failed: %s", exc)
-                    channel.send(
-                        json.dumps(
-                            {
-                                "type": "error",
-                                "code": 400,
-                                "message": str(exc),
-                            }
+                    processing_ms = round((time.perf_counter() - control_started_at) * 1000.0, 3)
+                    session_state.control_error_count += 1
+                    session_state.last_control_message_latency_ms = processing_ms
+                    session_state.last_control_error_code = "CONTROL_MESSAGE_ERROR"
+                    session_state.last_control_response_count = 1
+                    logger.warning(
+                        "rtc control message processing failed: type=%s latency_ms=%.2f bytes=%s error=%s",
+                        message_type,
+                        processing_ms,
+                        message_bytes,
+                        exc,
+                    )
+                    _send_channel_json(
+                        channel,
+                        session_state,
+                        _augment_control_payload(
+                            _control_error_payload(
+                                "CONTROL_MESSAGE_ERROR",
+                                str(exc),
+                            ),
+                            message_type=message_type,
+                            message_bytes=message_bytes,
+                            server_received_ts_ms=server_received_ts_ms,
+                            processing_ms=processing_ms,
+                            response_index=1,
+                            response_count=1,
+                            channel=channel,
+                            client_ts_ms=client_ts_ms,
                         )
                     )
+
+            _send_channel_json(
+                channel,
+                session_state,
+                {
+                    "type": "connected",
+                    "apply_session_id": claims.apply_session_id,
+                    "node_id": settings.node_id,
+                    "control_channel": settings.rtc_control_channel_name,
+                    "feature_schema_version": settings.feature_schema_version,
+                    "transform_version": settings.transform_version,
+                    "hello_required": settings.rtc_require_hello,
+                    "hair_id": session_state.active_hair_id,
+                    "dataset_code": session_state.active_dataset_code,
+                    "representative_asset_id": session_state.active_representative_asset_id,
+                    "mirrored": session_state.mirrored,
+                    "expected_input_width": settings.rtc_input_width,
+                    "expected_input_height": settings.rtc_input_height,
+                    "expected_input_fps": settings.rtc_input_fps,
+                    "expected_output_width": settings.rtc_output_width,
+                    "expected_output_height": settings.rtc_output_height,
+                    "expected_output_fps": settings.rtc_output_fps,
+                    "expected_output_mirrored": settings.rtc_output_mirrored,
+                    "server_ts_ms": _now_ms(),
+                },
+            )
 
         @peer_connection.on("track")
         def _on_track(track: Any) -> None:
@@ -1091,7 +2002,9 @@ def attach_rtc_routes(app: FastAPI) -> None:
                     catalog=app.state.catalog,
                     hair_runtime_manager=app.state.hair_runtime_manager,
                     face_tracker=app.state.face_tracker,
-                    bald_processor=getattr(app.state, "bald_processor", None),
+                    hair_segmenter=getattr(app.state, "hair_segmenter", None),
+                    body_segmenter=getattr(app.state, "body_segmenter", None),
+                    hair_attenuator=getattr(app.state, "hair_attenuator", None),
                 )
             )
 
@@ -1101,6 +2014,10 @@ def attach_rtc_routes(app: FastAPI) -> None:
         logger.info(
             "rtc remote candidates: %s",
             _sdp_candidate_lines(peer_connection.remoteDescription),
+        )
+        logger.info(
+            "rtc remote video codecs: %s",
+            _sdp_video_codec_summary(peer_connection.remoteDescription),
         )
         answer = await peer_connection.createAnswer()
         await peer_connection.setLocalDescription(answer)
@@ -1113,6 +2030,10 @@ def attach_rtc_routes(app: FastAPI) -> None:
         logger.info(
             "rtc local candidates: %s",
             _sdp_candidate_lines(local_description),
+        )
+        logger.info(
+            "rtc local video codecs: %s",
+            _sdp_video_codec_summary(local_description),
         )
 
         return {

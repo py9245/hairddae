@@ -24,7 +24,7 @@ export function PageShell({
   return (
     <main
       className={cn(
-        'app-frame-page bg-[radial-gradient(circle_at_top_left,white,transparent_38%),linear-gradient(135deg,var(--page-accent)_0%,#0f172a_82%)] px-6 py-10 text-white',
+        'app-frame-page bg-[radial-gradient(circle_at_top_left,white,transparent_38%),linear-gradient(135deg,var(--page-accent)_0%,var(--color-dark-gradient)_82%)] px-6 py-10 text-white',
         className,
       )}
       style={{ '--page-accent': accent } as CSSProperties}

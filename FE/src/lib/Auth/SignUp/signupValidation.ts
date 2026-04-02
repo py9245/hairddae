@@ -6,7 +6,8 @@ const PASSWORD_ALLOWED_REGEX =
 const PASSWORD_HAS_LETTER_REGEX = /[A-Za-z]/
 const PASSWORD_HAS_NUMBER_REGEX = /\d/
 const PASSWORD_HAS_SPECIAL_REGEX = /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/
-const AGE_REGEX = /^(?:[1-9]|[1-9][0-9]|1[01][0-9])$/
+const BIRTH_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/
+const genderSchema = z.union([z.literal('M'), z.literal('F'), z.null()])
 
 export const signupFormSchema = z
   .object({
@@ -45,14 +46,14 @@ export const signupFormSchema = z
 
     passwordConfirm: z.string().min(1, '비밀번호 확인을 입력해주세요.'),
 
-    age: z
+    birthDate: z
       .string()
       .refine(
-        (value) => value.trim() === '' || AGE_REGEX.test(value),
-        '나이는 1~119 사이의 숫자만 입력할 수 있습니다.',
+        (value) => value.trim() === '' || BIRTH_DATE_REGEX.test(value),
+        '생년월일을 올바른 형식으로 입력해주세요.',
       ),
 
-    gender: z.enum(['', 'M', 'F']),
+    gender: genderSchema,
 
     agreed: z.boolean(),
   })

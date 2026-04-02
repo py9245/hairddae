@@ -16,6 +16,21 @@ from app.models import FeatureMessageModel
 from app.render import build_render_task
 
 
+def _asset_index_candidates(asset_root_path: Path) -> tuple[Path, ...]:
+    return (
+        asset_root_path / "manifests" / "asset_index_v0.json",
+        asset_root_path / "manifests" / "manifest.json",
+        asset_root_path / "indices" / "asset_manifest.json",
+    )
+
+
+def _resolve_asset_index_path(asset_root_path: Path) -> Path | None:
+    for candidate in _asset_index_candidates(asset_root_path):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def _normalize_url(base_url: str, dataset_code: str, relative_path: str | None) -> str | None:
     if not relative_path:
         return None
@@ -45,6 +60,8 @@ class AssetBundle:
     metadata_path: str | None = None
     asset_row: dict[str, Any] | None = None
     weighted_assets: tuple[tuple[dict[str, Any], float], ...] = ()
+    face_mask_path: Path | None = None
+    protect_face_mask_path: Path | None = None
 
     def to_message(self) -> dict[str, Any]:
         return {
@@ -139,6 +156,27 @@ class AssetCatalog:
             score=0.0 if score is None else float(score),
         )
 
+    def dataset_exists(self, dataset_code: str) -> bool:
+        asset_root_path = self._settings.static_root / dataset_code
+        return _resolve_asset_index_path(asset_root_path) is not None
+
+    def ensure_control_target(
+        self,
+        dataset_code: str,
+        representative_asset_id: str | None = None,
+    ) -> None:
+        if not self.dataset_exists(dataset_code):
+            raise ValueError(f"unknown dataset_code {dataset_code}")
+
+        if representative_asset_id in (None, ""):
+            return
+
+        dataset = self._load_dataset(dataset_code)
+        if representative_asset_id not in dataset.items_by_id:
+            raise ValueError(
+                f"unknown representative_asset_id {representative_asset_id} for dataset {dataset_code}"
+            )
+
     def _build_bundle(
         self,
         dataset: DatasetRecord,
@@ -156,6 +194,8 @@ class AssetCatalog:
             metadata=metadata,
         )
         hair_rgba_path = metadata.get("hair_rgba_path")
+        face_mask_path = metadata.get("face_mask_path")
+        protect_face_mask_path = metadata.get("protect_face_mask_path")
         return AssetBundle(
             asset_id=str(asset["asset_id"]),
             pose_key=str(asset["pose_key"]),
@@ -206,6 +246,16 @@ class AssetCatalog:
             metadata_path=str(asset["metadata_path"]),
             asset_row=asset,
             weighted_assets=weighted_assets,
+            face_mask_path=(
+                None
+                if face_mask_path in (None, "")
+                else dataset.asset_root_path / str(face_mask_path)
+            ),
+            protect_face_mask_path=(
+                None
+                if protect_face_mask_path in (None, "")
+                else dataset.asset_root_path / str(protect_face_mask_path)
+            ),
         )
 
     def _build_runtime_bundle(
@@ -217,6 +267,8 @@ class AssetCatalog:
     ) -> AssetBundle:
         metadata = self._load_metadata(dataset, asset)
         hair_rgba_path = metadata.get("hair_rgba_path")
+        face_mask_path = metadata.get("face_mask_path")
+        protect_face_mask_path = metadata.get("protect_face_mask_path")
         return AssetBundle(
             asset_id=str(asset["asset_id"]),
             pose_key=str(asset["pose_key"]),
@@ -267,6 +319,16 @@ class AssetCatalog:
             metadata_path=str(asset["metadata_path"]),
             asset_row=asset,
             weighted_assets=((asset, 1.0),),
+            face_mask_path=(
+                None
+                if face_mask_path in (None, "")
+                else dataset.asset_root_path / str(face_mask_path)
+            ),
+            protect_face_mask_path=(
+                None
+                if protect_face_mask_path in (None, "")
+                else dataset.asset_root_path / str(protect_face_mask_path)
+            ),
         )
 
     def _load_dataset(self, dataset_code: str) -> DatasetRecord:
@@ -276,13 +338,11 @@ class AssetCatalog:
                 return dataset
 
             asset_root_path = self._settings.static_root / dataset_code
-            asset_index_path = asset_root_path / "manifests" / "asset_index_v0.json"
+            asset_index_path = _resolve_asset_index_path(asset_root_path)
+            if asset_index_path is None:
+                raise ValueError(f"unknown dataset_code {dataset_code}")
             payload = json.loads(asset_index_path.read_text(encoding="utf-8"))
-            items = [
-                dict(item)
-                for item in payload.get("items", [])
-                if isinstance(item, dict) and str(item.get("asset_id") or "")
-            ]
+            items = self._load_manifest_items(asset_root_path, payload)
             runtime_items = tuple(build_runtime_asset_rows(asset_root_path, items))
             dataset = DatasetRecord(
                 dataset_code=dataset_code,
@@ -294,6 +354,53 @@ class AssetCatalog:
             )
             self._cache[dataset_code] = dataset
             return dataset
+
+    def _load_manifest_items(
+        self,
+        asset_root_path: Path,
+        payload: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        raw_items = payload.get("items", [])
+        if not isinstance(raw_items, list):
+            return []
+
+        items: list[dict[str, Any]] = []
+        for raw_item in raw_items:
+            if not isinstance(raw_item, dict):
+                continue
+            asset_id = str(raw_item.get("asset_id") or "")
+            if not asset_id:
+                continue
+            item = dict(raw_item)
+            metadata_path = str(item.get("metadata_path") or "")
+            if metadata_path and self._item_needs_metadata_enrichment(item):
+                metadata_file = asset_root_path / metadata_path
+                if metadata_file.is_file():
+                    metadata = json.loads(metadata_file.read_text(encoding="utf-8"))
+                    if isinstance(metadata, dict):
+                        merged = dict(metadata)
+                        merged.update(item)
+                        item = merged
+            items.append(item)
+        return items
+
+    @staticmethod
+    def _item_needs_metadata_enrichment(item: dict[str, Any]) -> bool:
+        for field_name in (
+            "alpha_path",
+            "hair_mask_path",
+            "face_mask_path",
+            "protect_face_mask_path",
+            "yaw_1deg",
+            "pitch_1deg",
+            "roll_1deg",
+            "approved",
+            "quality_score",
+            "hair_mean_confidence",
+        ):
+            if item.get(field_name) in (None, ""):
+                return True
+        return False
 
     def _load_metadata(self, dataset: DatasetRecord, asset: dict[str, Any]) -> dict[str, Any]:
         asset_id = str(asset["asset_id"])

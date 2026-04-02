@@ -67,7 +67,7 @@ export function DesignerRequestDialog({
                 <img
                   src={imageUrl}
                   alt="전송할 시술 이미지"
-                  className="h-[500px] w-full object-cover"
+                  className="h-[400px] w-full object-cover"
                 />
               ) : (
                 <div className="flex h-[180px] items-center justify-center px-6 text-sm text-text-sub">
@@ -88,7 +88,7 @@ export function DesignerRequestDialog({
               value={message}
               onChange={(event) => onMessageChange(event.target.value)}
               rows={4}
-              className="min-h-[124px] w-full resize-none rounded-[20px] border border-black/8 bg-[#faf8f5] px-4 py-3 text-sm leading-6 text-text-dark outline-none transition placeholder:text-text-sub focus:border-primary-200"
+              className="min-h-[60px] w-full resize-none rounded-[20px] border border-black/8 bg-primary-100 px-4 py-3 text-sm leading-6 text-text-dark outline-none transition placeholder:text-text-sub focus:border-primary-200"
               placeholder="문의 메시지를 입력해 주세요."
               disabled={isSubmitting}
             />

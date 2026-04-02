@@ -47,17 +47,15 @@ export function ChatRoomView({ roomId, designerUserId }: ChatRoomViewProps) {
   const lastMessageIdRef = useRef<number | string | null>(null)
   const hasEnteredRoomRef = useRef(false)
   const messageViewportRef = useRef<HTMLDivElement | null>(null)
+  const messageContentRef = useRef<HTMLDivElement | null>(null)
 
-  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+  const scrollToBottom = useCallback(() => {
     const viewport = messageViewportRef.current
     if (!viewport) {
       return
     }
 
-    viewport.scrollTo({
-      top: viewport.scrollHeight,
-      behavior,
-    })
+    viewport.scrollTop = viewport.scrollHeight
   }, [])
 
   const fetchChatMessages = useCallback(async (nextRoomId: number | string) => {
@@ -191,18 +189,33 @@ export function ChatRoomView({ roomId, designerUserId }: ChatRoomViewProps) {
 
     scrollToBottom()
 
-    const frame1 = window.requestAnimationFrame(() => {
-      scrollToBottom()
-    })
-    const frame2 = window.requestAnimationFrame(() => {
-      scrollToBottom()
-    })
+    const frame1 = window.requestAnimationFrame(scrollToBottom)
+    const frame2 = window.requestAnimationFrame(scrollToBottom)
+    const timeoutId = window.setTimeout(scrollToBottom, 120)
 
     return () => {
       window.cancelAnimationFrame(frame1)
       window.cancelAnimationFrame(frame2)
+      window.clearTimeout(timeoutId)
     }
   }, [initialImageUrl, messageCount, messagesQuery.isPolling, scrollToBottom])
+
+  useEffect(() => {
+    const content = messageContentRef.current
+    if (!content || typeof ResizeObserver === 'undefined') {
+      return
+    }
+
+    const observer = new ResizeObserver(() => {
+      scrollToBottom()
+    })
+
+    observer.observe(content)
+
+    return () => {
+      observer.disconnect()
+    }
+  }, [scrollToBottom])
 
   const isSendDisabled =
     !isRoomReady || inputValue.trim() === '' || sendMessageMutation.isPending
@@ -244,7 +257,10 @@ export function ChatRoomView({ roomId, designerUserId }: ChatRoomViewProps) {
           className="min-h-0 flex-1 overflow-y-auto px-4 py-5 pb-[110px]"
         >
           {initialImageUrl || messages.length > 0 || messagesQuery.isPolling ? (
-            <div className="flex min-h-full flex-col justify-end gap-4">
+            <div
+              ref={messageContentRef}
+              className="flex min-h-full flex-col justify-end gap-4"
+            >
               {messagesQuery.isPolling && !messages.length ? (
                 <div className="flex items-center justify-center gap-2 py-10 text-sm text-text-sub">
                   <LoaderCircle className="size-4 animate-spin" />

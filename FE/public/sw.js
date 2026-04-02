@@ -1,5 +1,5 @@
-const APP_SHELL_CACHE = 'hairtte-app-shell-v1';
-const RUNTIME_CACHE = 'hairtte-runtime-v1';
+const APP_SHELL_CACHE = 'hairtte-app-shell-v2';
+const RUNTIME_CACHE = 'hairtte-runtime-v2';
 const OFFLINE_FALLBACK_URL = '/offline.html';
 const APP_SHELL_URLS = [
   '/',
@@ -69,13 +69,13 @@ self.addEventListener('fetch', (event) => {
     request.destination === 'image' ||
     RUNTIME_ASSET_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))
   ) {
-    event.respondWith(handleCacheFirst(request));
+    event.respondWith(handleStaleWhileRevalidate(request));
   }
 });
 
 async function handleNavigationRequest(request) {
   try {
-    const response = await fetch(request);
+    const response = await fetch(request, { cache: 'no-store' });
     const cache = await caches.open(RUNTIME_CACHE);
     cache.put(request, response.clone());
     return response;
@@ -93,18 +93,24 @@ async function handleNavigationRequest(request) {
   }
 }
 
-async function handleCacheFirst(request) {
+async function handleStaleWhileRevalidate(request) {
+  const cache = await caches.open(RUNTIME_CACHE);
   const cachedResponse = await caches.match(request);
+
+  const networkResponsePromise = fetch(request)
+    .then((response) => {
+      if (response && response.ok) {
+        cache.put(request, response.clone());
+      }
+      return response;
+    })
+    .catch(() => null);
+
   if (cachedResponse) {
+    void networkResponsePromise;
     return cachedResponse;
   }
 
-  try {
-    const response = await fetch(request);
-    const cache = await caches.open(RUNTIME_CACHE);
-    cache.put(request, response.clone());
-    return response;
-  } catch (error) {
-    return cachedResponse || Response.error();
-  }
+  const networkResponse = await networkResponsePromise;
+  return networkResponse || Response.error();
 }

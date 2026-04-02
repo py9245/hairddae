@@ -37,6 +37,10 @@ type ChatRoomViewProps = {
 export function ChatRoomView({ roomId, designerUserId }: ChatRoomViewProps) {
   const navigate = useNavigate()
   const roomContext = readChatRoomContext()
+  const shouldForceScrollOnEnter =
+    roomContext?.roomId?.toString() === roomId?.toString()
+      ? roomContext?.forceScrollToBottom === true
+      : false
   const roomKey = String(roomId)
   const [initialImageUrl, setInitialImageUrl] = useState<string | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -192,13 +196,31 @@ export function ChatRoomView({ roomId, designerUserId }: ChatRoomViewProps) {
     const frame1 = window.requestAnimationFrame(scrollToBottom)
     const frame2 = window.requestAnimationFrame(scrollToBottom)
     const timeoutId = window.setTimeout(scrollToBottom, 120)
+    const timeoutId2 = shouldForceScrollOnEnter
+      ? window.setTimeout(scrollToBottom, 240)
+      : null
+    const timeoutId3 = shouldForceScrollOnEnter
+      ? window.setTimeout(scrollToBottom, 480)
+      : null
 
     return () => {
       window.cancelAnimationFrame(frame1)
       window.cancelAnimationFrame(frame2)
       window.clearTimeout(timeoutId)
+      if (timeoutId2 != null) {
+        window.clearTimeout(timeoutId2)
+      }
+      if (timeoutId3 != null) {
+        window.clearTimeout(timeoutId3)
+      }
     }
-  }, [initialImageUrl, messageCount, messagesQuery.isPolling, scrollToBottom])
+  }, [
+    initialImageUrl,
+    messageCount,
+    messagesQuery.isPolling,
+    scrollToBottom,
+    shouldForceScrollOnEnter,
+  ])
 
   useEffect(() => {
     const content = messageContentRef.current

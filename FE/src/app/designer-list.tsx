@@ -113,6 +113,7 @@ export default function DesignerList() {
         roomId: response.roomId,
         designerUserId: selectedDesigner.name,
         appliedImage: draft?.appliedImage ?? null,
+        forceScrollToBottom: true,
       })
       clearChatRoomDraft()
       setIsRequestDialogOpen(false)

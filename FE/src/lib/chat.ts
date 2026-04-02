@@ -10,6 +10,7 @@ export type ChatRoomContext = {
   roomId: number | string
   designerUserId: string
   appliedImage: Blob | null
+  forceScrollToBottom?: boolean
 }
 
 export type ChatRoomListItem = {

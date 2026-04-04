@@ -11,6 +11,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import com.example.beapp.common.api.ApiErrorResponse;
@@ -94,6 +95,18 @@ public class GlobalExceptionHandler {
                         ErrorCode.INVALID_REQUEST.getCode(),
                         "%s 파라미터가 필요합니다.".formatted(exception.getParameterName()),
                         List.of(new FieldValidationError(exception.getParameterName(), null, "필수 파라미터 누락")),
+                        request.getRequestURI()));
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingRequestPart(
+            MissingServletRequestPartException exception,
+            HttpServletRequest request) {
+        return ResponseEntity.badRequest()
+                .body(ApiErrorResponse.of(
+                        ErrorCode.INVALID_REQUEST.getCode(),
+                        "%s 파일이 필요합니다.".formatted(exception.getRequestPartName()),
+                        List.of(new FieldValidationError(exception.getRequestPartName(), null, "필수 파일 누락")),
                         request.getRequestURI()));
     }
 

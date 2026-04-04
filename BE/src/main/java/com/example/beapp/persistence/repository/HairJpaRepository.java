@@ -21,7 +21,11 @@ public interface HairJpaRepository extends JpaRepository<HairEntity, Long> {
 
     List<HairEntity> findByActiveTrueAndCategoryIgnoreCase(String category, Sort sort);
 
+    List<HairEntity> findByActiveTrueAndCategoryIdIgnoreCase(String categoryId, Sort sort);
+
     Page<HairEntity> findByActiveTrue(Pageable pageable);
 
     Page<HairEntity> findByActiveTrueAndCategoryIgnoreCase(String category, Pageable pageable);
+
+    Page<HairEntity> findByActiveTrueAndCategoryIdIgnoreCase(String categoryId, Pageable pageable);
 }

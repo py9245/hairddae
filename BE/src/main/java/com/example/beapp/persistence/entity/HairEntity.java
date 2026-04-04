@@ -30,6 +30,9 @@ public class HairEntity extends BaseTimeEntity {
     @Column(name = "category", nullable = false, length = 50)
     private String category;
 
+    @Column(name = "category_id", length = 50)
+    private String categoryId;
+
     @Column(name = "dataset_code", length = 50)
     private String datasetCode;
 
@@ -63,6 +66,7 @@ public class HairEntity extends BaseTimeEntity {
     public HairEntity(String name, String category, String previewImageUrl, String description) {
         this.name = name;
         this.category = category;
+        this.categoryId = category;
         this.previewImageUrl = previewImageUrl;
         this.description = description;
     }
@@ -82,6 +86,7 @@ public class HairEntity extends BaseTimeEntity {
         this.name = name;
         this.slug = slug;
         this.category = category;
+        this.categoryId = category;
         this.datasetCode = datasetCode;
         this.datasetRootUrl = datasetRootUrl;
         this.assetIndexUrl = assetIndexUrl;
@@ -105,6 +110,10 @@ public class HairEntity extends BaseTimeEntity {
 
     public String getCategory() {
         return category;
+    }
+
+    public String getCategoryId() {
+        return categoryId != null ? categoryId : category;
     }
 
     public String getDatasetCode() {

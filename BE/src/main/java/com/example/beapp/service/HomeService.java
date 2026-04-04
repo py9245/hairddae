@@ -27,6 +27,7 @@ import com.example.beapp.repository.HairApplyJobRepository;
 import com.example.beapp.repository.SampleHairRepository;
 import com.example.beapp.repository.UserAccountRepository;
 
+
 @Service
 public class HomeService {
 

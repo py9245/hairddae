@@ -55,6 +55,27 @@ app:
   hair:
     static-root-path: ${APP_HAIR_STATIC_ROOT_PATH:/opt/be-static}
     static-base-url: ${APP_HAIR_STATIC_BASE_URL:/static}
+  camera-ai:
+    enabled: ${APP_CAMERA_AI_ENABLED:true}
+    provider-base-url: ${GMS_BASE_URL:}
+    provider-auth-token: ${GMS_KEY:}
+    model-name: ${GMS_IMAGE_MODEL:gpt-image-1-mini}
+    request-timeout-ms: ${APP_CAMERA_AI_REQUEST_TIMEOUT_MS:30000}
+    max-upload-size-bytes: ${APP_CAMERA_AI_MAX_UPLOAD_SIZE_BYTES:5242880}
+    result-dir: ${APP_CAMERA_AI_RESULT_DIR:camera-ai}
+    size: ${APP_CAMERA_AI_SIZE:1024x1024}
+    quality: ${APP_CAMERA_AI_QUALITY:low}
+    output-format: ${APP_CAMERA_AI_OUTPUT_FORMAT:png}
+    input-fidelity: ${APP_CAMERA_AI_INPUT_FIDELITY:}
+  chat:
+    max-upload-size-bytes: ${APP_CHAT_MAX_UPLOAD_SIZE_BYTES:5242880}
+    storage-dir: ${APP_CHAT_STORAGE_DIR:chat}
+  naver-geocoding:
+    enabled: ${APP_NAVER_GEOCODING_ENABLED:true}
+    base-url: ${NAVER_GEOCODING_BASE_URL:https://maps.apigw.ntruss.com}
+    api-key-id: ${X_NCP_APIGW_API_KEY_ID:}
+    api-key: ${X_NCP_APIGW_API_KEY:}
+    request-timeout-ms: ${APP_NAVER_GEOCODING_REQUEST_TIMEOUT_MS:5000}
   inference:
     ws-base-url: ${APP_INFERENCE_WS_BASE_URL:/ws/inference/apply}
     rtc-offer-url: ${APP_INFERENCE_RTC_OFFER_URL:/rtc/inference/offer}

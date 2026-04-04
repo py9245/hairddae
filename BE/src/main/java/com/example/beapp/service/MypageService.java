@@ -40,7 +40,7 @@ public class MypageService {
 
     public MeResponse getUser(String userId) {
         UserAccount userAccount = getRequiredUser(userId);
-        return MeResponse.ok(userAccount.userID(), userAccount.birthDate(), userAccount.gender());
+        return MeResponse.ok(userAccount.userID(), userAccount.birthDate(), userAccount.gender(), userAccount.grade());
     }
 
     public LikeListResponse getLikeList(String userId) {

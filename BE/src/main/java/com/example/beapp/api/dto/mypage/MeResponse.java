@@ -7,9 +7,10 @@ public record MeResponse(
         String message,
         String userID,
         LocalDate birthDate,
-        String gender
+        String gender,
+        short grade
 ) {
-    public static MeResponse ok(String userId, LocalDate birthDate, String gender) {
-        return new MeResponse(200, "조회 정상", userId, birthDate, gender);
+    public static MeResponse ok(String userId, LocalDate birthDate, String gender, short grade) {
+        return new MeResponse(200, "조회 정상", userId, birthDate, gender, grade);
     }
 }

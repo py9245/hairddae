@@ -42,15 +42,29 @@ public class UserEntity extends BaseTimeEntity {
     @Column(name = "provider_subject", length = 255)
     private String providerSubject;
 
+<<<<<<< HEAD
+=======
+    @Column(name = "grade", nullable = false)
+    private short grade;
+
+>>>>>>> origin/BE
     protected UserEntity() {
     }
 
     public UserEntity(String userId, String passwordHash, LocalDate birthDate, String gender) {
+<<<<<<< HEAD
         this(userId, passwordHash, birthDate, gender, (short) 0, null);
     }
 
     public UserEntity(String userId, String passwordHash, LocalDate birthDate, String gender, short loginType) {
         this(userId, passwordHash, birthDate, gender, loginType, null);
+=======
+        this(userId, passwordHash, birthDate, gender, (short) 0, null, (short) 0);
+    }
+
+    public UserEntity(String userId, String passwordHash, LocalDate birthDate, String gender, short loginType) {
+        this(userId, passwordHash, birthDate, gender, loginType, null, (short) 0);
+>>>>>>> origin/BE
     }
 
     public UserEntity(
@@ -60,12 +74,30 @@ public class UserEntity extends BaseTimeEntity {
             String gender,
             short loginType,
             String providerSubject) {
+<<<<<<< HEAD
+=======
+        this(userId, passwordHash, birthDate, gender, loginType, providerSubject, (short) 0);
+    }
+
+    public UserEntity(
+            String userId,
+            String passwordHash,
+            LocalDate birthDate,
+            String gender,
+            short loginType,
+            String providerSubject,
+            short grade) {
+>>>>>>> origin/BE
         this.userId = userId;
         this.passwordHash = passwordHash;
         this.birthDate = birthDate;
         this.gender = gender;
         this.loginType = loginType;
         this.providerSubject = providerSubject;
+<<<<<<< HEAD
+=======
+        this.grade = grade;
+>>>>>>> origin/BE
     }
 
     public Long getId() {
@@ -96,13 +128,32 @@ public class UserEntity extends BaseTimeEntity {
         return providerSubject;
     }
 
+<<<<<<< HEAD
     public UserEntity update(String userId, String passwordHash, LocalDate birthDate, String gender, short loginType, String providerSubject) {
+=======
+    public short getGrade() {
+        return grade;
+    }
+
+    public UserEntity update(
+            String userId,
+            String passwordHash,
+            LocalDate birthDate,
+            String gender,
+            short loginType,
+            String providerSubject,
+            short grade) {
+>>>>>>> origin/BE
         this.userId = userId;
         this.passwordHash = passwordHash;
         this.birthDate = birthDate;
         this.gender = gender;
         this.loginType = loginType;
         this.providerSubject = providerSubject;
+<<<<<<< HEAD
+=======
+        this.grade = grade;
+>>>>>>> origin/BE
         return this;
     }
 }

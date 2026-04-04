@@ -1,5 +1,6 @@
 import { CalendarDays } from 'lucide-react'
 import { useState } from 'react'
+
 import { Calendar } from '@/components/ui/calendar'
 import {
   Popover,
@@ -12,6 +13,7 @@ interface Props {
   onChange: (value: string) => void
   onBlur: () => void
   hasError: boolean
+  placeholder?: string
 }
 
 function toDate(value: string): Date | undefined {
@@ -27,7 +29,13 @@ function toISOString(date: Date): string {
   return `${yyyy}-${mm}-${dd}`
 }
 
-export function BirthDatePicker({ value, onChange, onBlur, hasError }: Props) {
+export function BirthDatePicker({
+  value,
+  onChange,
+  onBlur,
+  hasError,
+  placeholder = '생년월일 선택',
+}: Props) {
   const [open, setOpen] = useState(false)
   const selected = toDate(value)
 
@@ -42,7 +50,7 @@ export function BirthDatePicker({ value, onChange, onBlur, hasError }: Props) {
         <button
           type="button"
           onBlur={onBlur}
-          className={`h-12 w-full rounded-2xl border bg-input-surface px-4 text-left text-base outline-none flex items-center gap-2 ${
+          className={`flex h-12 w-full items-center gap-2 rounded-2xl border bg-input-surface px-4 text-left text-base outline-none ${
             hasError
               ? 'border-red-400 focus:border-red-400'
               : 'border-gray-200 focus:border-primary-200'
@@ -50,11 +58,11 @@ export function BirthDatePicker({ value, onChange, onBlur, hasError }: Props) {
         >
           <CalendarDays className="h-4 w-4 shrink-0 text-gray-400" />
           <span className={value ? 'text-slate-700' : 'text-sm text-gray-400'}>
-            {value || '생년월일 선택'}
+            {value || placeholder}
           </span>
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0 rounded-2xl" align="start">
+      <PopoverContent className="w-auto rounded-2xl p-0" align="start">
         <Calendar
           mode="single"
           selected={selected}

@@ -86,10 +86,13 @@ async function configureRtcSender(sender: RTCRtpSender) {
   }
 
   try {
-    await sender.setParameters({
+    const nextParameters = {
       ...parameters,
       encodings,
-    })
+      degradationPreference: 'maintain-resolution' as RTCDegradationPreference,
+    }
+
+    await sender.setParameters(nextParameters)
   } catch (error) {
     console.warn('RTC sender parameter update failed:', error)
   }
@@ -738,10 +741,12 @@ export function useHairRtcSession({
         await peerConnection.setLocalDescription(offer)
         await waitForIceGatheringComplete(peerConnection)
 
+        const localOffer = peerConnection.localDescription ?? offer
+
         const answer = await postRtcOffer({
           offerUrl: nextBootstrap.rtc.offerUrl,
           connectTicket: nextBootstrap.rtc.connectTicket,
-          localDescription: peerConnection.localDescription ?? offer,
+          localDescription: localOffer,
         })
 
         if (bootstrapRequestRef.current !== requestId) {

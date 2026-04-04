@@ -36,6 +36,25 @@ const sampleCategories = [
   },
 ] as const
 
+const scrollableSampleCategories = [
+  ...sampleCategories,
+  {
+    categoryID: 'sports',
+    categoryName: '스포츠',
+    image: '/icon/avatar-profile-01.svg',
+  },
+  {
+    categoryID: 'travel',
+    categoryName: '여행',
+    image: '/icon/avatar-profile-02.svg',
+  },
+  {
+    categoryID: 'kids',
+    categoryName: '키즈',
+    image: '/icon/avatar-profile-03.svg',
+  },
+] as const
+
 function CategoryBottomSheetPreview({
   initialOpen = true,
   initialSelectedCategory = sampleCategories[0]?.categoryID ?? '',
@@ -64,22 +83,22 @@ function CategoryBottomSheetPreview({
 
   return (
     <div className="app-frame relative w-[390px] overflow-hidden bg-bg-primary">
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="rounded-full bg-primary-50 px-4 py-2 text-sm font-medium text-primary-300"
-        >
-          시트 열기
-        </button>
-        <CategoryBottomSheet
-          open={open}
-          onClose={() => setOpen(false)}
-          categories={categories}
-          selectedCategory={selectedCategory}
-          onSelect={(categoryID) => {
-            setSelectedCategory(categoryID)
-          }}
-        />
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-full bg-primary-50 px-4 py-2 text-sm font-medium text-primary-300"
+      >
+        시트 열기
+      </button>
+      <CategoryBottomSheet
+        open={open}
+        onClose={() => setOpen(false)}
+        categories={categories}
+        selectedCategory={selectedCategory}
+        onSelect={(categoryID) => {
+          setSelectedCategory(categoryID)
+        }}
+      />
     </div>
   )
 }
@@ -122,6 +141,20 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Default: Story = {
+  render: (args) => (
+    <CategoryBottomSheetPreview
+      initialOpen={args.open}
+      initialSelectedCategory={args.selectedCategory}
+      categories={args.categories}
+    />
+  ),
+}
+
+export const Scrollable: Story = {
+  args: {
+    categories: [...scrollableSampleCategories],
+    selectedCategory: scrollableSampleCategories[0].categoryID,
+  },
   render: (args) => (
     <CategoryBottomSheetPreview
       initialOpen={args.open}

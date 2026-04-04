@@ -3,7 +3,9 @@ import type { RefObject } from 'react'
 type HairCameraStageProps = {
   videoRef: RefObject<HTMLVideoElement | null>
   remoteVideoRef: RefObject<HTMLVideoElement | null>
+  frozenFrameCanvasRef: RefObject<HTMLCanvasElement | null>
   hasRemoteVideo: boolean
+  showFrozenFrame?: boolean
   localMirrored?: boolean
   remoteMirrored?: boolean
 }
@@ -11,7 +13,9 @@ type HairCameraStageProps = {
 export function HairCameraStage({
   videoRef,
   remoteVideoRef,
+  frozenFrameCanvasRef,
   hasRemoteVideo,
+  showFrozenFrame = false,
   localMirrored = true,
   remoteMirrored = false,
 }: HairCameraStageProps) {
@@ -40,6 +44,15 @@ export function HairCameraStage({
         className={
           hasRemoteVideo
             ? `absolute inset-0 z-10 h-full w-full object-cover object-center ${remoteMirrorClassName}`
+            : 'hidden'
+        }
+      />
+
+      <canvas
+        ref={frozenFrameCanvasRef}
+        className={
+          showFrozenFrame
+            ? 'pointer-events-none absolute inset-0 z-20 h-full w-full'
             : 'hidden'
         }
       />

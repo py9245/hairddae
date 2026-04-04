@@ -32,6 +32,7 @@ export function CategoryBottomSheet({
   onSelect,
   className,
 }: CategoryBottomSheetProps) {
+  const shouldEnableCategoryScroll = categories.length > 6
   const activePointerIdRef = useRef<number | null>(null)
   const closeTimeoutRef = useRef<number | null>(null)
   const dragOffsetRef = useRef(0)
@@ -182,7 +183,7 @@ export function CategoryBottomSheet({
       <div className="relative">
         <div
           className={cn(
-            'relative mb-[94px] max-h-[calc(100dvh-6.5rem)] overflow-y-auto rounded-[32px] border border-white/70 bg-[#fffaf7] px-5 pb-5 pt-4 shadow-[0_-18px_40px_rgba(47,47,47,0.16)] will-change-transform',
+            'relative mb-[94px] flex max-h-[calc(100dvh-6.5rem)] flex-col rounded-[32px] border border-white/70 bg-[#fffaf7] px-5 pb-5 pt-4 shadow-[0_-18px_40px_rgba(47,47,47,0.16)] will-change-transform',
             isDragging
               ? 'transition-none'
               : 'transition-transform duration-200 ease-out',
@@ -223,30 +224,38 @@ export function CategoryBottomSheet({
           </div>
 
           {categories.length > 0 ? (
-            <div className="grid grid-cols-3 gap-x-5 gap-y-6 pt-2">
-              {categories.map((category) => {
-                const active = category.categoryID === selectedCategory
+            <div
+              className={cn(
+                'min-h-0 pt-2',
+                shouldEnableCategoryScroll &&
+                  'max-h-[292px] overflow-y-auto pr-1',
+              )}
+            >
+              <div className="grid grid-cols-3 gap-x-5 gap-y-6">
+                {categories.map((category) => {
+                  const active = category.categoryID === selectedCategory
 
-                return (
-                  <button
-                    key={category.categoryID}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => onSelect(category.categoryID)}
-                    className={cn(
-                      'flex flex-col items-center rounded-[20px] px-2 py-1 transition',
-                      active ? 'bg-primary-50' : 'hover:bg-white/70',
-                    )}
-                  >
-                    <CategoryCard
-                      label={category.categoryName}
-                      imageSrc={category.image}
-                      active={active}
-                      className="w-full gap-3 [&>div]:h-[72px] [&>div]:w-[72px] [&>div]:rounded-full [&>p]:w-full [&>p]:text-[14px] [&>p]:leading-[1.35] [&>p]:font-medium [&>p]:text-text-warm-400"
-                    />
-                  </button>
-                )
-              })}
+                  return (
+                    <button
+                      key={category.categoryID}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => onSelect(category.categoryID)}
+                      className={cn(
+                        'flex flex-col items-center rounded-[20px] px-2 py-1 transition',
+                        active ? 'bg-primary-50' : 'hover:bg-white/70',
+                      )}
+                    >
+                      <CategoryCard
+                        label={category.categoryName}
+                        imageSrc={category.image}
+                        active={active}
+                        className="w-full gap-3 [&>div]:h-[72px] [&>div]:w-[72px] [&>div]:rounded-full [&>p]:w-full [&>p]:text-[14px] [&>p]:leading-[1.35] [&>p]:font-medium [&>p]:text-text-warm-400"
+                      />
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           ) : (
             <div className="rounded-[24px] bg-white/70 px-4 py-8 text-center text-sm text-text-warm-100">

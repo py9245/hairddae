@@ -1,7 +1,11 @@
+import { queryClient } from './query-client'
+
 type AuthListener = () => void
+
 type CookieStoreCookie = {
   name: string
 }
+
 type CookieStoreLike = {
   getAll(): Promise<CookieStoreCookie[]>
   delete(name: string): Promise<void>
@@ -11,10 +15,16 @@ const listeners = new Set<AuthListener>()
 const BaseUrl = '/api'
 const shouldSimulateSignup = import.meta.env.VITE_SIMULATE_SIGNUP === 'true'
 const shouldSimulateLogin = import.meta.env.VITE_SIMULATE_LOGIN === 'true'
+
+export const ME_QUERY_KEY = ['me'] as const
+export const ME_QUERY_STALE_TIME = 5 * 60 * 1000
+
 type AuthStatus = 'unknown' | 'authenticated' | 'anonymous'
 
 let authStatus: AuthStatus = 'unknown'
 let authCheckPromise: Promise<boolean> | null = null
+let refreshPromise: Promise<boolean> | null = null
+let suppressRefreshUntil = 0
 
 function notifyListeners() {
   for (const listener of listeners) {
@@ -43,6 +53,8 @@ async function clearClientCookies() {
 
 async function clearSession() {
   await clearClientCookies()
+  await queryClient.cancelQueries({ queryKey: ME_QUERY_KEY })
+  queryClient.removeQueries({ queryKey: ME_QUERY_KEY })
   setAuthStatus('anonymous')
 }
 
@@ -67,6 +79,7 @@ export type MeResponse = {
   code: number
   message: string
   userID: string
+  grade?: number | null
   birthDate: string | null
   gender: string | null
 }
@@ -89,27 +102,46 @@ export async function fetchMe(): Promise<MeResponse | null> {
   return response.json()
 }
 
+export async function getCachedMe(): Promise<MeResponse | null> {
+  return queryClient.fetchQuery({
+    queryKey: ME_QUERY_KEY,
+    queryFn: fetchMe,
+    staleTime: ME_QUERY_STALE_TIME,
+  })
+}
+
 async function refreshSession(): Promise<boolean> {
-  const response = await fetch(`${BaseUrl}/accounts/refreshToken/`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    credentials: 'include',
-    body: JSON.stringify({ rotate: false }),
+  if (refreshPromise) {
+    return refreshPromise
+  }
+
+  refreshPromise = (async () => {
+    const response = await fetch(`${BaseUrl}/accounts/refreshToken/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify({ rotate: false }),
+    })
+
+    if (response.status === 401) {
+      suppressRefreshUntil = Date.now() + 250
+      return false
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        await readErrorMessage(response, '세션을 갱신하지 못했습니다.'),
+      )
+    }
+
+    return true
+  })().finally(() => {
+    refreshPromise = null
   })
 
-  if (response.status === 401) {
-    return false
-  }
-
-  if (!response.ok) {
-    throw new Error(
-      await readErrorMessage(response, '세션을 갱신하지 못했습니다.'),
-    )
-  }
-
-  return true
+  return refreshPromise
 }
 
 async function resolveAuthStatus() {
@@ -117,6 +149,11 @@ async function resolveAuthStatus() {
   if (me) {
     setAuthStatus('authenticated')
     return true
+  }
+
+  if (Date.now() < suppressRefreshUntil) {
+    await clearSession()
+    return false
   }
 
   const refreshed = await refreshSession()
@@ -151,6 +188,7 @@ export const auth = {
     return authCheckPromise
   },
   login() {
+    void queryClient.invalidateQueries({ queryKey: ME_QUERY_KEY })
     setAuthStatus('authenticated')
   },
   async expireSession() {
@@ -242,7 +280,7 @@ export async function loginApi(payload: LoginRequest): Promise<LoginResponse> {
     }
   }
 
-  const res = await fetch(`${BaseUrl}/accounts/login/`, {
+  const res = await fetch(`${BaseUrl}/accounts/login`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

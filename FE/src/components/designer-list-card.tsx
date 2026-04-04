@@ -1,0 +1,76 @@
+import { MapPin } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import type { DesignerListItem } from '@/lib/Camera/designer'
+
+type DesignerListCardProps = {
+  designer: DesignerListItem
+  rank: number
+  requestPending?: boolean
+  onRequest?: (designer: DesignerListItem) => void
+}
+
+const DEFAULT_DESIGNER_IMAGES = [
+  '/designer/designer1.png',
+  '/designer/designer2.png',
+  '/designer/designer3.png',
+  '/designer/designer4.png',
+  '/designer/designer5.png',
+]
+
+function getAvatarProfileSrc(rank: number) {
+  const imageIndex = (Math.max(rank, 1) - 1) % DEFAULT_DESIGNER_IMAGES.length
+  return DEFAULT_DESIGNER_IMAGES[imageIndex] ?? DEFAULT_DESIGNER_IMAGES[0]
+}
+
+export function DesignerListCard({
+  designer,
+  rank,
+  requestPending = false,
+  onRequest,
+}: DesignerListCardProps) {
+  return (
+    <article className="rounded-[28px] bg-card p-5 shadow-[0_18px_36px_rgba(15,23,42,0.08)]">
+      <div className="flex items-start gap-4">
+        <div className="flex h-32 w-[44%] shrink-0 items-center justify-center overflow-hidden rounded-[24px] bg-primary-100/40">
+          <img
+            src={designer.profileImageUrl ?? getAvatarProfileSrc(rank)}
+            alt={designer.name}
+            className="h-full w-full object-cover"
+            draggable={false}
+          />
+        </div>
+
+        <div className="flex h-32 min-w-0 flex-1 flex-col">
+          <div className="flex items-center gap-2">
+            <span className="shrink-0 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-bold text-primary-300">
+              추천 {rank}
+            </span>
+            <h2 className="min-w-0 truncate text-lg font-bold text-text-dark">
+              {designer.name}
+            </h2>
+          </div>
+
+          {designer.address ? (
+            <div className="mt-2 flex items-start gap-2">
+              <MapPin className="mt-0.5 size-4 shrink-0 text-primary-300" />
+              <p className="line-clamp-2 text-sm leading-5 text-text-dark">
+                {designer.address}
+              </p>
+            </div>
+          ) : null}
+
+          <Button
+            type="button"
+            variant="login"
+            className="mt-auto h-10 rounded-xl text-sm"
+            onClick={() => onRequest?.(designer)}
+            disabled={requestPending}
+          >
+            {requestPending ? '전송 중...' : '시술 문의하기'}
+          </Button>
+        </div>
+      </div>
+    </article>
+  )
+}

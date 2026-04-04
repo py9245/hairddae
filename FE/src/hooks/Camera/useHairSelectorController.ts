@@ -140,7 +140,6 @@ export function useHairSelectorController({
 
   const handleDownloadClick = () => {
     onCapture?.()
-    onFreezeChange?.(false)
   }
 
   return {

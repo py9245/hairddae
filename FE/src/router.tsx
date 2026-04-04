@@ -15,6 +15,9 @@ import {
 } from 'react'
 import { z } from 'zod'
 import Camera from '@/app/camera'
+import Chat from '@/app/chat'
+import DesignerList from '@/app/designer-list'
+import GoogleCallback from '@/app/google-callback'
 import HairList from '@/app/hairlist'
 import Landing from '@/app/landing'
 import Login from '@/app/login'
@@ -22,11 +25,10 @@ import Main from '@/app/main'
 import MyPage from '@/app/mypage'
 import SignUp from '@/app/sign-up'
 import Splash from '@/app/splash'
-import Adsense from '@/components/adsense'
 import { BottomNav } from '@/components/bottom-nav'
 import { NotFoundPage } from '@/components/not-found-page'
 import { ReviewModal } from '@/components/review-modal'
-import { type AuthStore, auth, fetchMe } from '@/lib/auth'
+import { type AuthStore, auth, getCachedMe } from '@/lib/auth'
 
 type RouterContext = {
   auth: AuthStore
@@ -87,6 +89,23 @@ const signupRoute = createRoute({
   component: SignUp,
 })
 
+const googleCallbackSearchSchema = z.object({
+  idToken: z.string().optional(),
+  state: z.string().optional(),
+  error: z.string().optional(),
+  refresh: z.string().optional(),
+  userid: z.string().optional(),
+  isonboarding: z.string().optional(),
+  is_superuser: z.string().optional(),
+})
+
+const googleCallbackRoute = createRoute({
+  getParentRoute: () => authRoute,
+  path: 'google-callback',
+  validateSearch: (search) => googleCallbackSearchSchema.parse(search),
+  component: GoogleCallback,
+})
+
 const hairListSearchSchema = z.object({
   category: z.string().catch('').optional(),
 })
@@ -95,11 +114,19 @@ const cameraSearchSchema = z.object({
   applyLatest: z.coerce.boolean().optional(),
   hairId: z.coerce.number().int().positive().optional(),
 })
+const chatSearchSchema = z.object({
+  roomId: z.string().optional(),
+  designerUserId: z.string().optional(),
+})
 
 const mainRoute = createProtectedRoute('main', MainPage)
 const cameraRoute = createProtectedRoute('camera', Camera, (search) =>
   cameraSearchSchema.parse(search),
 )
+const chatRoute = createProtectedRoute('chat', Chat, (search) =>
+  chatSearchSchema.parse(search),
+)
+const designerListRoute = createProtectedRoute('designer-list', DesignerList)
 const myPageRoute = createProtectedRoute('mypage', MyPage)
 const hairListRoute = createProtectedRoute('hairlist', HairList, (search) =>
   hairListSearchSchema.parse(search),
@@ -108,9 +135,11 @@ const hairListRoute = createProtectedRoute('hairlist', HairList, (search) =>
 const routeTree = rootRoute.addChildren([
   splashRoute,
   landingRoute,
-  authRoute.addChildren([loginRoute, signupRoute]),
+  authRoute.addChildren([loginRoute, signupRoute, googleCallbackRoute]),
   mainRoute,
   cameraRoute,
+  chatRoute,
+  designerListRoute,
   myPageRoute,
   hairListRoute,
 ])
@@ -157,8 +186,9 @@ function createProtectedRoute<
 
 function RootLayout() {
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false)
-  const hasStartedReviewTimerRef = useRef(false)
   const reviewTimerRef = useRef<number | null>(null)
+  const reviewTimerUserIdRef = useRef<string | null>(null)
+  const startedReviewTimerUserIdRef = useRef<string | null>(null)
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
@@ -189,7 +219,7 @@ function RootLayout() {
   )
 
   const deferReviewModal = useCallback(async () => {
-    const me = await fetchMe().catch(() => null)
+    const me = await getCachedMe().catch(() => null)
     if (me) {
       writeReviewModalPreference(me.userID, {
         dismissedUntil: Date.now() + REVIEW_MODAL_DEFER_MS,
@@ -199,7 +229,7 @@ function RootLayout() {
   }, [writeReviewModalPreference])
 
   const submitReviewModal = useCallback(async () => {
-    const me = await fetchMe().catch(() => null)
+    const me = await getCachedMe().catch(() => null)
     if (me) {
       writeReviewModalPreference(me.userID, {
         completed: true,
@@ -208,47 +238,79 @@ function RootLayout() {
     setIsReviewModalOpen(false)
   }, [writeReviewModalPreference])
 
+  const resetReviewModalTimer = useCallback(() => {
+    if (reviewTimerRef.current != null) {
+      window.clearTimeout(reviewTimerRef.current)
+      reviewTimerRef.current = null
+    }
+
+    reviewTimerUserIdRef.current = null
+    startedReviewTimerUserIdRef.current = null
+    setIsReviewModalOpen(false)
+  }, [])
+
   useEffect(() => {
-    if (pathname !== '/main' || hasStartedReviewTimerRef.current) {
+    if (pathname !== '/main') {
       return
     }
 
-    hasStartedReviewTimerRef.current = true
-    reviewTimerRef.current = window.setTimeout(() => {
-      void (async () => {
-        const me = await fetchMe().catch(() => null)
-        if (!me) {
-          return
-        }
+    void (async () => {
+      const me = await getCachedMe().catch(() => null)
+      if (!me) {
+        return
+      }
 
-        const preference = readReviewModalPreferences()[me.userID]
-        if (preference?.completed) {
-          return
-        }
+      if (startedReviewTimerUserIdRef.current === me.userID) {
+        return
+      }
 
-        if (
-          preference?.dismissedUntil != null &&
-          preference.dismissedUntil > Date.now()
-        ) {
-          return
-        }
-
-        setIsReviewModalOpen(true)
-      })()
-    }, REVIEW_MODAL_DELAY_MS)
-  }, [pathname, readReviewModalPreferences])
-
-  useEffect(() => {
-    return () => {
       if (reviewTimerRef.current != null) {
         window.clearTimeout(reviewTimerRef.current)
       }
+
+      startedReviewTimerUserIdRef.current = me.userID
+      reviewTimerUserIdRef.current = me.userID
+      reviewTimerRef.current = window.setTimeout(() => {
+        void (async () => {
+          const currentMe = await getCachedMe().catch(() => null)
+          if (!currentMe || currentMe.userID !== reviewTimerUserIdRef.current) {
+            return
+          }
+
+          const preference = readReviewModalPreferences()[currentMe.userID]
+          if (preference?.completed) {
+            return
+          }
+
+          if (
+            preference?.dismissedUntil != null &&
+            preference.dismissedUntil > Date.now()
+          ) {
+            return
+          }
+
+          setIsReviewModalOpen(true)
+        })()
+      }, REVIEW_MODAL_DELAY_MS)
+    })()
+  }, [pathname, readReviewModalPreferences])
+
+  useEffect(() => {
+    return auth.subscribe(() => {
+      if (!auth.isAuthenticated()) {
+        resetReviewModalTimer()
+      }
+    })
+  }, [resetReviewModalTimer])
+
+  useEffect(() => {
+    return () => {
+      resetReviewModalTimer()
     }
-  }, [])
+  }, [resetReviewModalTimer])
 
   return (
     <div className="app-frame-shell flex items-center justify-center gap-10">
-      <Adsense />
       <div className="app-frame">
         <div className="app-frame-content">
           <Outlet />
@@ -271,22 +333,6 @@ function RootLayout() {
           </div>
         ) : null}
       </div>
-      {isReviewModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <ReviewModal
-            open={isReviewModalOpen}
-            onClose={() => {
-              void deferReviewModal()
-            }}
-            onDefer={() => {
-              void deferReviewModal()
-            }}
-            onSubmit={() => {
-              void submitReviewModal()
-            }}
-          />
-        </div>
-      ) : null}
     </div>
   )
 }

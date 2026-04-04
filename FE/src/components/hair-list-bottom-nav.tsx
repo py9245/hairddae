@@ -1,11 +1,11 @@
 import { Link } from '@tanstack/react-router'
 import type { LucideIcon } from 'lucide-react'
-import { Camera, ChevronLeft, UserRound } from 'lucide-react'
+import { Camera, ChevronLeft, MessageCircle, UserRound } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { cn } from '@/lib/utils'
 
-type HairListBottomNavRoute = '/camera' | '/mypage'
+type HairListBottomNavRoute = '/camera' | '/chat' | '/mypage'
 
 type HairListBottomNavProps = {
   interactive?: boolean
@@ -28,7 +28,12 @@ const items: HairListBottomNavItem[] = [
     icon: Camera,
   },
   {
-    label: '내 정보',
+    label: '채팅',
+    to: '/chat',
+    icon: MessageCircle,
+  },
+  {
+    label: '내정보',
     to: '/mypage',
     icon: UserRound,
   },
@@ -117,7 +122,7 @@ export function HairListBottomNav({
     >
       <div
         className={cn(
-          'grid grid-cols-3 items-center rounded-[28px] border border-white/70 bg-white/95 px-4 py-2 shadow-[0_20px_44px_rgba(15,23,42,0.16)] backdrop-blur-sm will-change-transform',
+          'grid grid-cols-4 items-center rounded-[28px] border border-white/70 bg-white/95 px-4 py-2 shadow-[0_20px_44px_rgba(15,23,42,0.16)] backdrop-blur-sm will-change-transform',
           isExiting
             ? 'animate-hair-list-bottom-nav-out'
             : isVisible

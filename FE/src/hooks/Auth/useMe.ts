@@ -1,15 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
 
-import { fetchMe } from '@/lib/auth'
+import { auth, fetchMe, ME_QUERY_KEY, ME_QUERY_STALE_TIME } from '@/lib/auth'
 
 export function useMe() {
   return useQuery({
-    queryKey: ['me'],
+    queryKey: ME_QUERY_KEY,
     queryFn: async () => {
       const data = await fetchMe()
       return data
     },
+    enabled: auth.isAuthenticated(),
     retry: false,
-    staleTime: 5 * 60 * 1000,
+    staleTime: ME_QUERY_STALE_TIME,
   })
 }

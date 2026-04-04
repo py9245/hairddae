@@ -9,6 +9,17 @@ function notifyUpdateReady() {
   window.dispatchEvent(new Event(PWA_UPDATE_READY_EVENT))
 }
 
+async function tryApplyWaitingServiceWorker(
+  registration: ServiceWorkerRegistration | null | undefined,
+) {
+  if (!registration?.waiting) {
+    return false
+  }
+
+  registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+  return true
+}
+
 export function registerPwaServiceWorker() {
   if (
     hasRegisteredServiceWorker ||
@@ -29,7 +40,9 @@ export function registerPwaServiceWorker() {
             await navigator.serviceWorker.register(SERVICE_WORKER_URL)
           currentRegistration = registration
 
-          if (registration.waiting) {
+          await registration.update().catch(() => undefined)
+
+          if (await tryApplyWaitingServiceWorker(registration)) {
             notifyUpdateReady()
           }
 
@@ -44,6 +57,7 @@ export function registerPwaServiceWorker() {
                 installingWorker.state === 'installed' &&
                 navigator.serviceWorker.controller
               ) {
+                void tryApplyWaitingServiceWorker(registration)
                 notifyUpdateReady()
               }
             })
@@ -67,10 +81,5 @@ export async function applyPwaUpdate() {
     (await navigator.serviceWorker.getRegistration(SERVICE_WORKER_URL)) ??
     (await navigator.serviceWorker.getRegistration())
 
-  if (!registration?.waiting) {
-    return false
-  }
-
-  registration.waiting.postMessage({ type: 'SKIP_WAITING' })
-  return true
+  return tryApplyWaitingServiceWorker(registration)
 }

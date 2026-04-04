@@ -172,7 +172,7 @@ export function ApplyStyleModal({
 
     const timer = window.setTimeout(() => {
       setFailed(true)
-    }, 5000)
+    }, 10000)
 
     return () => {
       window.clearTimeout(timer)

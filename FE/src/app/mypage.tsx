@@ -1,6 +1,9 @@
 import { useNavigate } from '@tanstack/react-router'
+import useEmblaCarousel from 'embla-carousel-react'
 import { useState } from 'react'
 
+import { DesignerApplicationDialog } from '@/components/designer-application-dialog'
+import { DesignerCategoryDialog } from '@/components/designer-category-dialog'
 import { Header } from '@/components/header'
 import { ProfileCard, ProfileCardSkeleton } from '@/components/profile-card'
 import { HairStyleCard } from '@/components/ui/hair-style-card'
@@ -10,6 +13,7 @@ import { useAppliedList } from '@/hooks/MyPage/useAppliedList'
 import { useLikeList } from '@/hooks/MyPage/useLikeList'
 import { auth } from '@/lib/auth'
 import { applyMyPageHair, type MyPageHairItem } from '@/lib/mypage'
+import { cn } from '@/lib/utils'
 
 type HairSectionProps = {
   title: string
@@ -30,11 +34,13 @@ function HairSection({
   onLikeToggle,
   onApply,
 }: HairSectionProps) {
+  const [emblaRef] = useEmblaCarousel()
+
   return (
     <div className="mt-8">
       <h2 className="mb-3 text-base font-bold text-text-primary">{title}</h2>
       {isLoading ? (
-        <div className="flex gap-3 overflow-x-auto pb-2">
+        <div className="flex gap-3 overflow-hidden px-1 py-1">
           {[0, 1, 2].map((skeletonId) => (
             <div
               key={skeletonId}
@@ -43,21 +49,23 @@ function HairSection({
           ))}
         </div>
       ) : items.length > 0 ? (
-        <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {items.map((item) => (
-            <div key={item.hairID} className="shrink-0">
-              <HairStyleCard
-                hairId={item.hairID}
-                imageSrc={item.image}
-                imageAlt={item.hairName}
-                hairName={item.hairName}
-                hookText={item.hookText}
-                liked={likedIds[item.hairID.toString()] ?? item.liked}
-                onLikeToggle={() => onLikeToggle(item)}
-                onApply={onApply}
-              />
-            </div>
-          ))}
+        <div className="overflow-hidden px-1 py-1" ref={emblaRef}>
+          <div className="flex gap-3">
+            {items.map((item) => (
+              <div key={item.hairID} className="shrink-0">
+                <HairStyleCard
+                  hairId={item.hairID}
+                  imageSrc={item.image}
+                  imageAlt={item.hairName}
+                  hairName={item.hairName}
+                  hookText={item.hookText}
+                  liked={likedIds[item.hairID.toString()] ?? item.liked}
+                  onLikeToggle={() => onLikeToggle(item)}
+                  onApply={onApply}
+                />
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
         <div className="rounded-3xl bg-card p-6 text-center text-sm text-text-warm-300">
@@ -74,12 +82,16 @@ export default function MyPage() {
   const { data: appliedData, isLoading: isAppliedLoading } = useAppliedList()
   const { data: likeData, isLoading: isLikeLoading } = useLikeList()
   const [likedIds, setLikedIds] = useState<Record<string, boolean>>({})
+  const [isDesignerDialogOpen, setIsDesignerDialogOpen] = useState(false)
+  const [isDesignerCategoryDialogOpen, setIsDesignerCategoryDialogOpen] =
+    useState(false)
   const { mutate: toggleLike } = useToggleLike()
   const appliedList = appliedData?.hairList ?? []
   const visibleLikeList =
     likeData?.likeList.filter(
       (item) => likedIds[item.hairID.toString()] ?? item.liked,
     ) ?? []
+  const isModalOpen = isDesignerDialogOpen || isDesignerCategoryDialogOpen
 
   async function handleLogout() {
     await auth.logout()
@@ -132,14 +144,26 @@ export default function MyPage() {
   }
 
   return (
-    <main className="app-frame-page h-full overflow-y-auto bg-bg-primary pb-[108px]">
+    <main
+      className={cn(
+        'app-frame-page relative h-full bg-bg-primary pb-[108px]',
+        isModalOpen ? 'overflow-y-hidden' : 'overflow-y-auto',
+      )}
+    >
       <div className="mx-auto flex w-full max-w-[390px] flex-col px-4 pt-3">
         <Header label="내정보" className="px-0 pb-3 pt-2" />
         <div className="mt-8">
           {isLoading ? (
             <ProfileCardSkeleton />
           ) : meData ? (
-            <ProfileCard profile={meData} onLogout={handleLogout} />
+            <ProfileCard
+              profile={meData}
+              onLogout={handleLogout}
+              onDesignerApply={() => setIsDesignerDialogOpen(true)}
+              onDesignerCategoryRegister={() =>
+                setIsDesignerCategoryDialogOpen(true)
+              }
+            />
           ) : (
             <div className="rounded-3xl bg-card p-6 text-center text-sm text-text-warm-300">
               로그인 정보가 없습니다.
@@ -167,6 +191,14 @@ export default function MyPage() {
           onApply={handleApply}
         />
       </div>
+      <DesignerApplicationDialog
+        open={isDesignerDialogOpen}
+        onOpenChange={setIsDesignerDialogOpen}
+      />
+      <DesignerCategoryDialog
+        open={isDesignerCategoryDialogOpen}
+        onOpenChange={setIsDesignerCategoryDialogOpen}
+      />
     </main>
   )
 }

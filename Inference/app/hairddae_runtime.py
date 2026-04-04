@@ -178,6 +178,10 @@ class HairOverlayRuntime:
         self.switch_significant_improvement_bias = float(
             os.environ.get("INFERENCE_RTC_SWITCH_SIGNIFICANT_IMPROVEMENT_BIAS", "0.8")
         )
+        self.force_switch_angle_deg = max(
+            1,
+            int(os.environ.get("INFERENCE_RTC_FORCE_SWITCH_ANGLE_DEG", "10")),
+        )
         self.angle_priority_enabled = str(
             os.environ.get("INFERENCE_RTC_ANGLE_PRIORITY_ENABLED", "0")
         ).strip().lower() in {"1", "true", "yes", "on"}
@@ -2407,6 +2411,12 @@ class HairOverlayRuntime:
         if safe_candidate_selected and not same_asset:
             force_switch = True
         in_cooldown = self._frames_since_switch < self.switch_cooldown_frames
+        force_switch_angle_gap = (
+            max(current_yaw_gap, current_pitch_gap, current_roll_gap) >= self.force_switch_angle_deg
+        )
+        if force_switch_angle_gap and not same_asset:
+            force_switch = True
+            in_cooldown = False
         if should_release_current_asset(getattr(self, "angle_priority_enabled", False), user_row, current_asset, best_asset):
             significant_improvement = True
             hold_margin = max(0.8, hold_margin - 1.8)

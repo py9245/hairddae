@@ -7,6 +7,7 @@ import time
 
 import numpy as np
 
+from app.body_segmentation import BodySegmenter
 from app.face_tracking import ServerFaceTracker, TrackingResult
 from app.hair_attenuation import HairAttenuator
 from app.hair_segmentation import HairSegmenter as RuntimeHairSegmenter
@@ -186,6 +187,52 @@ class LazyHairSegmenter:
         total_ms = round((time.perf_counter() - started_at) * 1000.0, 3)
         logger.info(
             "startup prewarm complete: dependency=hair_segmenter warm_ms=%.1f total_ms=%.1f",
+            latency_ms,
+            total_ms,
+        )
+        return total_ms
+
+
+class LazyBodySegmenter:
+    def __init__(
+        self,
+        model_path: Path,
+        *,
+        threshold: float = 0.35,
+        precision: str = "fp16",
+    ) -> None:
+        self._model_path = model_path
+        self._threshold = float(threshold)
+        self._precision = str(precision or "fp16")
+        self._lock = Lock()
+        self._segmenter: BodySegmenter | None = None
+
+    def _instance(self) -> BodySegmenter:
+        with self._lock:
+            if self._segmenter is None:
+                self._segmenter = BodySegmenter(
+                    self._model_path,
+                    threshold=self._threshold,
+                    precision=self._precision,
+                )
+            return self._segmenter
+
+    def close(self) -> None:
+        with self._lock:
+            segmenter = self._segmenter
+            self._segmenter = None
+        if segmenter is not None:
+            segmenter.close()
+
+    def segment_person_mask_from_rgb(self, frame_rgb: np.ndarray) -> np.ndarray | None:
+        return self._instance().segment_person_mask_from_rgb(frame_rgb)
+
+    def warm_up(self) -> float:
+        started_at = time.perf_counter()
+        latency_ms = self._instance().warm_up()
+        total_ms = round((time.perf_counter() - started_at) * 1000.0, 3)
+        logger.info(
+            "startup prewarm complete: dependency=body_segmenter warm_ms=%.1f total_ms=%.1f",
             latency_ms,
             total_ms,
         )

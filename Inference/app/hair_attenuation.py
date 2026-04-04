@@ -1964,7 +1964,19 @@ class HairAttenuator:
                     scalp_matte_work[:] = np.clip(scalp_color, 0.0, 255.0).astype(np.uint8)
             if scalp_matte_work is not None and np.any(fringe_work):
                 weakened_work[fringe_work] = scalp_matte_work[fringe_work]
-                fringe_alpha = np.where(fringe_work, np.float32(1.0), np.float32(0.0))
+                fringe_alpha = np.where(
+                    fringe_work,
+                    np.float32(min(0.92, max(self.profile.strength * 0.92, 0.76))),
+                    np.float32(0.0),
+                )
+                fringe_alpha = opencv_gaussian_blur(
+                    fringe_alpha,
+                    (0, 0),
+                    sigma_x=max(0.8, work_width * 0.012),
+                    sigma_y=max(0.8, work_height * 0.012),
+                    min_pixels=24_000,
+                )
+                fringe_alpha = np.where(fringe_work, np.clip(fringe_alpha, 0.0, 0.92), np.float32(0.0))
                 alpha_work = np.where(
                     fringe_work[..., None],
                     np.maximum(alpha_work, fringe_alpha[..., None]),

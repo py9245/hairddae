@@ -11,6 +11,7 @@ import numpy as np
 
 from cv2_cuda_utils import opencv_cvt_color
 from app.models import FeatureMessageModel
+from app.overlay_postprocess_pipeline import prepare_clothing_cleanup_context
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -21,16 +22,20 @@ def _now_ms() -> int:
 
 @dataclass(frozen=True)
 class FramePreparationMetrics:
-    tracking_latency_ms: float
-    hair_segmentation_latency_ms: float
-    hair_attenuation_latency_ms: float
+    tracking_latency_ms: float = 0.0
+    hair_segmentation_latency_ms: float = 0.0
+    hair_attenuation_latency_ms: float = 0.0
+    body_segmentation_latency_ms: float = 0.0
+    clothing_prep_latency_ms: float = 0.0
     hair_attenuation_detail_ms: dict[str, float] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "tracking_latency_ms": self.tracking_latency_ms,
             "hair_segmentation_latency_ms": self.hair_segmentation_latency_ms,
+            "body_segmentation_latency_ms": self.body_segmentation_latency_ms,
             "hair_attenuation_latency_ms": self.hair_attenuation_latency_ms,
+            "clothing_prep_latency_ms": self.clothing_prep_latency_ms,
         }
         if self.hair_attenuation_detail_ms:
             payload["hair_attenuation_detail_ms"] = dict(self.hair_attenuation_detail_ms)
@@ -60,6 +65,7 @@ def prepare_runtime_frame(
     seq: int,
     face_tracker: Any,
     hair_segmenter: Any | None,
+    body_segmenter: Any | None,
     hair_attenuator: Any | None,
     hair_runtime_manager: Any,
     claims: Any,
@@ -101,10 +107,23 @@ def prepare_runtime_frame(
             result = None
         return result, round((time.perf_counter() - started_at) * 1000.0, 3)
 
+    def _run_body_segmentation() -> tuple[np.ndarray | None, float]:
+        if body_segmenter is None:
+            return None, 0.0
+        started_at = time.perf_counter()
+        try:
+            result = body_segmenter.segment_person_mask_from_rgb(frame_rgb)
+        except Exception:
+            logger.exception("body segmentation failed during frame preparation: seq=%s", seq)
+            result = None
+        return result, round((time.perf_counter() - started_at) * 1000.0, 3)
+
     tracking_future = prepare_executor.submit(_run_tracking)
     segmentation_future = prepare_executor.submit(_run_segmentation)
+    body_segmentation_future = prepare_executor.submit(_run_body_segmentation)
     tracking_result, tracking_latency_ms = tracking_future.result()
     hair_confidence_mask, hair_segmentation_latency_ms = segmentation_future.result()
+    body_mask, body_segmentation_latency_ms = body_segmentation_future.result()
 
     next_tracking_snapshot = previous_tracking_snapshot
     fill_landmarks_px: np.ndarray | None = None
@@ -130,10 +149,48 @@ def prepare_runtime_frame(
     metrics = FramePreparationMetrics(
         tracking_latency_ms=tracking_latency_ms,
         hair_segmentation_latency_ms=hair_segmentation_latency_ms,
+        body_segmentation_latency_ms=body_segmentation_latency_ms,
         hair_attenuation_latency_ms=0.0,
+        clothing_prep_latency_ms=0.0,
     )
 
+    def _run_clothing_prep() -> tuple[dict[str, Any], float]:
+        if fill_user_row is None:
+            return {}, 0.0
+        if isinstance(body_mask, np.ndarray) and body_mask.shape != frame_bgr.shape[:2]:
+            return {}, 0.0
+        started_at = time.perf_counter()
+        hair_mask_for_clothing: np.ndarray | None = None
+        if (
+            isinstance(hair_confidence_mask, np.ndarray)
+            and hair_confidence_mask.shape == frame_bgr.shape[:2]
+        ):
+            hair_mask_for_clothing = np.where(
+                hair_confidence_mask >= float(settings.rtc_hair_segmentation_confidence_threshold),
+                np.uint8(255),
+                np.uint8(0),
+            )
+        payload = prepare_clothing_cleanup_context(
+            frame_bgr,
+            fill_user_row,
+            hair_mask=hair_mask_for_clothing,
+            body_mask=body_mask,
+        )
+        return payload, round((time.perf_counter() - started_at) * 1000.0, 3)
+
+    clothing_payload: dict[str, Any] = {}
+
     if hair_attenuator is None:
+        clothing_latency_ms = 0.0
+        if fill_user_row is not None:
+            clothing_payload, clothing_latency_ms = _run_clothing_prep()
+            metrics = FramePreparationMetrics(
+                tracking_latency_ms=tracking_latency_ms,
+                hair_segmentation_latency_ms=hair_segmentation_latency_ms,
+                body_segmentation_latency_ms=body_segmentation_latency_ms,
+                hair_attenuation_latency_ms=0.0,
+                clothing_prep_latency_ms=clothing_latency_ms,
+            )
         if tracking_result is None:
             return PreparedRuntimeFrame(
                 prepared_frame_bgr=frame_bgr,
@@ -145,7 +202,7 @@ def prepare_runtime_frame(
             )
         return PreparedRuntimeFrame(
             prepared_frame_bgr=frame_bgr,
-            tracked_user_row=tracking_result.user_row,
+            tracked_user_row={**tracking_result.user_row, **clothing_payload},
             attenuation_status="disabled",
             metrics=metrics,
             tracking_feature=tracking_result.feature,
@@ -153,20 +210,30 @@ def prepare_runtime_frame(
         )
 
     try:
-        attenuation_started_at = time.perf_counter()
-        prepared_frame_bgr, hair_tone_metadata = hair_attenuator.apply_with_metadata(
-            frame_bgr,
-            fill_landmarks_px,
-            user_row=fill_user_row,
-            hair_confidence_mask=hair_confidence_mask,
-        )
+        def _run_attenuation() -> tuple[np.ndarray, dict[str, Any], float]:
+            started_at = time.perf_counter()
+            prepared_frame_bgr, hair_tone_metadata = hair_attenuator.apply_with_metadata(
+                frame_bgr,
+                fill_landmarks_px,
+                user_row=fill_user_row,
+                hair_confidence_mask=hair_confidence_mask,
+            )
+            return (
+                prepared_frame_bgr,
+                hair_tone_metadata,
+                round((time.perf_counter() - started_at) * 1000.0, 3),
+            )
+
+        attenuation_future = prepare_executor.submit(_run_attenuation)
+        clothing_future = prepare_executor.submit(_run_clothing_prep)
+        prepared_frame_bgr, hair_tone_metadata, hair_attenuation_latency_ms = attenuation_future.result()
+        clothing_payload, clothing_latency_ms = clothing_future.result()
         metrics = FramePreparationMetrics(
             tracking_latency_ms=tracking_latency_ms,
             hair_segmentation_latency_ms=hair_segmentation_latency_ms,
-            hair_attenuation_latency_ms=round(
-                (time.perf_counter() - attenuation_started_at) * 1000.0,
-                3,
-            ),
+            body_segmentation_latency_ms=body_segmentation_latency_ms,
+            hair_attenuation_latency_ms=hair_attenuation_latency_ms,
+            clothing_prep_latency_ms=clothing_latency_ms,
             hair_attenuation_detail_ms=(
                 dict(hair_tone_metadata.get("attenuation_detail_ms") or {})
                 if isinstance(hair_tone_metadata, dict)
@@ -240,7 +307,10 @@ def prepare_runtime_frame(
         scalp_color = hair_tone_metadata.get("scalp_color")
         if scalp_color is not None:
             tracked_user_row["_hair_scalp_color"] = np.asarray(scalp_color, dtype=np.float32)
-
+    if isinstance(body_mask, np.ndarray) and body_mask.shape == frame_bgr.shape[:2]:
+        tracked_user_row["_person_body_mask"] = body_mask
+    if 'clothing_payload' in locals() and clothing_payload:
+        tracked_user_row.update(clothing_payload)
     if hair_confidence_mask is not None and tracking_result is None:
         attenuation_status = "segmented_only"
     elif hair_confidence_mask is not None:

@@ -14,7 +14,7 @@ from app.catalog import AssetCatalog
 from app.config import Settings
 from app.hairddae_runtime_manager import HairddaeRuntimeManager
 from app.http_runtime import attach_http_runtime_routes
-from app.lazy_runtime_dependencies import LazyFaceTracker, LazyHairAttenuator, LazyHairSegmenter
+from app.lazy_runtime_dependencies import LazyBodySegmenter, LazyFaceTracker, LazyHairAttenuator, LazyHairSegmenter
 from app.rtc_codec_accel import apply_rtc_codec_acceleration
 from app.rtc import attach_rtc_routes
 from app.rtc_udp_port_range import configure_aioice_udp_port_range
@@ -29,6 +29,7 @@ class AppDependencies:
     face_tracker: LazyFaceTracker
     hair_attenuator: LazyHairAttenuator | None
     hair_segmenter: LazyHairSegmenter | None
+    body_segmenter: LazyBodySegmenter | None
     hair_runtime_manager: HairddaeRuntimeManager
 
 
@@ -60,6 +61,16 @@ def _build_hair_segmenter(settings: Settings) -> LazyHairSegmenter | None:
     )
 
 
+def _build_body_segmenter(settings: Settings) -> LazyBodySegmenter | None:
+    if not settings.rtc_body_segmentation_enabled:
+        return None
+    return LazyBodySegmenter(
+        settings.body_segmenter_model_path,
+        threshold=settings.rtc_body_segmentation_threshold,
+        precision=settings.rtc_body_segmentation_precision,
+    )
+
+
 def _build_app_dependencies(settings: Settings) -> AppDependencies:
     return AppDependencies(
         replay_store=build_replay_store(settings),
@@ -71,6 +82,7 @@ def _build_app_dependencies(settings: Settings) -> AppDependencies:
         ),
         hair_attenuator=_build_hair_attenuator(settings),
         hair_segmenter=_build_hair_segmenter(settings),
+        body_segmenter=_build_body_segmenter(settings),
         hair_runtime_manager=HairddaeRuntimeManager(settings),
     )
 
@@ -81,6 +93,7 @@ def _attach_app_state(app: FastAPI, settings: Settings, dependencies: AppDepende
     app.state.catalog = dependencies.catalog
     app.state.face_tracker = dependencies.face_tracker
     app.state.hair_segmenter = dependencies.hair_segmenter
+    app.state.body_segmenter = dependencies.body_segmenter
     app.state.hair_attenuator = dependencies.hair_attenuator
     app.state.hair_runtime_manager = dependencies.hair_runtime_manager
 
@@ -94,12 +107,16 @@ def _startup_prewarm_dependencies(settings: Settings, dependencies: AppDependenc
     hair_segmenter_ms = None
     if dependencies.hair_segmenter is not None:
         hair_segmenter_ms = dependencies.hair_segmenter.warm_up()
+    body_segmenter_ms = None
+    if dependencies.body_segmenter is not None:
+        body_segmenter_ms = dependencies.body_segmenter.warm_up()
 
     logger.info(
-        "startup prewarm summary: enabled=%s face_tracker_ms=%.1f hair_segmenter_ms=%s total_ms=%.1f",
+        "startup prewarm summary: enabled=%s face_tracker_ms=%.1f hair_segmenter_ms=%s body_segmenter_ms=%s total_ms=%.1f",
         settings.startup_prewarm_enabled,
         face_tracker_ms,
         None if hair_segmenter_ms is None else round(hair_segmenter_ms, 3),
+        None if body_segmenter_ms is None else round(body_segmenter_ms, 3),
         round((time.perf_counter() - started_at) * 1000.0, 3),
     )
 
@@ -110,6 +127,8 @@ async def _close_app_dependencies(app: FastAPI, dependencies: AppDependencies) -
     dependencies.hair_runtime_manager.close()
     if dependencies.hair_segmenter is not None:
         dependencies.hair_segmenter.close()
+    if dependencies.body_segmenter is not None:
+        dependencies.body_segmenter.close()
     if dependencies.hair_attenuator is not None:
         dependencies.hair_attenuator.close()
     dependencies.face_tracker.close()

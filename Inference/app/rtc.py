@@ -759,6 +759,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         hair_runtime_manager: HairddaeRuntimeManager,
         face_tracker: ServerFaceTracker,
         hair_segmenter: Any | None,
+        body_segmenter: Any | None,
         hair_attenuator: HairAttenuator | None,
     ) -> None:
         super().__init__()
@@ -770,6 +771,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         self._hair_runtime_manager = hair_runtime_manager
         self._face_tracker = face_tracker
         self._hair_segmenter = hair_segmenter
+        self._body_segmenter = body_segmenter
         self._hair_attenuator = hair_attenuator
         self._buffer: deque[BufferedVideoFrame] = deque()
         self._frame_available = asyncio.Event()
@@ -787,7 +789,8 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             landmarks_px=None,
             feature=None,
         )
-        self._prepare_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="rtc-prepare")
+        prepare_workers = 3 if bool(getattr(settings, "rtc_body_segmentation_enabled", False)) else 2
+        self._prepare_executor = ThreadPoolExecutor(max_workers=prepare_workers, thread_name_prefix="rtc-prepare")
         self._reader_task = asyncio.create_task(self._reader_loop())
 
     def _active_target(self) -> HairControlTarget:
@@ -906,7 +909,9 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         decode_latency_ms: float,
         tracking_latency_ms: float,
         hair_segmentation_latency_ms: float,
+        body_segmentation_latency_ms: float,
         hair_attenuation_latency_ms: float,
+        clothing_prep_latency_ms: float,
         infer_latency_ms: float,
         render_latency_ms: float,
         encode_latency_ms: float,
@@ -930,7 +935,9 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             "decode_ms": round(float(decode_latency_ms), 3),
             "tracking_ms": round(float(tracking_latency_ms), 3),
             "hair_segmentation_ms": round(float(hair_segmentation_latency_ms), 3),
+            "body_segmentation_ms": round(float(body_segmentation_latency_ms), 3),
             "hair_attenuation_ms": round(float(hair_attenuation_latency_ms), 3),
+            "clothing_prep_ms": round(float(clothing_prep_latency_ms), 3),
             "infer_ms": round(float(infer_latency_ms), 3),
             "render_ms": round(float(render_latency_ms), 3),
             "user_parsing_ms": round(float(user_parsing_latency_ms), 3),
@@ -1031,6 +1038,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             seq=seq,
             face_tracker=self._face_tracker,
             hair_segmenter=self._hair_segmenter,
+            body_segmenter=self._body_segmenter,
             hair_attenuator=self._hair_attenuator,
             hair_runtime_manager=self._hair_runtime_manager,
             claims=self._claims,
@@ -1198,7 +1206,10 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
         resize_in_latency_ms = round((time.perf_counter() - resize_in_started_at) * 1000.0, 3)
         prepare_metrics = {
             "tracking_latency_ms": 0.0,
+            "hair_segmentation_latency_ms": 0.0,
+            "body_segmentation_latency_ms": 0.0,
             "hair_attenuation_latency_ms": 0.0,
+            "clothing_prep_latency_ms": 0.0,
         }
         queue_depth = len(self._buffer)
 
@@ -1371,7 +1382,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 logger.info(
                     (
                         "rtc perf: seq=%s total=%.1f resize_in=%.1f tracking=%.1f "
-                        "segmentation=%.1f attenuation=%.1f hair_total=%.1f hair_feature=%.1f hair_overlay=%.1f "
+                        "segmentation=%.1f body=%.1f attenuation=%.1f clothing=%.1f hair_total=%.1f hair_feature=%.1f hair_overlay=%.1f "
                         "hair_parse=%.1f resize_out=%.1f frame_age=%.1f queue_depth=%s process_size=%sx%s original_size=%sx%s "
                         "process_max_dimension=%s attenuation=%s asset=%s renderer=%s selection_mode=%s status=%s profile=%s output=passthrough"
                     ),
@@ -1380,7 +1391,9 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                     resize_in_latency_ms,
                     float(prepare_metrics.get("tracking_latency_ms", 0.0)),
                     float(prepare_metrics.get("hair_segmentation_latency_ms", 0.0)),
+                    float(prepare_metrics.get("body_segmentation_latency_ms", 0.0)),
                     float(prepare_metrics.get("hair_attenuation_latency_ms", 0.0)),
+                    float(prepare_metrics.get("clothing_prep_latency_ms", 0.0)),
                     runtime_latency_ms,
                     float(runtime_result.get("feature_latency_ms", 0.0) or 0.0),
                     float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
@@ -1464,7 +1477,9 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 decode_latency_ms=decode_latency_ms,
                 tracking_latency_ms=float(prepare_metrics.get("tracking_latency_ms", 0.0)),
                 hair_segmentation_latency_ms=float(prepare_metrics.get("hair_segmentation_latency_ms", 0.0)),
+                body_segmentation_latency_ms=float(prepare_metrics.get("body_segmentation_latency_ms", 0.0)),
                 hair_attenuation_latency_ms=float(prepare_metrics.get("hair_attenuation_latency_ms", 0.0)),
+                clothing_prep_latency_ms=float(prepare_metrics.get("clothing_prep_latency_ms", 0.0)),
                 infer_latency_ms=runtime_latency_ms,
                 render_latency_ms=float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
                 encode_latency_ms=0.0,
@@ -1498,7 +1513,7 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             logger.info(
                 (
                     "rtc perf: seq=%s total=%.1f resize_in=%.1f tracking=%.1f "
-                    "segmentation=%.1f attenuation=%.1f hair_total=%.1f hair_feature=%.1f hair_overlay=%.1f "
+                    "segmentation=%.1f body=%.1f attenuation=%.1f clothing=%.1f hair_total=%.1f hair_feature=%.1f hair_overlay=%.1f "
                     "hair_parse=%.1f resize_out=%.1f frame_age=%.1f queue_depth=%s process_size=%sx%s original_size=%sx%s "
                     "process_max_dimension=%s attenuation=%s asset=%s renderer=%s selection_mode=%s status=%s profile=%s"
                 ),
@@ -1507,7 +1522,9 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
                 resize_in_latency_ms,
                 float(prepare_metrics.get("tracking_latency_ms", 0.0)),
                 float(prepare_metrics.get("hair_segmentation_latency_ms", 0.0)),
+                float(prepare_metrics.get("body_segmentation_latency_ms", 0.0)),
                 float(prepare_metrics.get("hair_attenuation_latency_ms", 0.0)),
+                float(prepare_metrics.get("clothing_prep_latency_ms", 0.0)),
                 runtime_latency_ms,
                 float(runtime_result.get("feature_latency_ms", 0.0) or 0.0),
                 float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
@@ -1592,7 +1609,9 @@ class RtcServerTrackedRenderTrack(VideoStreamTrack):  # type: ignore[misc]
             decode_latency_ms=decode_latency_ms,
             tracking_latency_ms=float(prepare_metrics.get("tracking_latency_ms", 0.0)),
             hair_segmentation_latency_ms=float(prepare_metrics.get("hair_segmentation_latency_ms", 0.0)),
+            body_segmentation_latency_ms=float(prepare_metrics.get("body_segmentation_latency_ms", 0.0)),
             hair_attenuation_latency_ms=float(prepare_metrics.get("hair_attenuation_latency_ms", 0.0)),
+            clothing_prep_latency_ms=float(prepare_metrics.get("clothing_prep_latency_ms", 0.0)),
             infer_latency_ms=runtime_latency_ms,
             render_latency_ms=float(runtime_result.get("overlay_latency_ms", 0.0) or 0.0),
             encode_latency_ms=0.0,
@@ -1984,6 +2003,7 @@ def attach_rtc_routes(app: FastAPI) -> None:
                     hair_runtime_manager=app.state.hair_runtime_manager,
                     face_tracker=app.state.face_tracker,
                     hair_segmenter=getattr(app.state, "hair_segmenter", None),
+                    body_segmenter=getattr(app.state, "body_segmenter", None),
                     hair_attenuator=getattr(app.state, "hair_attenuator", None),
                 )
             )

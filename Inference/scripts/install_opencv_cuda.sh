@@ -8,6 +8,45 @@ WORKSPACE_ROOT="${OPENCV_BUILD_WORKSPACE:-/tmp/opencv-cuda-build}"
 BUILD_JOBS="${OPENCV_BUILD_JOBS:-}"
 PRESERVE_BUILD="${OPENCV_BUILD_PRESERVE:-1}"
 
+detect_cuda_arch_bin() {
+  local detected=""
+  local gpu_name=""
+
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    detected="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n 1 || true)"
+    if [[ -n "$detected" ]]; then
+      echo "$detected"
+      return 0
+    fi
+
+    gpu_name="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n 1 || true)"
+    case "$gpu_name" in
+      *A10G*|*A10*)
+        echo "8.6"
+        return 0
+        ;;
+      *L4*)
+        echo "8.9"
+        return 0
+        ;;
+      *A100*)
+        echo "8.0"
+        return 0
+        ;;
+      *T4*)
+        echo "7.5"
+        return 0
+        ;;
+      *V100*)
+        echo "7.0"
+        return 0
+        ;;
+    esac
+  fi
+
+  echo ""
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --python)
@@ -55,9 +94,7 @@ if ! command -v nvcc >/dev/null 2>&1; then
 fi
 
 if [[ -z "$CUDA_ARCH_BIN" ]]; then
-  if command -v nvidia-smi >/dev/null 2>&1; then
-    CUDA_ARCH_BIN="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n 1 || true)"
-  fi
+  CUDA_ARCH_BIN="$(detect_cuda_arch_bin)"
   CUDA_ARCH_BIN="${CUDA_ARCH_BIN:-7.5}"
 fi
 
